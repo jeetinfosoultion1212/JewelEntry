@@ -2081,7 +2081,7 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
  <!-- Bottom Navigation -->
  <nav class="bottom-nav">
    <!-- Home -->
-   <a href="index.php" class="nav-item">
+   <a href="home.php" class="nav-item">
      <i class="nav-icon fas fa-home"></i>
      <span class="nav-text">Home</span>
    </a>

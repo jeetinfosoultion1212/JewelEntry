@@ -8,54 +8,80 @@ session_start();
 require 'config/config.php';
 date_default_timezone_set('Asia/Kolkata');
 
-// Handle rate form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rate_action'])) {
-    $material_type = $_POST['material_type'] ?? '';
-    $purity = $_POST['purity'] ?? '';
-    $unit = $_POST['unit'] ?? '';
-    $rate = $_POST['rate'] ?? '';
-    $firm_id = $_SESSION['firmID'];
+// --- Permission check for rate management ---
+$allowed_roles = ['admin', 'manager', 'super admin'];
+$user_role = strtolower($_SESSION['role'] ?? '');
+$canEditRates = in_array($user_role, $allowed_roles);
 
-    if ($_POST['rate_action'] === 'save_rate') {
+// --- AJAX handler for rate save/clear ---
+if (
+    isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+    strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+) {
+    if (!$canEditRates) {
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to manage rates.']);
+        exit;
+    }
+    header('Content-Type: application/json');
+    $input = json_decode(file_get_contents('php://input'), true);
+    $material_type = $input['material_type'] ?? '';
+    $unit = $input['unit'] ?? '';
+    $rate = $input['rate'] ?? '';
+    $action = $input['action'] ?? '';
+    $firm_id = $_SESSION['firmID'];
+    $allowed_purities = [
+        'Gold' => '99.99',
+        'Silver' => '999.9',
+        'Platinum' => '95'
+    ];
+    $purity = $allowed_purities[$material_type] ?? '';
+
+    if ($action === 'save') {
         if ($material_type && $purity && $unit && is_numeric($rate) && $rate > 0) {
-            // Check if rate exists
             $checkQuery = "SELECT id FROM jewellery_price_config WHERE firm_id = ? AND material_type = ? AND purity = ? AND unit = ?";
             $checkStmt = $conn->prepare($checkQuery);
             $checkStmt->bind_param("isss", $firm_id, $material_type, $purity, $unit);
             $checkStmt->execute();
             $existing = $checkStmt->get_result()->fetch_assoc();
             if ($existing) {
-                // Update
-                $updateQuery = "UPDATE jewellery_price_config SET rate = ?, effective_date = CURRENT_TIMESTAMP WHERE id = ?";
+                $updateQuery = "UPDATE jewellery_price_config SET rate = ?, effective_date = CURRENT_DATE WHERE id = ?";
                 $updateStmt = $conn->prepare($updateQuery);
                 $updateStmt->bind_param("di", $rate, $existing['id']);
                 $updateStmt->execute();
             } else {
-                // Insert
-                $insertQuery = "INSERT INTO jewellery_price_config (firm_id, material_type, purity, unit, rate, effective_date) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+                $insertQuery = "INSERT INTO jewellery_price_config (firm_id, material_type, purity, unit, rate, effective_date) VALUES (?, ?, ?, ?, ?, CURRENT_DATE)";
                 $insertStmt = $conn->prepare($insertQuery);
                 $insertStmt->bind_param("isssd", $firm_id, $material_type, $purity, $unit, $rate);
                 $insertStmt->execute();
             }
-            $_SESSION['success'] = 'Rate saved successfully.';
+            echo json_encode(['success' => true, 'message' => 'Rate saved successfully.']);
+            exit;
         } else {
-            $_SESSION['error'] = 'Please fill all fields correctly with a valid rate.';
+            echo json_encode(['success' => false, 'message' => 'Please fill all fields correctly with a valid rate.']);
+            exit;
         }
-        header("Location: home.php");
-        exit();
-    } elseif ($_POST['rate_action'] === 'clear_rate') {
+    } elseif ($action === 'clear') {
         if ($material_type && $firm_id) {
-            $deleteQuery = "DELETE FROM jewellery_price_config WHERE firm_id = ? AND material_type = ?";
+            $deleteQuery = "DELETE FROM jewellery_price_config WHERE firm_id = ? AND material_type = ? AND purity = ?";
             $deleteStmt = $conn->prepare($deleteQuery);
-            $deleteStmt->bind_param("is", $firm_id, $material_type);
+            $deleteStmt->bind_param("iss", $firm_id, $material_type, $purity);
             $deleteStmt->execute();
-            $_SESSION['success'] = 'Rate cleared successfully.';
+            echo json_encode(['success' => true, 'message' => 'Rate cleared successfully.']);
+            exit;
         } else {
-            $_SESSION['error'] = 'Invalid material type.';
+            echo json_encode(['success' => false, 'message' => 'Invalid material type.']);
+            exit;
         }
-        header("Location: home.php");
+    }
+}
+
+// Handle rate form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rate_action'])) {
+    if (!$canEditRates) {
+        echo "<script>alert('You do not have permission to manage rates.');window.location='home.php';</script>";
         exit();
     }
+    // ... existing form POST logic ...
 }
 
 // Function to format number in Indian system (Lakhs, Crores)
@@ -107,7 +133,7 @@ $userInfo = $userResult->fetch_assoc();
 $ratesQuery = "SELECT * FROM jewellery_price_config 
                WHERE firm_id = ? 
                AND material_type IN ('Gold', 'Silver', 'Platinum')
-               AND purity IN ('24K', '99.9', '95')
+               AND purity IN ('99.99', '999.9', '95')
                ORDER BY effective_date DESC";
 $ratesStmt = $conn->prepare($ratesQuery);
 $ratesStmt->bind_param("i", $firm_id);
@@ -286,33 +312,45 @@ $totalBookings = $totalBookingsResult['total_bookings'] ?? 0;
 // --- Fetch data for Marquee --- //
 $marqueeItems = [];
 
-// Fetch recent sales for marquee
-$recentSalesQuery = "SELECT grand_total, created_at FROM jewellery_sales WHERE firm_id = ? ORDER BY created_at DESC LIMIT 5";
+// Fetch recent sales for marquee with item details
+$recentSalesQuery = "SELECT js.grand_total, js.created_at, GROUP_CONCAT(jsi.product_name) as items 
+                    FROM jewellery_sales js 
+                    LEFT JOIN jewellery_sales_items jsi ON js.id = jsi.sale_id 
+                    WHERE js.firm_id = ? 
+                    GROUP BY js.id 
+                    ORDER BY js.created_at DESC 
+                    LIMIT 5";
 $recentSalesStmt = $conn->prepare($recentSalesQuery);
 $recentSalesStmt->bind_param("i", $firm_id);
 $recentSalesStmt->execute();
 $recentSalesResult = $recentSalesStmt->get_result();
 
 while ($row = $recentSalesResult->fetch_assoc()) {
+    $items = isset($row['items']) ? explode(',', $row['items']) : [];
+    $itemText = count($items) > 1 ? $items[0] . ' & more' : (isset($items[0]) ? $items[0] : 'Item');
     $marqueeItems[] = [
-        'text' => '💎 Recent Sale: ₹' . formatIndianAmount($row['grand_total']) . '!',
+        'text' => '💎 Recent Sale: ' . htmlspecialchars($itemText) . ' - ₹' . formatIndianAmount($row['grand_total']),
         'timestamp' => strtotime($row['created_at'])
     ];
 }
 
-// Fetch recent inventory additions for marquee (using gross_weight as a placeholder for item description)
-$recentInventoryQuery = "SELECT gross_weight, created_at FROM jewellery_items WHERE firm_id = ? ORDER BY created_at DESC LIMIT 5";
+// Fetch recent inventory additions for marquee
+$recentInventoryQuery = "SELECT product_name, gross_weight, created_at 
+                        FROM jewellery_items 
+                        WHERE firm_id = ? 
+                        ORDER BY created_at DESC 
+                        LIMIT 5";
 $recentInventoryStmt = $conn->prepare($recentInventoryQuery);
 $recentInventoryStmt->bind_param("i", $firm_id);
 $recentInventoryStmt->execute();
 $recentInventoryResult = $recentInventoryStmt->get_result();
 
 while ($row = $recentInventoryResult->fetch_assoc()) {
-     // Use a placeholder text if weight is 0 or null
-    $weightText = ($row['gross_weight'] > 0) ? number_format($row['gross_weight'], 2) . 'g' : 'Item';
+    $weightText = (isset($row['gross_weight']) && $row['gross_weight'] > 0) ? number_format($row['gross_weight'], 2) . 'g' : '';
+    $productName = isset($row['product_name']) ? htmlspecialchars($row['product_name']) : 'Item';
     $marqueeItems[] = [
-        'text' => '📦 New Stock: ' . $weightText . ' Added!',
-        'timestamp' => strtotime($row['created_at'])
+        'text' => '✨ New Stock: ' . $productName . ($weightText ? ' (' . $weightText . ')' : ''),
+        'timestamp' => isset($row['created_at']) ? strtotime($row['created_at']) : time()
     ];
 }
 
@@ -321,12 +359,12 @@ usort($marqueeItems, function($a, $b) {
     return $b['timestamp'] - $a['timestamp'];
 });
 
-// Combine texts into a single string
+// Combine texts into a single string with separators
 $marqueeText = implode(' | ', array_column($marqueeItems, 'text'));
 
-// If no dynamic data, use a default message
-if (empty($marqueeText)) {
-    $marqueeText = "Welcome to JewelEntry Dashboard! Get started by adding Inventory or recording a Sale.";
+// If no dynamic data, use a professional, branded welcome message
+if (empty(trim($marqueeText))) {
+    $marqueeText = "👋 Welcome to JewelEntry! Your all-in-one jewelry store management app. Add inventory or record a sale to see live updates here.";
 }
 
 ?>
@@ -373,9 +411,9 @@ if (empty($marqueeText)) {
                         <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
                     </div>
                     <!-- User Profile Icon and Dropdown Trigger -->
-                    <div id="userProfileMenuToggle" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative">
+                    <div id="userProfileMenuToggle" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
                         <?php 
-                        $defaultImage = 'public/uploads/jewelry/user.png';
+                        $defaultImage = 'public/uploads/user.png';
                         if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
                             <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="User Profile" class="w-full h-full object-cover">
                         <?php elseif (file_exists($defaultImage)): ?>
@@ -385,9 +423,17 @@ if (empty($marqueeText)) {
                         <?php endif; ?>
 
                          <!-- Logout Dropdown Menu -->
-                        <div id="userLogoutDropdown" class="absolute top-11 right-0 w-32 bg-white rounded-md shadow-lg py-1 z-50 hidden">
-                            <a href="logout.php" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                        <div id="userLogoutDropdown" class="absolute top-12 right-0 w-48 bg-white rounded-lg shadow-xl py-1 z-[9999] hidden transform transition-all duration-200 ease-in-out" style="opacity: 0; transform: translateY(-10px);">
+                            <div class="px-3 py-2 border-b border-gray-100">
+                                <p class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($userInfo['Name']); ?></p>
+                                <p class="text-xs text-gray-500"><?php echo htmlspecialchars($userInfo['Role']); ?></p>
+                            </div>
+                            <a href="profile.html" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                                <i class="fas fa-user mr-2 text-purple-600"></i> View Profile
+                            </a>
+                            <div class="border-t border-gray-100 my-1"></div>
+                            <a href="logout.php" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                                <i class="fas fa-sign-out-alt mr-2 text-red-600"></i> Logout
                             </a>
                         </div>
                     </div>
@@ -401,7 +447,7 @@ if (empty($marqueeText)) {
     <div class="bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-300 overflow-hidden py-2 shadow-inner">
         <div class="marquee whitespace-nowrap">
             <span id="liveRatesMarquee" class="text-amber-900 font-bold text-sm pulse-animation">
-                <?php echo htmlspecialchars($marqueeText); // Display dynamic text ?>
+                <?php echo htmlspecialchars($marqueeText); ?>
             </span>
         </div>
     </div>
@@ -417,12 +463,12 @@ if (empty($marqueeText)) {
             </div>
             <div class="flex space-x-2 overflow-x-auto pb-1 hide-scrollbar">
                 <!-- Gold Rate Card -->
-                <div id="goldStatCard" class="stat-card min-w-[100px] stat-gradient-gold-rate rounded-xl px-2 py-1.5 shadow-md" data-metal-code="XAU" data-metal-name="Gold 24K">
+                <div id="goldStatCard" class="stat-card min-w-[100px] stat-gradient-gold-rate rounded-xl px-2 py-1.5 shadow-md" data-metal-code="XAU" data-metal-name="Gold 99.99">
                     <div class="flex items-center justify-between">
                         <div class="w-6 h-6 bg-white rounded-md flex items-center justify-center shadow-sm">
                             <i class="fas fa-coins text-amber-500 text-[11px]"></i>
                         </div>
-                        <button onclick="openRateModal('Gold', '24K', 'gram', <?php echo isset($rates['Gold']) ? $rates['Gold']['rate'] : '0'; ?>)" 
+                        <button class="rate-edit-btn" onclick="openRateModal('Gold', '99.99', <?php echo isset($rates['Gold']) ? $rates['Gold']['rate'] : '0'; ?>)" 
                                 class="text-xs text-gray-600 hover:text-gray-800">
                             <i class="fas fa-edit"></i>
                         </button>
@@ -431,7 +477,7 @@ if (empty($marqueeText)) {
                         ₹<?php echo isset($rates['Gold']) ? number_format($rates['Gold']['rate'], 2) : 'Set Rate'; ?>
                     </p>
                     <p class="text-[11px] text-gray-600 font-medium">
-                        Gold 24K 
+                        Gold 99.99 
                         <span id="gold24kRateUnit" class="font-normal"><?php echo isset($rates['Gold']) ? '/'.$rates['Gold']['unit'] : ''; ?></span>
                         <?php if (isset($rates['Gold'])): ?>
                             <span class="text-[10px] text-gray-500"> <?php echo date('d M', strtotime($rates['Gold']['effective_date'])); ?></span>
@@ -444,7 +490,7 @@ if (empty($marqueeText)) {
                         <div class="w-6 h-6 bg-white rounded-md flex items-center justify-center shadow-sm">
                             <i class="fas fa-coins text-slate-500 text-[11px]"></i> 
                         </div>
-                        <button onclick="openRateModal('Silver', '99.9', 'gram', <?php echo isset($rates['Silver']) ? $rates['Silver']['rate'] : '0'; ?>)" 
+                        <button class="rate-edit-btn" onclick="openRateModal('Silver', '999.9', <?php echo isset($rates['Silver']) ? $rates['Silver']['rate'] : '0'; ?>)" 
                                 class="text-xs text-gray-600 hover:text-gray-800">
                             <i class="fas fa-edit"></i>
                         </button>
@@ -453,7 +499,7 @@ if (empty($marqueeText)) {
                         ₹<?php echo isset($rates['Silver']) ? number_format($rates['Silver']['rate'], 2) : 'Set Rate'; ?>
                     </p>
                     <p class="text-[11px] text-gray-600 font-medium">
-                        Silver 
+                        Silver 999.9 
                         <span id="silverRateUnit" class="font-normal"><?php echo isset($rates['Silver']) ? '/'.$rates['Silver']['unit'] : ''; ?></span>
                         <?php if (isset($rates['Silver'])): ?>
                             <span class="text-[10px] text-gray-500"> <?php echo date('d M', strtotime($rates['Silver']['effective_date'])); ?></span>
@@ -461,28 +507,7 @@ if (empty($marqueeText)) {
                     </p>
                 </div>
                 <!-- Platinum Rate Card -->
-                <div id="platinumStatCard" class="stat-card min-w-[100px] stat-gradient-platinum-rate rounded-xl px-2 py-1.5 shadow-md" data-metal-code="XPT" data-metal-name="Platinum 95">
-                    <div class="flex items-center justify-between">
-                        <div class="w-6 h-6 bg-white rounded-md flex items-center justify-center shadow-sm">
-                            <i class="fas fa-coins text-gray-400 text-[11px]"></i>
-                        </div>
-                        <button onclick="openRateModal('Platinum', '95', 'gram', <?php echo isset($rates['Platinum']) ? $rates['Platinum']['rate'] : '0'; ?>)" 
-                                class="text-xs text-gray-600 hover:text-gray-800">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                    </div>
-                    <p id="platinumRate" class="text-sm font-bold text-gray-800 mt-1 rate-text">
-                        ₹<?php echo isset($rates['Platinum']) ? number_format($rates['Platinum']['rate'], 2) : 'Set Rate'; ?>
-                    </p>
-                    <p class="text-[11px] text-gray-600 font-medium">
-                        Platinum 
-                        <span id="platinumRateUnit" class="font-normal"><?php echo isset($rates['Platinum']) ? '/'.$rates['Platinum']['unit'] : ''; ?></span>
-                        <?php if (isset($rates['Platinum'])): ?>
-                            <span class="text-[10px] text-gray-500"> <?php echo date('d M', strtotime($rates['Platinum']['effective_date'])); ?></span>
-                        <?php endif; ?>
-                    </p>
-                </div>
-
+                
                 <!-- Platinum Rate Card -->
               
                 <!-- Sales Stat -->
@@ -907,7 +932,7 @@ if (empty($marqueeText)) {
                 </div>
 
                 <!-- Pricing Plans Section -->
-                <div id="pricingPlansSection" class="hidden mb-3">
+                <div id="pricingPlansSection" class="hidden mb-3 transition-all duration-300 ease-in-out">
                     <div class="grid grid-cols-1 gap-3">
                         <?php
                         // Fetch all active plans except trial
@@ -937,7 +962,7 @@ if (empty($marqueeText)) {
                             if (stripos($plan['name'], 'Premium') !== false) $color = 'green';
                             if (stripos($plan['name'], 'Basic') !== false) $color = 'sky';
                         ?>
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 relative overflow-hidden">
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 relative overflow-hidden transform transition-all duration-300">
                             <?php if (stripos($plan['name'], 'Standard') !== false): ?>
                                 <span class="absolute top-3 right-3 bg-purple-100 text-purple-700 text-[11px] font-bold px-2 py-0.5 rounded-full shadow">Most Popular</span>
                             <?php endif; ?>
@@ -1066,7 +1091,7 @@ if (empty($marqueeText)) {
                 </div>
                 <div>
                     <label for="customRateInput" class="block text-sm font-medium text-gray-700">Rate for <span id="customRateModalMetalNamePlaceholder">Metal</span></label>
-                    <input type="number" id="customRateInput" name="rate" class="modal-input" placeholder="Enter rate">
+                    <input type="number" id="customRateInput" name="rate" class="modal-input" placeholder="Enter rate" step="0.01">
                 </div>
                 <div>
                     <label for="customRateUnitSelect" class="block text-sm font-medium text-gray-700">Rate Unit</label>
@@ -1094,7 +1119,7 @@ if (empty($marqueeText)) {
     <nav class="bottom-nav fixed bottom-0 left-0 right-0 shadow-xl">
         <div class="px-4 py-2">
             <div class="flex justify-around">
-                <a href="index.html" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                <a href="home.php" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-home text-gray-400 text-sm"></i>
                     </div>
@@ -1118,7 +1143,7 @@ if (empty($marqueeText)) {
                     </div>
                     <span class="text-xs text-gray-400 font-medium">Alerts</span>
                 </button>
-                <a href="profile.html" data-nav-id="profile" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                <a href="profile.php" data-nav-id="profile" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-user-circle text-gray-400 text-sm"></i>
                     </div>
@@ -1129,6 +1154,7 @@ if (empty($marqueeText)) {
     </nav>
 
     <script type="module" src="js/home.js"></script>
+    <script>window.canEditRates = <?php echo $canEditRates ? 'true' : 'false'; ?>;</script>
 </body>
 </html>
 

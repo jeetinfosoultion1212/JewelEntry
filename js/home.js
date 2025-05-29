@@ -30,6 +30,35 @@ let customRateModal, customRateModalContent, customRateModalTitle,
     customRateInput, customRateUnitSelect, saveCustomRateBtn, closeCustomRateModalBtn,
     currentRateSourceIndicator, clearManualRateBtnElement, customRateModalMetalNamePlaceholder;
 
+const METALS = {
+  Gold:    { purity: '99.99',   label: 'Gold 99.99' },
+  Silver:  { purity: '999.9',   label: 'Silver 999.9' },
+  Platinum:{ purity: '95',      label: 'Platinum 95' }
+};
+
+// This variable should be set by PHP in the HTML, e.g.:
+// <script>window.canEditRates = <?php echo $canEditRates ? 'true' : 'false'; ?>;</script>
+
+function showErrorNotification(msg) { alert(msg); }
+function showSuccessNotification(msg) { alert(msg); }
+
+// Make togglePlans globally available
+window.togglePlans = function() {
+    const plansSection = document.getElementById('pricingPlansSection');
+    if (plansSection) {
+        plansSection.classList.toggle('hidden');
+        // Add smooth animation
+        if (!plansSection.classList.contains('hidden')) {
+            plansSection.style.opacity = '0';
+            plansSection.style.transform = 'translateY(-10px)';
+            setTimeout(() => {
+                plansSection.style.opacity = '1';
+                plansSection.style.transform = 'translateY(0)';
+            }, 10);
+        }
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize Metal Rate Modal Elements
     customRateModal = document.getElementById('customRateModal');
@@ -43,11 +72,67 @@ document.addEventListener('DOMContentLoaded', () => {
     currentRateSourceIndicator = document.getElementById('currentRateSourceIndicator');
     clearManualRateBtnElement = document.getElementById('clearManualRateBtn');
     
+    // Initialize user profile dropdown with improved handling
+    const userProfileMenuToggle = document.getElementById('userProfileMenuToggle');
+    const userLogoutDropdown = document.getElementById('userLogoutDropdown');
+
+    if (userProfileMenuToggle && userLogoutDropdown) {
+        // Toggle dropdown on click with animation
+        userProfileMenuToggle.addEventListener('click', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            if (userLogoutDropdown.classList.contains('hidden')) {
+                // Show dropdown
+                userLogoutDropdown.classList.remove('hidden');
+                // Force reflow
+                userLogoutDropdown.offsetHeight;
+                // Add animation classes
+                userLogoutDropdown.style.opacity = '1';
+                userLogoutDropdown.style.transform = 'translateY(0)';
+            } else {
+                // Hide dropdown
+                userLogoutDropdown.style.opacity = '0';
+                userLogoutDropdown.style.transform = 'translateY(-10px)';
+                setTimeout(() => {
+                    userLogoutDropdown.classList.add('hidden');
+                }, 200);
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!userProfileMenuToggle.contains(event.target) && !userLogoutDropdown.contains(event.target)) {
+                userLogoutDropdown.style.opacity = '0';
+                userLogoutDropdown.style.transform = 'translateY(-10px)';
+                setTimeout(() => {
+                    userLogoutDropdown.classList.add('hidden');
+                }, 200);
+            }
+        });
+
+        // Close dropdown on Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && !userLogoutDropdown.classList.contains('hidden')) {
+                userLogoutDropdown.style.opacity = '0';
+                userLogoutDropdown.style.transform = 'translateY(-10px)';
+                setTimeout(() => {
+                    userLogoutDropdown.classList.add('hidden');
+                }, 200);
+            }
+        });
+
+        // Prevent dropdown from closing when clicking inside it
+        userLogoutDropdown.addEventListener('click', function(event) {
+            event.stopPropagation();
+        });
+    }
+
     loadUserSetRates();
-    displayAllMetalRates(); // Display initial rates (manual or placeholders)
+    displayAllMetalRates();
     initializeMetalRateStatCardListeners();
     initializeCustomRateModalListeners();
-    updateMarqueeWithStaticText(); // Set static marquee text
+    updateMarqueeWithStaticText();
 
     // Enhanced menu card interactions
     document.querySelectorAll('.menu-card').forEach(cardElement => {
@@ -65,31 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => ripple.remove(), 600);
         });
     });
-
-    // Toggle logout dropdown visibility
-    const userProfileMenuToggle = document.getElementById('userProfileMenuToggle');
-    const userLogoutDropdown = document.getElementById('userLogoutDropdown');
-
-    if (userProfileMenuToggle && userLogoutDropdown) {
-        userProfileMenuToggle.addEventListener('click', (event) => {
-            event.stopPropagation(); // Prevent the click from closing the dropdown immediately
-            userLogoutDropdown.classList.toggle('hidden');
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (event) => {
-            if (!userProfileMenuToggle.contains(event.target) && !userLogoutDropdown.contains(event.target)) {
-                userLogoutDropdown.classList.add('hidden');
-            }
-        });
-
-        // Close dropdown on Escape key
-        window.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && !userLogoutDropdown.classList.contains('hidden')) {
-                userLogoutDropdown.classList.add('hidden');
-            }
-        });
-    }
 
     // Enhanced navigation interactions
     const navButtons = document.querySelectorAll('.nav-btn');
@@ -197,6 +257,43 @@ document.addEventListener('DOMContentLoaded', () => {
             updateFavoriteStar(button, currentIsFavorited);
         });
     });
+
+    // Hide or disable rate edit buttons if not allowed
+    if (typeof window.canEditRates !== 'undefined' && !window.canEditRates) {
+        document.querySelectorAll('.rate-edit-btn').forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+
+    // Store Management menu navigation for all modules
+    const storeMenuMap = {
+        'inventory': 'add.php',
+        'sales': 'sale-entry.php',
+        'customers': 'customer.php',
+        'catalog': 'catalog.html',
+        'billing': 'billing.php',
+        'repairs': 'repairs.php',
+        'analytics': 'analytics.php',
+        'staff': 'staff.php',
+        'suppliers': 'suppliers.php',
+        'testing': 'testing.php',
+        'security': 'security.php',
+        'loans': 'loans.php',
+        'bookings': 'bookings.php',
+        'alerts': 'alerts.php',
+        'settings': 'settings.php'
+    };
+    document.querySelectorAll('.menu-card').forEach(card => {
+        const moduleId = card.getAttribute('data-module-id');
+        // Skip if this is an <a> tag (let default link work)
+        if (storeMenuMap[moduleId] && card.tagName !== 'A') {
+            card.addEventListener('click', function(event) {
+                // Prevent navigation if favorite button is clicked
+                if (event.target.closest('.favorite-btn')) return;
+                window.location.href = storeMenuMap[moduleId];
+            });
+        }
+    });
 });
 
 window.addEventListener('load', function() {
@@ -293,7 +390,6 @@ window.resetJewelEntryTrial = function() {
 function updateMarqueeWithStaticText() {
     const marquee = document.getElementById('liveRatesMarquee');
     if (marquee) {
-        marquee.textContent = "🎉 Recent Sale: Diamond Necklace - ₹1,20,000! | ✨ New Arrival: Emerald Earrings! | 🌟 Special Offer: 10% off on Gold Coins!";
         if (!marquee.classList.contains('pulse-animation')) { // Ensure animation if it was removed
             marquee.classList.add('pulse-animation');
         }
@@ -362,8 +458,8 @@ function initializeMetalRateStatCardListeners() {
             const materialType = card.dataset.metalName.split(' ')[0]; // Extract 'Gold', 'Silver', 'Platinum'
             let purity = '';
             const metalName = card.dataset.metalName; // e.g., "Gold 24K"
-            if (metalName.includes('24K')) purity = '24K';
-            else if (metalName.includes('99.9')) purity = '99.9';
+            if (metalName.includes('99.99')) purity = '99.99';
+            else if (metalName.includes('999.9')) purity = '999.9';
             else if (metalName.includes('95')) purity = '95';
             // Add more purity checks if needed
 
@@ -392,39 +488,26 @@ function initializeMetalRateStatCardListeners() {
     });
 }
 
-function openRateModal(materialType, purity, unit, currentRate) {
-    const modal = document.getElementById('customRateModal');
-    const modalContent = document.getElementById('customRateModalContent');
-    const title = document.getElementById('customRateModalTitle');
-    const input = document.getElementById('customRateInput');
-    const unitSelect = document.getElementById('customRateUnitSelect');
-    const metalNamePlaceholder = document.getElementById('customRateModalMetalNamePlaceholder');
-    const modalMaterialTypeInput = document.getElementById('modalMaterialType'); // Get hidden input
-    const modalPurityInput = document.getElementById('modalPurity'); // Get hidden input
-
-    if (!modal || !modalContent || !title || !input || !unitSelect || !metalNamePlaceholder || !modalMaterialTypeInput || !modalPurityInput) {
-        console.error('Required modal elements not found');
+function openRateModal(materialType, unit, currentRate) {
+    if (typeof window.canEditRates !== 'undefined' && !window.canEditRates) {
+        showToast('You do not have permission to manage rates.', 'error');
         return;
     }
+    const metal = METALS[materialType];
+    if (!metal) return;
 
-    // Set modal content
-    title.textContent = `Set ${materialType} Rate`;
-    metalNamePlaceholder.textContent = `${materialType} ${purity}`;
-    input.value = currentRate || '';
-    unitSelect.value = unit || 'gram';
-    
-    // Set hidden input values
-    modalMaterialTypeInput.value = materialType;
-    modalPurityInput.value = purity;
+    document.getElementById('customRateModalTitle').textContent = `Set ${metal.label} Rate`;
+    document.getElementById('customRateModalMetalNamePlaceholder').textContent = metal.label;
+    document.getElementById('customRateInput').value = currentRate || '';
+    document.getElementById('customRateUnitSelect').value = unit || 'gram';
+    document.getElementById('modalMaterialType').value = materialType;
+    document.getElementById('modalPurity').value = metal.purity;
 
-    // Store current editing metal info
-    // Note: The saveCustomRate function uses currentEditingMetalCode
-    // and reconstructs purity, this might need alignment depending on
-    // which submission method (form POST or JS fetch) is intended.
-    // For now, ensuring hidden inputs are set for the form POST.
-    currentEditingMetalCode = materialType; // This seems related to the fetch logic
+    currentEditingMetalCode = materialType;
 
-    // Show modal with animation
+    // Show modal
+    const modal = document.getElementById('customRateModal');
+    const modalContent = document.getElementById('customRateModalContent');
     modal.classList.remove('hidden');
     setTimeout(() => {
         modal.classList.remove('opacity-0');
@@ -434,194 +517,144 @@ function openRateModal(materialType, purity, unit, currentRate) {
 }
 
 function closeCustomRateModal() {
-    if (!customRateModal || !customRateModalContent) return;
-    customRateModalContent.classList.remove('scale-100', 'opacity-100');
-    customRateModalContent.classList.add('scale-95', 'opacity-0');
+    const modal = document.getElementById('customRateModal');
+    const modalContent = document.getElementById('customRateModalContent');
+    if (!modal || !modalContent) return;
+    modalContent.classList.remove('scale-100', 'opacity-100');
+    modalContent.classList.add('scale-95', 'opacity-0');
     setTimeout(() => {
-        customRateModal.classList.add('hidden', 'opacity-0'); 
-        currentEditingMetalCode = null; 
+        modal.classList.add('hidden', 'opacity-0');
+        currentEditingMetalCode = null;
     }, 300);
 }
 
-function initializeCustomRateModalListeners() {
-    // Remove the click listener that calls handleSaveCustomRate
-    // if(saveCustomRateBtn) saveCustomRateBtn.addEventListener('click', handleSaveCustomRate);
-    
-    // Ensure the correct button for clearing is targeted.
-    // HTML was updated to have id="clearManualRateBtn"
-    if(clearManualRateBtnElement) { // This variable is now set at the top
-        clearManualRateBtnElement.addEventListener('click', handleClearManualRate); 
-    } else {
-        console.warn("'Clear Manual Rate' button not found with ID 'clearManualRateBtn'.");
+function handleClearManualRate() {
+    // Set form fields for clear action and submit
+    const metal = METALS[currentEditingMetalCode];
+    if (!metal) return;
+    document.getElementById('modalMaterialType').value = currentEditingMetalCode;
+    document.getElementById('modalPurity').value = metal.purity;
+    const form = document.getElementById('customRateModalContent');
+    if (form) {
+        form.querySelector('input[name="rate_action"]').value = 'clear_rate';
+        form.submit();
+    }
+}
+
+// Toast utility
+function showToast(msg, type='success') {
+    let toast = document.getElementById('toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '30px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.zIndex = '9999';
+        toast.style.display = 'none';
+        toast.style.minWidth = '200px';
+        toast.style.maxWidth = '90vw';
+        toast.style.padding = '12px 24px';
+        toast.style.borderRadius = '6px';
+        toast.style.fontWeight = 'bold';
+        toast.style.textAlign = 'center';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.background = type === 'success' ? '#22c55e' : '#ef4444';
+    toast.style.color = '#fff';
+    toast.style.display = 'block';
+    toast.style.opacity = '1';
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => { toast.style.display = 'none'; }, 400);
+    }, 2000);
+}
+
+async function saveCustomRateAJAX() {
+    const metal = METALS[currentEditingMetalCode];
+    if (!metal) return;
+
+    const rate = parseFloat(document.getElementById('customRateInput').value);
+    const unit = document.getElementById('customRateUnitSelect').value;
+
+    if (isNaN(rate) || rate <= 0) {
+        showToast('Please enter a valid rate', 'error');
+        return;
     }
 
-    if(closeCustomRateModalBtn) closeCustomRateModalBtn.addEventListener('click', closeCustomRateModal);
+    try {
+        const response = await fetch('home.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({
+                action: 'save',
+                material_type: currentEditingMetalCode,
+                unit: unit,
+                rate: rate
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            closeCustomRateModal();
+            setTimeout(() => location.reload(), 1200); // Or update DOM directly for smoother UX
+        } else {
+            showToast(data.message, 'error');
+        }
+    } catch (error) {
+        showToast('Failed to save rate', 'error');
+    }
+}
 
+async function clearManualRateAJAX() {
+    const metal = METALS[currentEditingMetalCode];
+    if (!metal) return;
+
+    try {
+        const response = await fetch('home.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({
+                action: 'clear',
+                material_type: currentEditingMetalCode
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            closeCustomRateModal();
+            setTimeout(() => location.reload(), 1200); // Or update DOM directly for smoother UX
+        } else {
+            showToast(data.message, 'error');
+        }
+    } catch (error) {
+        showToast('Failed to clear rate', 'error');
+    }
+}
+
+function initializeCustomRateModalListeners() {
+    const clearManualRateBtn = document.getElementById('clearManualRateBtn');
+    const closeCustomRateModalBtn = document.getElementById('closeCustomRateModalBtn');
+    const saveCustomRateBtn = document.getElementById('saveCustomRateBtn');
+    if (clearManualRateBtn) clearManualRateBtn.onclick = clearManualRateAJAX;
+    if (saveCustomRateBtn) saveCustomRateBtn.onclick = saveCustomRateAJAX;
+    if (closeCustomRateModalBtn) closeCustomRateModalBtn.addEventListener('click', closeCustomRateModal);
+    const customRateModal = document.getElementById('customRateModal');
     if (customRateModal) {
-         customRateModal.addEventListener('click', (event) => {
-            if (event.target === customRateModal) {
-                closeCustomRateModal();
-            }
+        customRateModal.addEventListener('click', (event) => {
+            if (event.target === customRateModal) closeCustomRateModal();
         });
     }
-     window.addEventListener('keydown', (event) => {
+    window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && customRateModal && !customRateModal.classList.contains('hidden')) {
             closeCustomRateModal();
         }
     });
 }
 
-function handleSaveCustomRate() {
-    if (!currentEditingMetalCode) return;
-    const rate = parseFloat(customRateInput.value);
-    const unit = customRateUnitSelect.value;
-
-    if (isNaN(rate) || rate <= 0) {
-        alert("Please enter a valid positive rate.");
-        return;
-    }
-
-    let perGramRate = rate; // This is still useful for potential internal calculations or future features
-    if (unit === '10gram') perGramRate = rate / 10;
-    else if (unit === 'tola') perGramRate = rate / TOLA_IN_GRAMS;
-    else if (unit === 'vori') perGramRate = rate / VORI_IN_GRAMS;
-
-    userSetRates[currentEditingMetalCode] = {
-        rate: parseFloat(rate.toFixed(4)), 
-        unit: unit,
-        perGramRate: parseFloat(perGramRate.toFixed(4)) 
-    };
-    saveUserSetRates();
-    updateSingleStatCard(
-        currentEditingMetalCode,
-        currentEditingMetalCode.toLowerCase() + 'Rate', 
-        currentEditingMetalCode.toLowerCase() + 'RateUnit', 
-        currentEditingMetalCode.toLowerCase() + 'ManualIndicator'
-    );
-    closeCustomRateModal();
-}
-
-function handleClearManualRate() {
-    if (!currentEditingMetalCode) return;
-    delete userSetRates[currentEditingMetalCode];
-    saveUserSetRates();
-    updateSingleStatCard(
-        currentEditingMetalCode,
-        currentEditingMetalCode.toLowerCase() + 'Rate', 
-        currentEditingMetalCode.toLowerCase() + 'RateUnit', 
-        currentEditingMetalCode.toLowerCase() + 'ManualIndicator'
-    );
-    // Update modal fields if it's open for this metal
-    if(customRateInput) customRateInput.value = '';
-    if(customRateUnitSelect) customRateUnitSelect.value = 'gram';
-    if(currentRateSourceIndicator) {
-        currentRateSourceIndicator.textContent = "Not Set (on Card)";
-        currentRateSourceIndicator.className = "font-semibold text-gray-500";
-    }
-}
-
-// Function to save custom rate
-async function saveCustomRate() {
-    const input = document.getElementById('customRateInput');
-    const unitSelect = document.getElementById('customRateUnitSelect');
-    
-    if (!input || !unitSelect || !currentEditingMetalCode) {
-        console.error('Required elements not found');
-        return;
-    }
-
-    const rate = parseFloat(input.value);
-    const unit = unitSelect.value;
-    
-    if (isNaN(rate) || rate <= 0) {
-        showErrorNotification('Please enter a valid rate');
-        return;
-    }
-
-    try {
-        const response = await fetch('api/manage_jewellery_rates.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                material_type: currentEditingMetalCode,
-                purity: currentEditingMetalCode === 'Gold' ? 24 : (currentEditingMetalCode === 'Silver' ? 99.9 : 95),
-                unit: unit,
-                rate: rate
-            })
-        });
-
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to save rate');
-        }
-
-        showSuccessNotification('Rate saved successfully');
-        closeCustomRateModal();
-    } catch (error) {
-        console.error('Error saving rate:', error);
-        showErrorNotification(error.message || 'Failed to save rate');
-    }
-}
-
-// Function to clear manual rate
-async function clearManualRate() {
-    if (!currentEditingMetalCode) {
-        console.error('No metal selected for clearing rate');
-        return;
-    }
-
-    try {
-        const response = await fetch('api/manage_jewellery_rates.php', {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                material_type: currentEditingMetalCode
-            })
-        });
-
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to clear rate');
-        }
-
-        showSuccessNotification('Rate cleared successfully');
-        closeCustomRateModal();
-    } catch (error) {
-        console.error('Error clearing rate:', error);
-        showErrorNotification(error.message || 'Failed to clear rate');
-    }
-}
-
-// Initialize rate modal functionality
 document.addEventListener('DOMContentLoaded', () => {
-    const modal = document.getElementById('customRateModal');
-    const closeBtn = document.getElementById('closeCustomRateModalBtn');
-    const saveBtn = document.getElementById('saveCustomRateBtn');
-    const clearBtn = document.getElementById('clearManualRateBtn');
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', closeCustomRateModal);
-    }
-
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveCustomRate);
-    }
-
-    if (clearBtn) {
-        clearBtn.addEventListener('click', clearManualRate);
-    }
-
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeCustomRateModal();
-            }
-        });
-    }
+    initializeCustomRateModalListeners();
+    // ... existing code ...
 });

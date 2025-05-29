@@ -1767,7 +1767,7 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
   
     <nav class="bottom-nav">
    <!-- Home -->
-   <a href="main.php" class="nav-item">
+   <a href="home.php" class="nav-item">
      <i class="nav-icon fas fa-home"></i>
      <span class="nav-text">Home</span>
    </a>
