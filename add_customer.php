@@ -1,5 +1,18 @@
 <?php
+session_start();
 require 'config/config.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+// Check if firm ID is set
+if (!isset($_SESSION['firmID'])) {
+    header("Location: login.php?error=No firm associated with your account");
+    exit();
+}
 
 // Create uploads directory if not exists
 $uploadDir = 'uploads/customers/';
@@ -21,7 +34,7 @@ $dob = trim($_POST['DateOfBirth'] ?? null);
 $gender = trim($_POST['Gender'] ?? '');
 $pan = trim($_POST['PANNumber'] ?? '');
 $aadhaar = trim($_POST['AadhaarNumber'] ?? '');
-$firmID = $_SESSION['firmID'] ?? 1;
+$firmID = $_SESSION['firmID'];
 
 // Handle image upload
 $imagePath = null;
