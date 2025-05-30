@@ -1,4 +1,21 @@
 
+CREATE TABLE `loan_emis` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `loan_id` INT(11) NOT NULL,                -- Reference to loans.id
+  `customer_id` INT(11) NOT NULL,            -- Reference to customer.id
+  `due_date` DATE NOT NULL,                  -- When this EMI is due
+  `amount` DECIMAL(12,2) NOT NULL,           -- EMI amount
+  `status` ENUM('due','paid','late','waived') DEFAULT 'due', -- Current status
+  `paid_date` DATE DEFAULT NULL,             -- When paid (if paid)
+  `payment_mode` VARCHAR(50) DEFAULT NULL,   -- Cash, UPI, etc.
+  `notes` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `loan_id` (`loan_id`),
+  KEY `customer_id` (`customer_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 CREATE TABLE `coupons` (
   `id` int(11) NOT NULL,

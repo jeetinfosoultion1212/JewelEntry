@@ -16,7 +16,7 @@ if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
             header("location: employee_dashboard.php");
             break;
         default:
-            header("location: main.php");
+            header("location: home.php");
     }
     exit;
 }
@@ -330,7 +330,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <div class="text-center">
                 <p class="text-xs text-gray-600">
                     Don't have an account? 
-                    <a href="create_firm.php" class="text-indigo-600 hover:text-indigo-500 font-medium">Register here</a>
+                    <a href="register.php" class="text-indigo-600 hover:text-indigo-500 font-medium">Register here</a>
                 </p>
             </div>
         </div>

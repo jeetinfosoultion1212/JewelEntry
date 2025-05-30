@@ -117,6 +117,35 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// Check subscription status
+$subscriptionQuery = "SELECT fs.*, sp.name as plan_name, sp.price, sp.duration_in_days 
+                    FROM firm_subscriptions fs 
+                    JOIN subscription_plans sp ON fs.plan_id = sp.id 
+                    WHERE fs.firm_id = ? AND fs.is_active = 1 
+                    ORDER BY fs.end_date DESC LIMIT 1";
+$subStmt = $conn->prepare($subscriptionQuery);
+$subStmt->bind_param("i", $firm_id);
+$subStmt->execute();
+$subscription = $subStmt->get_result()->fetch_assoc();
+
+// If no active subscription found, redirect to subscription page
+if (!$subscription) {
+    header("Location: subscription.php");
+    exit();
+}
+
+// Check if trial is about to expire (less than 2 days remaining)
+$trialExpiring = false;
+if ($subscription['is_trial']) {
+    $endDate = new DateTime($subscription['end_date']);
+    $now = new DateTime();
+    $daysRemaining = $now->diff($endDate)->days;
+    
+    if ($daysRemaining <= 2) {
+        $trialExpiring = true;
+    }
+}
+
 // Fetch user and firm details
 $userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName, f.City
              FROM Firm_Users u
@@ -410,8 +439,8 @@ if (empty(trim($marqueeText))) {
                         <p id="headerUserName" class="text-sm font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
                         <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
                     </div>
-                    <!-- User Profile Icon and Dropdown Trigger -->
-                    <div id="userProfileMenuToggle" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
+                    <!-- User Profile Icon -->
+                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
                         <?php 
                         $defaultImage = 'public/uploads/user.png';
                         if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
@@ -421,23 +450,7 @@ if (empty(trim($marqueeText))) {
                         <?php else: ?>
                             <i class="fas fa-user-crown text-white text-sm"></i>
                         <?php endif; ?>
-
-                         <!-- Logout Dropdown Menu -->
-                        <div id="userLogoutDropdown" class="absolute top-12 right-0 w-48 bg-white rounded-lg shadow-xl py-1 z-[9999] hidden transform transition-all duration-200 ease-in-out" style="opacity: 0; transform: translateY(-10px);">
-                            <div class="px-3 py-2 border-b border-gray-100">
-                                <p class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($userInfo['Name']); ?></p>
-                                <p class="text-xs text-gray-500"><?php echo htmlspecialchars($userInfo['Role']); ?></p>
-                            </div>
-                            <a href="profile.html" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
-                                <i class="fas fa-user mr-2 text-purple-600"></i> View Profile
-                            </a>
-                            <div class="border-t border-gray-100 my-1"></div>
-                            <a href="logout.php" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
-                                <i class="fas fa-sign-out-alt mr-2 text-red-600"></i> Logout
-                            </a>
-                        </div>
-                    </div>
-                   
+                    </a>
                 </div>
             </div>
         </div>
@@ -1154,7 +1167,13 @@ if (empty(trim($marqueeText))) {
     </nav>
 
     <script type="module" src="js/home.js"></script>
-    <script>window.canEditRates = <?php echo $canEditRates ? 'true' : 'false'; ?>;</script>
+    <script>
+    
+    window.canEditRates = <?php echo $canEditRates ? 'true' : 'false'; ?>;
+
+
+
+</script>
 </body>
 </html>
 

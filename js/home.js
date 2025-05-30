@@ -72,62 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
     currentRateSourceIndicator = document.getElementById('currentRateSourceIndicator');
     clearManualRateBtnElement = document.getElementById('clearManualRateBtn');
     
-    // Initialize user profile dropdown with improved handling
-    const userProfileMenuToggle = document.getElementById('userProfileMenuToggle');
-    const userLogoutDropdown = document.getElementById('userLogoutDropdown');
-
-    if (userProfileMenuToggle && userLogoutDropdown) {
-        // Toggle dropdown on click with animation
-        userProfileMenuToggle.addEventListener('click', function(event) {
-            event.preventDefault();
-            event.stopPropagation();
-            
-            if (userLogoutDropdown.classList.contains('hidden')) {
-                // Show dropdown
-                userLogoutDropdown.classList.remove('hidden');
-                // Force reflow
-                userLogoutDropdown.offsetHeight;
-                // Add animation classes
-                userLogoutDropdown.style.opacity = '1';
-                userLogoutDropdown.style.transform = 'translateY(0)';
-            } else {
-                // Hide dropdown
-                userLogoutDropdown.style.opacity = '0';
-                userLogoutDropdown.style.transform = 'translateY(-10px)';
-                setTimeout(() => {
-                    userLogoutDropdown.classList.add('hidden');
-                }, 200);
-            }
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function(event) {
-            if (!userProfileMenuToggle.contains(event.target) && !userLogoutDropdown.contains(event.target)) {
-                userLogoutDropdown.style.opacity = '0';
-                userLogoutDropdown.style.transform = 'translateY(-10px)';
-                setTimeout(() => {
-                    userLogoutDropdown.classList.add('hidden');
-                }, 200);
-            }
-        });
-
-        // Close dropdown on Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape' && !userLogoutDropdown.classList.contains('hidden')) {
-                userLogoutDropdown.style.opacity = '0';
-                userLogoutDropdown.style.transform = 'translateY(-10px)';
-                setTimeout(() => {
-                    userLogoutDropdown.classList.add('hidden');
-                }, 200);
-            }
-        });
-
-        // Prevent dropdown from closing when clicking inside it
-        userLogoutDropdown.addEventListener('click', function(event) {
-            event.stopPropagation();
-        });
-    }
-
     loadUserSetRates();
     displayAllMetalRates();
     initializeMetalRateStatCardListeners();
