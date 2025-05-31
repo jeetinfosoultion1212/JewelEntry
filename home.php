@@ -173,73 +173,77 @@ $ratesResult = $ratesStmt->get_result();
 $today = date('Y-m-d');
 
 // Get today's inventory IN count and weight
-$inQuery = "SELECT COUNT(*) as total_in, COALESCE(SUM(gross_weight), 0) as total_weight FROM jewellery_items WHERE DATE(created_at) = ?";
+$inQuery = "SELECT COUNT(*) as total_in, COALESCE(SUM(gross_weight), 0) as total_weight FROM jewellery_items WHERE DATE(created_at) = ? AND firm_id = ?";
 $inStmt = $conn->prepare($inQuery);
-$inStmt->bind_param("s", $today);
+$inStmt->bind_param("si", $today, $firm_id);
 $inStmt->execute();
 $inResult = $inStmt->get_result()->fetch_assoc();
 $totalIn = $inResult['total_in'] ?? 0;
 $totalInWeight = $inResult['total_weight'] ?? 0;
 
 // Get today's inventory OUT count and weight
-$outQuery = "SELECT COUNT(*) as total_out, COALESCE(SUM(gross_weight), 0) as total_weight FROM jewellery_sales_items WHERE DATE(created_at) = ?";
+$outQuery = "SELECT COUNT(jsi.id) as total_out, COALESCE(SUM(jsi.gross_weight), 0) as total_weight FROM jewellery_sales_items jsi JOIN jewellery_sales js ON jsi.sale_id = js.id WHERE DATE(js.created_at) = ? AND js.firm_id = ?";
 $outStmt = $conn->prepare($outQuery);
-$outStmt->bind_param("s", $today);
+$outStmt->bind_param("si", $today, $firm_id);
 $outStmt->execute();
 $outResult = $outStmt->get_result()->fetch_assoc();
 $totalOut = $outResult['total_out'] ?? 0;
 $totalOutWeight = $outResult['total_weight'] ?? 0;
 
 // Get today's total sales amount
-$salesQuery = "SELECT SUM(grand_total) as total_sales FROM jewellery_sales WHERE DATE(created_at) = ?";
+$salesQuery = "SELECT SUM(grand_total) as total_sales FROM jewellery_sales WHERE DATE(created_at) = ? AND firm_id = ?";
 $salesStmt = $conn->prepare($salesQuery);
-$salesStmt->bind_param("s", $today);
+$salesStmt->bind_param("si", $today, $firm_id);
 $salesStmt->execute();
 $salesResult = $salesStmt->get_result()->fetch_assoc();
 $totalSales = $salesResult['total_sales'] ?? 0;
 
 // Fetch today's orders count
-$orderQuery = "SELECT COUNT(*) as total_orders FROM jewellery_sales WHERE DATE(created_at) = ?";
+$orderQuery = "SELECT COUNT(*) as total_orders FROM jewellery_sales WHERE DATE(created_at) = ? AND firm_id = ?";
 $orderStmt = $conn->prepare($orderQuery);
-$orderStmt->bind_param("s", $today);
+$orderStmt->bind_param("si", $today, $firm_id);
 $orderStmt->execute();
 $orderResult = $orderStmt->get_result()->fetch_assoc();
 $totalOrders = $orderResult['total_orders'] ?? 0;   
 
 // Fetch today's new customers count
-$newCustomerQuery = "SELECT COUNT(*) as new_customers FROM customer WHERE DATE(CreatedAt) = ?";
+$newCustomerQuery = "SELECT COUNT(*) as new_customers FROM customer WHERE DATE(CreatedAt) = ? AND FirmID = ?";
 $newCustomerStmt = $conn->prepare($newCustomerQuery);
-$newCustomerStmt->bind_param("s", $today);
+$newCustomerStmt->bind_param("si", $today, $firm_id);
 $newCustomerStmt->execute();
 $newCustomerResult = $newCustomerStmt->get_result()->fetch_assoc();
 $newCustomers = $newCustomerResult['new_customers'] ?? 0;
 
 // Fetch total customers count
-$totalCustomerQuery = "SELECT COUNT(*) as total_customers FROM customer";
+$totalCustomerQuery = "SELECT COUNT(*) as total_customers FROM customer WHERE FirmID = ?";
 $totalCustomerStmt = $conn->prepare($totalCustomerQuery);
+$totalCustomerStmt->bind_param("i", $firm_id);
 $totalCustomerStmt->execute();
 $totalCustomerResult = $totalCustomerStmt->get_result()->fetch_assoc();
 $totalCustomers = $totalCustomerResult['total_customers'] ?? 0;
 
 // Fetch total items ever added
-$totalAddedQuery = "SELECT COUNT(*) as total_added, COALESCE(SUM(gross_weight), 0) as total_added_weight FROM jewellery_items";
+$totalAddedQuery = "SELECT COUNT(*) as total_added, COALESCE(SUM(gross_weight), 0) as total_added_weight FROM jewellery_items WHERE firm_id = ?";
 $totalAddedStmt = $conn->prepare($totalAddedQuery);
+$totalAddedStmt->bind_param("i", $firm_id);
 $totalAddedStmt->execute();
 $totalAddedResult = $totalAddedStmt->get_result()->fetch_assoc();
 $totalAddedItems = $totalAddedResult['total_added'] ?? 0;
 $totalAddedWeight = $totalAddedResult['total_added_weight'] ?? 0;
 
 // Fetch total items ever sold
-$totalSoldQuery = "SELECT COUNT(*) as total_sold, COALESCE(SUM(gross_weight), 0) as total_sold_weight FROM jewellery_sales_items";
+$totalSoldQuery = "SELECT COUNT(jsi.id) as total_sold, COALESCE(SUM(jsi.gross_weight), 0) as total_sold_weight FROM jewellery_sales_items jsi JOIN jewellery_sales js ON jsi.sale_id = js.id WHERE js.firm_id = ?";
 $totalSoldStmt = $conn->prepare($totalSoldQuery);
+$totalSoldStmt->bind_param("i", $firm_id);
 $totalSoldStmt->execute();
 $totalSoldResult = $totalSoldStmt->get_result()->fetch_assoc();
 $totalSoldItems = $totalSoldResult['total_sold'] ?? 0;
 $totalSoldWeight = $totalSoldResult['total_sold_weight'] ?? 0;
 
 // Fetch total available stock (items from jewellery_items table where status is not 'Sold')
-$availableStockQuery = "SELECT COUNT(*) as total_available, COALESCE(SUM(gross_weight), 0) as total_available_weight FROM jewellery_items WHERE status != 'Sold'";
+$availableStockQuery = "SELECT COUNT(*) as total_available, COALESCE(SUM(gross_weight), 0) as total_available_weight FROM jewellery_items WHERE status != 'Sold' AND firm_id = ?";
 $availableStockStmt = $conn->prepare($availableStockQuery);
+$availableStockStmt->bind_param("i", $firm_id);
 $availableStockStmt->execute();
 $availableStockResult = $availableStockStmt->get_result()->fetch_assoc();
 $totalAvailableItems = $availableStockResult['total_available'] ?? 0;
@@ -366,7 +370,7 @@ while ($row = $recentSalesResult->fetch_assoc()) {
 // Fetch recent inventory additions for marquee
 $recentInventoryQuery = "SELECT product_name, gross_weight, created_at 
                         FROM jewellery_items 
-                        WHERE firm_id = ? 
+                        WHERE firm_id = ?
                         ORDER BY created_at DESC 
                         LIMIT 5";
 $recentInventoryStmt = $conn->prepare($recentInventoryQuery);

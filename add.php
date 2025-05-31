@@ -2055,3 +2055,26 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
  <script src="js/add.js"></script>
 </body>
 </html>
+
+<!-- Crop Modal -->
+<div id="cropModalOverlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[65] hidden transition-opacity duration-300 opacity-0 p-4">
+    <div id="cropModalContent" class="bg-white rounded-lg p-4 shadow-2xl w-full max-w-md transform scale-95 opacity-0 transition-all duration-300">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="text-lg font-bold text-gray-800">Crop Image</h3>
+            <button id="closeCropModalBtn" type="button" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="crop-container w-full max-h-64 overflow-hidden">
+            <img id="imageToCrop" src="" alt="Image to crop" class="max-w-full max-h-full">
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button id="cancelCropBtn" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-md text-sm transition-colors">
+                Cancel
+            </button>
+            <button id="applyCropBtn" type="button" class="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md text-sm transition-colors">
+                <i class="fas fa-crop-alt mr-1"></i> Apply Crop
+            </button>
+        </div>
+    </div>
+</div>

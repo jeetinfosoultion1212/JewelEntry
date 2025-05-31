@@ -3,19 +3,47 @@ function loadStockStats() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
         },
         body: 'action=getStockStats'
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.text().then(text => {
+            try {
+                // Check if the response starts with HTML (error)
+                if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<br')) {
+                    throw new Error('Server returned HTML instead of JSON');
+                }
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('Invalid JSON response:', text);
+                throw new Error('Invalid JSON response from server');
+            }
+        });
+    })
     .then(data => {
         if (data.error) {
-            console.error('Error:', data.error);
+            console.error('Server error:', data.error);
+            const container = document.querySelector('.stats-container');
+            if (container) {
+                container.innerHTML = `<div class="text-red-500 p-4">Error: ${data.error}</div>`;
+            }
             return;
         }
         updateStatsDisplay(data);
         initializeStatsCards(); // Add click handlers to stats cards
     })
-    .catch(error => console.error('Error:', error));
+    .catch(error => {
+        console.error('Error loading stock stats:', error);
+        // Optionally show error to user
+        const container = document.querySelector('.stats-container');
+        if (container) {
+            container.innerHTML = '<div class="text-red-500 p-4">Error loading stock statistics. Please try again later.</div>';
+        }
+    });
 }
 
 function updateStatsDisplay(stats) {

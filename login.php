@@ -27,13 +27,23 @@ require_once "config/config.php";
 // Define variables and initialize with empty values
 $username = $password = "";
 $username_err = $password_err = $login_err = "";
- 
+
+// Check for remember me cookie
+if(isset($_COOKIE['remember_user'])) {
+    $cookie_data = json_decode($_COOKIE['remember_user'], true);
+    if(isset($cookie_data['username']) && isset($cookie_data['password'])) {
+        $_POST['username'] = $cookie_data['username'];
+        $_POST['password'] = $cookie_data['password'];
+        $_POST['remember'] = 'on';
+    }
+}
+
 // Processing form data when form is submitted
 if($_SERVER["REQUEST_METHOD"] == "POST"){
  
-    // Check if username is empty
+    // Check if username/mobile is empty
     if(empty(trim($_POST["username"]))){
-        $username_err = "Please enter username.";
+        $username_err = "Please enter username or mobile number.";
     } else{
         $username = trim($_POST["username"]);
     }
@@ -48,11 +58,11 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     // Validate credentials
     if(empty($username_err) && empty($password_err)){
         // Prepare a select statement
-        $sql = "SELECT id, Username, Password, FirmID, Role FROM Firm_Users WHERE Username = ?";
+        $sql = "SELECT id, Username, Password, FirmID, Role, PhoneNumber FROM Firm_Users WHERE Username = ? OR PhoneNumber = ?";
         
         if($stmt = mysqli_prepare($conn, $sql)){
             // Bind variables to the prepared statement as parameters
-            mysqli_stmt_bind_param($stmt, "s", $param_username);
+            mysqli_stmt_bind_param($stmt, "ss", $param_username, $param_username);
             
             // Set parameters
             $param_username = $username;
@@ -62,10 +72,10 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 // Store result
                 mysqli_stmt_store_result($stmt);
                 
-                // Check if username exists, if yes then verify password
+                // Check if username/mobile exists, if yes then verify password
                 if(mysqli_stmt_num_rows($stmt) == 1){                    
                     // Bind result variables
-                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password, $firmID, $role);
+                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password, $firmID, $role, $phoneNumber);
                     if(mysqli_stmt_fetch($stmt)){
                         if(password_verify($password, $hashed_password)){
                             // Password is correct, start a new session
@@ -76,7 +86,21 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                             $_SESSION["id"] = $id;
                             $_SESSION["username"] = $username;
                             $_SESSION["firmID"] = $firmID;
-                            $_SESSION["role"] = $role;                            
+                            $_SESSION["role"] = $role;
+
+                            // Set remember me cookie if checked
+                            if(isset($_POST['remember']) && $_POST['remember'] == 'on') {
+                                $cookie_data = array(
+                                    'username' => $username,
+                                    'password' => $password
+                                );
+                                setcookie('remember_user', json_encode($cookie_data), time() + (86400 * 30), "/"); // 30 days
+                            } else {
+                                // If remember me is not checked, delete the cookie if it exists
+                                if(isset($_COOKIE['remember_user'])) {
+                                    setcookie('remember_user', '', time() - 3600, '/');
+                                }
+                            }
                             
                             // Role-based redirection
                             switch($role) {
@@ -260,14 +284,14 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             
             <!-- Login Form -->
             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" class="space-y-4">
-                <!-- Username -->
+                <!-- Username/Mobile -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Username or Mobile Number</label>
                     <div class="relative">
                         <i class="fas fa-user absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
                         <input type="text" name="username" value="<?php echo $username; ?>"
                             class="input-field w-full pl-10 pr-4 py-2.5 rounded-lg focus:outline-none text-sm"
-                            placeholder="Enter username">
+                            placeholder="Enter username or mobile number">
                     </div>
                     <?php if(!empty($username_err)): ?>
                         <p class="text-red-600 text-xs mt-1"><?php echo $username_err; ?></p>
@@ -278,7 +302,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 <div>
                     <div class="flex justify-between items-center mb-1">
                         <label class="block text-sm font-medium text-gray-700">Password</label>
-                        <a href="#" class="text-xs text-indigo-600 hover:text-indigo-500">Forgot?</a>
+                        <a href="forgot_password.php" class="text-xs text-indigo-600 hover:text-indigo-500">Forgot Password?</a>
                     </div>
                     <div class="relative">
                         <i class="fas fa-lock absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
@@ -298,7 +322,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 <!-- Remember Me -->
                 <div class="flex items-center justify-between">
                     <label class="flex items-center">
-                        <input type="checkbox" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <input type="checkbox" name="remember" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
                         <span class="ml-2 text-sm text-gray-600">Remember me</span>
                     </label>
                 </div>

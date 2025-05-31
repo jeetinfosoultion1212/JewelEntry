@@ -239,16 +239,31 @@ $conn->close();
                     </div>
                 </div>
                  <div class="flex items-center space-x-2">
-                    <div class="text-right">
-                        <p class="text-sm font-bold text-gray-800"><?php echo htmlspecialchars($userInfo['Name'] ?? 'John Manager'); ?></p>
-                        <p class="text-xs text-purple-600 font-medium"><?php echo htmlspecialchars($userInfo['Role'] ?? 'Store Manager'); ?></p>
-                    </div>
-                    <div class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg">
-                        <?php if (!empty($userInfo['image_path'])): ?>
-                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="Profile" class="w-full h-full rounded-xl object-cover">
-                        <?php else: ?>
-                            <i class="fas fa-user-crown text-white text-sm"></i>
-                        <?php endif; ?>
+                    <!-- User Info & Dropdown Toggle -->
+                    <div class="relative inline-block text-left">
+                        <button id="userDropdownToggle" type="button" class="inline-flex items-center rounded-md text-gray-800 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                            <div class="text-right mr-2">
+                                <p class="text-sm font-bold"><?php echo htmlspecialchars($userInfo['Name'] ?? 'John Manager'); ?></p>
+                                <p class="text-xs text-purple-600 font-medium"><?php echo htmlspecialchars($userInfo['Role'] ?? 'Store Manager'); ?></p>
+                            </div>
+                            <div class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg">
+                                <?php if (!empty($userInfo['image_path'])): ?>
+                                    <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="Profile" class="w-full h-full rounded-xl object-cover">
+                                <?php else: ?>
+                                    <i class="fas fa-user-crown text-white text-sm"></i>
+                                <?php endif; ?>
+                            </div>
+                        </button>
+
+                        <!-- Dropdown Menu -->
+                        <div id="userDropdownMenu" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none hidden" role="menu" aria-orientation="vertical" aria-labelledby="userDropdownToggle">
+                            <div class="py-1" role="none">
+                                <!-- Add more profile options here if needed -->
+                                <a href="logout.php" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
+                                    <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1224,6 +1239,23 @@ $conn->close();
 
         // Staff image handling
         let staffStream = null;
+
+        // User dropdown toggle
+        const userDropdownToggle = document.getElementById('userDropdownToggle');
+        const userDropdownMenu = document.getElementById('userDropdownMenu');
+
+        if (userDropdownToggle && userDropdownMenu) {
+            userDropdownToggle.addEventListener('click', function() {
+                userDropdownMenu.classList.toggle('hidden');
+            });
+
+            // Close the dropdown if the user clicks outside of it
+            document.addEventListener('click', function(event) {
+                if (!userDropdownToggle.contains(event.target) && !userDropdownMenu.contains(event.target)) {
+                    userDropdownMenu.classList.add('hidden');
+                }
+            });
+        }
 
         document.getElementById('staffImageBtn')?.addEventListener('click', function() {
             document.getElementById('staffImageOptions').classList.toggle('hidden');

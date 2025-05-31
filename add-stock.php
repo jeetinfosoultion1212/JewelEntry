@@ -1,4 +1,8 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // Start session and include database config
 session_start();
 require 'config/config.php';
@@ -9,7 +13,6 @@ if (!isset($_SESSION['id'])) {
    header("Location: login.php");
    exit();
 }
-
 
 // Get user details
 $user_id = $_SESSION['id'];
@@ -46,7 +49,500 @@ $userInfo = $userResult->fetch_assoc();
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
- <link rel="stylesheet" href="css/add-stock.css" />
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #f5f7fa;
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+    
+    .header-gradient {
+      background: linear-gradient(to right, #4361ee, #3a0ca3);
+    }
+    .stats-container {
+      display: flex;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+      padding-bottom: 2px;
+    }
+    .stats-container::-webkit-scrollbar {
+      height: 4px;
+    }
+    .stats-container::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .stats-container::-webkit-scrollbar-thumb {
+      background-color: rgba(155, 155, 155, 0.5);
+      border-radius: 20px;
+    }
+    .stats-card {
+      min-width: 110px;
+      border-radius: 10px;
+      transition: all 0.3s ease;
+    }
+    .tab-container {
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .sticky-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .tab-btn {
+      position: relative;
+      transition: all 0.2s ease;
+      font-weight: 500;
+      font-size: 0.85rem;
+      padding: 8px 12px;
+    }
+    .tab-btn.active {
+      color: #4361ee;
+      font-weight: 600;
+    }
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: #4361ee;
+    }
+    .tab-content {
+      display: none;
+      padding: 0 10px;
+      max-width: 100%;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .table-container {
+      border-radius: 2px;
+      overflow-x: auto;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    .table-row {
+      transition: all 0.2s ease;
+    }
+    .table-row:hover {
+      background-color: #f8fafc;
+    }
+    .action-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+    .action-btn:hover {
+      transform: translateY(-2px);
+    }
+    .view-btn {
+      background-color: #e0f2fe;
+      color: #0284c7;
+    }
+    .edit-btn {
+      background-color: #e0f7fa;
+      color: #0891b2;
+    }
+    .delete-btn {
+      background-color: #fee2e2;
+      color: #ef4444;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+      background-color: #fefefe;
+      margin: 5% auto;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      width: 95%;
+      max-width: 500px;
+    }
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .close:hover {
+      color: black;
+    }
+  
+   /* Bottom Navigation */
+   .bottom-nav {
+     position: fixed;
+     bottom: 0;
+     left: 0;
+     right: 0;
+     background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,1));
+     padding: 0.5rem;
+     display: flex;
+     justify-content: space-around;
+     align-items: center;
+     border-top: 1px solid rgba(59, 130, 246, 0.1);
+     backdrop-filter: blur(8px);
+     box-shadow: 0 -4px 20px rgba(59, 130, 246, 0.15);
+     z-index: 40;
+   }
+
+   .nav-item {
+     display: flex;
+     flex-direction: column;
+     align-items: center;
+     justify-content: center;
+     padding: 0.5rem;
+     border-radius: 0.75rem;
+     transition: all 0.2s;
+     min-width: 64px;
+     color: #64748b;
+     position: relative;
+     cursor: pointer;
+   }
+
+   .nav-item.active {
+     color: #3b82f6;
+     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.1));
+   }
+
+   .nav-item:hover {
+     color: #3b82f6;
+     transform: translateY(-2px);
+   }
+
+   .nav-icon {
+     font-size: 1.25rem;
+     margin-bottom: 0.25rem;
+   }
+
+   .nav-text {
+     font-size: 0.75rem;
+     font-weight: 500;
+   }
+
+   .cart-badge {
+     position: absolute;
+     top: -5px;
+     right: -5px;
+     background: #ef4444;
+     color: white;
+     font-size: 0.65rem;
+     font-weight: 600;
+     min-width: 18px;
+     height: 18px;
+     padding: 0 4px;
+     border-radius: 999px;
+     border: 2px solid white;
+     display: flex;
+     align-items: center;
+     justify-content: center;
+   }
+    .input-field {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 12px;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: #4361ee;
+      box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+    }
+    .btn-primary {
+      background: #4361ee;
+      color: white;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover {
+      background: #3a56d4;
+      transform: translateY(-2px);
+    }
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #4b5563;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .btn-secondary:hover {
+      background: #d1d5db;
+      transform: translateY(-2px);
+    }
+    .section-card {
+      border-radius: 10px;
+      margin-bottom: 8px;
+      padding: 8px;
+    }
+    .material-section {
+      background-color: #fff8e1;
+      border-color: #ffecb3;
+    }
+    .weight-section {
+      background-color: #e3f2fd;
+      border-color: #bbdefb;
+    }
+    .stone-section {
+      background-color: #f3e5f5;
+      border-color: #e1bee7;
+    }
+    .making-section {
+      background-color: #e8f5e9;
+      border-color: #c8e6c9;
+    }
+    .image-section {
+      background-color: #eeeeee;
+      border-color: #e0e0e0;
+    }
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+    }
+    .section-title i {
+      margin-right: 5px;
+    }
+    .field-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .field-col {
+      flex: 1;
+      min-width: 110px;
+    }
+    .field-label {
+      font-size: 0.7rem;
+      color: #4b5563;
+      margin-bottom: 2px;
+    }
+    .field-input {
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.8rem;
+    }
+    .field-input:focus {
+      outline: none;
+      border-color: #4361ee;
+      box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.1);
+    }
+    .field-select {
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.8rem;
+      background-color: white;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 16px;
+    }
+    .field-select:focus {
+      outline: none;
+      border-color: #4361ee;
+      box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.1);
+    }
+    .field-icon {
+      position: absolute;
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #6b7280;
+      font-size: 0.8rem;
+    }
+    .field-input-icon {
+      padding-left: 24px;
+    }
+    .field-container {
+      position: relative;
+    }
+    .compact-form .section-card {
+      padding: 6px;
+      margin-bottom: 6px;
+    }
+    .compact-form .field-row {
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .compact-form .field-label {
+      font-size: 0.65rem;
+      margin-bottom: 1px;
+    }
+    .compact-form .field-input,
+    .compact-form .field-select {
+      padding: 3px 6px;
+      font-size: 0.75rem;
+    }
+    .compact-form .section-title {
+      font-size: 0.7rem;
+      margin-bottom: 4px;
+    }
+    .suggestions-container {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.375rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 50;
+    }
+    .suggestions-container:empty {
+      display: none;
+    }
+    .suggestions-container > div {
+      padding: 0.5rem;
+      cursor: pointer;
+    }
+    .suggestions-container > div:hover {
+      background-color: #f3f4f6;
+    }
+    @media (max-width: 640px) {
+      .field-row {
+        flex-direction: row;
+        gap: 6px;
+      }
+      .field-col {
+        flex: 1;
+        min-width: 90px;
+        width: auto;
+      }
+      .modal-content {
+        margin: 2% auto;
+        padding: 15px;
+        width: 95%;
+      }
+      .section-card {
+        padding: 6px;
+      }
+      .preview-item {
+        width: 60px;
+        height: 60px;
+      }
+    }
+    /* Custom flex classes for better field layout */
+    .flex-1 {
+      flex: 1;
+    }
+    .flex-2 {
+      flex: 2;
+    }
+    .flex-3 {
+      flex: 3;
+    }
+    .flex-auto {
+      flex: auto;
+    }
+    .filter-dropdown:hover .filter-content {
+      display: block;
+    }
+    /* Products tab styles */
+    .product-card {
+      border-radius: 10px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    .product-image {
+      height: 180px;
+      width: 100%;
+      object-fit: cover;
+    }
+    .product-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 4px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    /* Collapsible section styles */
+    .collapsible-section {
+      transition: all 0.3s ease;
+    }
+    .collapsible-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .collapsible-content.expanded {
+      max-height: 500px;
+    }
+    .collapsible-toggle {
+      cursor: pointer;
+    }
+    .collapsible-toggle i {
+      transition: transform 0.3s ease;
+    }
+    .collapsible-toggle.expanded i.fa-chevron-down {
+      transform: rotate(180deg);
+    }
+    
+    /* Add to your existing styles */
+.stats-card {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.modal-content {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* Allow text selection only in the transaction table */
+.transaction-table {
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+/* Add touch feedback for mobile */
+@media (hover: none) {
+    .stats-card:active {
+        transform: scale(0.98);
+    }
+}
+
+/* Improve scrolling on mobile */
+.scrollable-content {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+  </style>
 </head>
 <body class="pb-20">
   <!-- Header -->
@@ -226,10 +722,13 @@ $userInfo = $userResult->fetch_assoc();
           <div class="field-row">
             <div class="field-col">
               <div class="field-label">Supplier</div>
-              <div class="field-container">
+              <div class="field-container flex items-center">
                 <select id="supplier" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-purple-200 rounded-md">
                   <option value="">Select Supplier</option>
                 </select>
+                <button type="button" onclick="openSupplierModal()" class="ml-2 text-purple-600 hover:text-purple-800">
+                  <i class="fas fa-plus-circle"></i>
+                </button>
                 <i class="fas fa-user-tie field-icon text-purple-500"></i>
               </div>
             </div>
@@ -316,7 +815,7 @@ $userInfo = $userResult->fetch_assoc();
   
 <nav class="bottom-nav">
    <!-- Home -->
-   <a href="home.php" class="nav-item">
+   <a href="main.php" class="nav-item">
      <i class="nav-icon fas fa-home"></i>
      <span class="nav-text">Home</span>
    </a>
@@ -348,14 +847,143 @@ $userInfo = $userResult->fetch_assoc();
      <span class="nav-text">Reports</span>
    </a>
  </nav>
-  <!-- JavaScript -->
 
-  <!-- Add these before closing body tag -->
+  <script src="js/add-stock.js"></script>
 <script src="assets/js/stock-stats.js"></script>
 <script src="assets/js/tabs.js"></script>
-<script src="js/add-stock.js"></script>
+<script>
+// Initialize when document is ready
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize tabs
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  tabButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      switchTab(this.dataset.tab);
+    });
+  });
 
+  // Load initial stats
+  loadStockStats();
 
+  // Function to fetch and update market rate
+  async function fetchMarketRate() {
+    const materialType = document.getElementById('stockMetalType').value;
+    // Determine the finest purity based on material type
+    let finestPurity;
+    if (materialType === 'Gold') {
+      finestPurity = 99.99;
+    } else if (materialType === 'Silver') {
+      finestPurity = 999.9;
+    } else {
+      // Handle other material types or set a default
+      document.getElementById('stockRate').value = ''; // Clear rate for unhandled material types
+      return;
+    }
 
+    // Get firm_id from PHP variable
+    const firmId = <?php echo json_encode($firm_id); ?>;
+
+    const stockRateInput = document.getElementById('stockRate');
+
+    if (materialType && finestPurity && firmId) {
+      try {
+        // Fetch rate using the determined finest purity
+        const response = await fetch(`api/get-price-config.php?firm_id=${firmId}&material_type=${materialType}&purity=${finestPurity}`);
+        const data = await response.json();
+
+        if (data.success) {
+          stockRateInput.value = data.rate.toFixed(2);
+        } else {
+          console.error('Error fetching rate:', data.message);
+          stockRateInput.value = ''; // Clear rate if not found
+        }
+      } catch (error) {
+        console.error('Error fetching rate:', error);
+        stockRateInput.value = ''; // Clear rate on error
+      }
+    } else {
+      // Clear rate if material type or firmId is not selected
+      stockRateInput.value = '';
+    }
+  }
+
+  // Add event listeners to trigger rate fetching
+  document.getElementById('stockMetalType').addEventListener('change', fetchMarketRate);
+
+  // Initial rate fetch on page load
+  fetchMarketRate();
+});
+</script>
+
+<!-- Supplier Modal -->
+<div id="supplierModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-2">
+  <div class="bg-white rounded-lg p-4 w-full max-w-sm mx-auto shadow-lg">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="text-base font-bold text-gray-800">Add New Supplier</h3>
+      <button type="button" onclick="closeSupplierModal()" class="text-gray-500 hover:text-gray-700">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    
+    <form id="supplierForm" onsubmit="return false;" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Name *</label>
+        <input type="text" id="supplierName" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500" required>
+        <i class="fas fa-user-tie field-icon text-purple-500 text-sm"></i>
+      </div>
+      
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Contact Info</label>
+        <input type="text" id="supplierContact" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
+        <i class="fas fa-address-book field-icon text-purple-500 text-sm"></i>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Email</label>
+        <input type="email" id="supplierEmail" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
+        <i class="fas fa-envelope field-icon text-purple-500 text-sm"></i>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Phone</label>
+        <input type="tel" id="supplierPhone" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
+        <i class="fas fa-phone field-icon text-purple-500 text-sm"></i>
+      </div>
+      
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Address</label>
+        <textarea id="supplierAddress" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500" rows="2"></textarea>
+        <i class="fas fa-map-marker-alt field-icon text-purple-500 text-sm"></i>
+      </div>
+      
+      <div>
+        <label class="block text-xs font-medium text-gray-700">GST/Tax ID</label>
+        <input type="text" id="supplierGst" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
+        <i class="fas fa-file-invoice-dollar field-icon text-purple-500 text-sm"></i>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Payment Terms</label>
+        <input type="text" id="supplierPaymentTerms" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
+        <i class="fas fa-handshake field-icon text-purple-500 text-sm"></i>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-700">Notes</label>
+        <textarea id="supplierNotes" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500" rows="2"></textarea>
+        <i class="fas fa-sticky-note field-icon text-purple-500 text-sm"></i>
+      </div>
+      
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeSupplierModal()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md">
+          Cancel
+        </button>
+        <button type="button" onclick="submitSupplierForm()" class="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md">
+          Add Supplier
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 </body>
 </html>

@@ -1,4 +1,3 @@
-
 // Global variables
 let cartItems = []; // Array to hold items in the cart
 let referenceImages = [];
@@ -1445,32 +1444,33 @@ function calculateMakingCharges() {
     const makingTypeSelect = document.getElementById('makingType');
     const makingChargeInput = document.getElementById('makingCharge');
     const netWeightInput = document.getElementById('netWeight');
-    const metalAmountInput = document.getElementById('metalAmount'); // Need metal amount for percentage calculation
+    const metalAmountInput = document.getElementById('metalAmount');
 
-
-     if (!makingTypeSelect || !makingChargeInput || !netWeightInput || !metalAmountInput) {
+    if (!makingTypeSelect || !makingChargeInput || !netWeightInput || !metalAmountInput) {
         console.error("Making charge calculation elements not found for calculateMakingCharges.");
-        return 0; // Return 0 if elements are missing
-     }
-
-    const makingType = makingTypeSelect.value;
-    const makingChargeValue = parseFloat(makingChargeInput.value) || 0; // The value entered by the user
-    const netWeight = parseFloat(netWeightInput.value) || 0;
-    const metalAmount = parseFloat(metalAmountInput.value) || 0; // Get the calculated metal amount
-
-    let calculatedMakingCharges = 0;
-     if (makingType === 'per_gram') {
-        calculatedMakingCharges = makingChargeValue * netWeight;
-    } else if (makingType === 'percentage') {
-         // Calculate percentage based on Metal Amount
-         calculatedMakingCharges = (makingChargeValue / 100) * metalAmount; // Use metalAmount here
-    } else if (makingType === 'fixed') {
-        calculatedMakingCharges = makingChargeValue;
+        return 0;
     }
 
-    console.log(`Making Charges Calculated: Type=${makingType}, InputValue=${makingChargeValue}, BasedOnWeight=${netWeight.toFixed(3)}, BasedOnMetalAmount=${metalAmount.toFixed(2)}, Calculated Value=${calculatedMakingCharges.toFixed(2)}`);
-    // Do NOT call calculateTotalEstimate here - it is called by calculateMetalAmount and stonePrice input
-    return calculatedMakingCharges; // Return the calculated value
+    const makingType = makingTypeSelect.value;
+    const makingRate = parseFloat(makingChargeInput.value) || 0;
+    const netWeight = parseFloat(netWeightInput.value) || 0;
+    const metalAmount = parseFloat(metalAmountInput.value) || 0;
+
+    let calculatedMakingCharges = 0;
+    switch(makingType) {
+        case 'per_gram':
+            calculatedMakingCharges = netWeight * makingRate;
+            break;
+        case 'percentage':
+            calculatedMakingCharges = (metalAmount * makingRate) / 100;
+            break;
+        case 'fixed':
+            calculatedMakingCharges = makingRate;
+            break;
+    }
+
+    console.log(`Making Charges Calculated: Type=${makingType}, Rate=${makingRate}, NetWeight=${netWeight.toFixed(3)}, MetalAmount=${metalAmount.toFixed(2)}, Calculated=${calculatedMakingCharges.toFixed(2)}`);
+    return calculatedMakingCharges;
 }
 
 
