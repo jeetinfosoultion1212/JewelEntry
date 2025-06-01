@@ -18,11 +18,6 @@ if (!isset($_SESSION['id'])) {
 $user_id = $_SESSION['id'];
 $firm_id = $_SESSION['firmID'];
 
-// Establish database connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-   die("Connection failed: " . $conn->connect_error);
-}
 
 // Fetch user and firm details
 $userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName
@@ -183,6 +178,60 @@ $userInfo = $userResult->fetch_assoc();
     }
     .close:hover {
       color: black;
+    }
+    
+    /* Toast notification */
+    #toast {
+      z-index: 1100;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s ease;
+    }
+    
+    /* Add Supplier Modal Styles */
+    #addSupplierModal .modal-content {
+      margin: 10% auto;
+      max-width: 400px;
+      animation: modalFadeIn 0.3s;
+      border-radius: 10px;
+      padding: 15px;
+      background: white;
+    }
+    
+    @keyframes modalFadeIn {
+      from {opacity: 0; transform: translateY(-20px);}
+      to {opacity: 1; transform: translateY(0);}
+    }
+    
+    #addSupplierModal .close {
+      color: #aaa;
+      font-size: 24px;
+    }
+    
+    #addSupplierModal .close:hover {
+      color: #6366F1;
+    }
+    
+    #addSupplierForm .field-row {
+      margin-bottom: 8px;
+    }
+    
+    #addSupplierForm .field-icon {
+      color: #6366F1;
+    }
+    
+    #addSupplierForm button[type="submit"] {
+      background-color: #6366F1;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    #addSupplierForm button[type="submit"]:hover {
+      background-color: #4F46E5;
     }
   
    /* Bottom Navigation */
@@ -611,7 +660,7 @@ $userInfo = $userResult->fetch_assoc();
           <div class="field-col">
             <div class="field-label">Material Type</div>
             <div class="field-container">
-              <select id="stockMetalType" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-amber-200 rounded-md" onchange="loadStockNames()">
+              <select id="stockMetalType" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-amber-200 rounded-md" >
                 <option value="">Select Metal</option>
                 <option value="Gold">Gold</option>
                 <option value="Silver">Silver</option>
@@ -640,7 +689,7 @@ $userInfo = $userResult->fetch_assoc();
           <div class="field-col">
             <div class="field-label">Purity</div>
             <div class="field-container">
-              <select id="stockPurity" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-amber-200 rounded-md" onchange="handlePuritySelection()">
+              <select id="stockPurity" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-amber-200 rounded-md" >
                 <option value="">Select Purity</option>
                 <option value="99.99">24K (99.99%)</option>
                 <option value="92.0">22K (92.0%)</option>
@@ -712,7 +761,7 @@ $userInfo = $userResult->fetch_assoc();
         <div class="field-row">
           <div class="field-col">
             <label class="inline-flex items-center">
-              <input type="checkbox" id="isPurchase" class="form-checkbox h-5 w-5 text-purple-600" onchange="togglePurchaseFields()">
+              <input type="checkbox" id="isPurchase" class="form-checkbox h-5 w-5 text-purple-600" >
               <span class="ml-2 text-sm">Record as Purchase</span>
             </label>
           </div>
@@ -722,14 +771,16 @@ $userInfo = $userResult->fetch_assoc();
           <div class="field-row">
             <div class="field-col">
               <div class="field-label">Supplier</div>
-              <div class="field-container flex items-center">
-                <select id="supplier" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-purple-200 rounded-md">
-                  <option value="">Select Supplier</option>
-                </select>
-                <button type="button" onclick="openSupplierModal()" class="ml-2 text-purple-600 hover:text-purple-800">
-                  <i class="fas fa-plus-circle"></i>
+              <div class="field-container flex">
+                <div class="flex-grow">
+                  <select id="supplier" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-purple-200 rounded-md w-full">
+                    <option value="">Select Supplier</option>
+                  </select>
+                  <i class="fas fa-user-tie field-icon text-purple-500"></i>
+                </div>
+                <button id="addSupplierBtn" class="ml-1 bg-purple-500 hover:bg-purple-600 text-white rounded-md h-7 w-7 flex items-center justify-center">
+                  <i class="fas fa-plus text-xs"></i>
                 </button>
-                <i class="fas fa-user-tie field-icon text-purple-500"></i>
               </div>
             </div>
             <div class="field-col">
@@ -847,143 +898,135 @@ $userInfo = $userResult->fetch_assoc();
      <span class="nav-text">Reports</span>
    </a>
  </nav>
+  <!-- JavaScript -->
+  <!-- Add Supplier Modal -->
+  
+<div id="addSupplierModal" class="modal">
+    <div class="modal-content bg-white rounded-lg shadow-xl max-w-md mx-auto mt-20 p-4">
+      <div class="flex justify-between items-center mb-3 pb-2 border-b border-gray-200">
+        <h3 class="text-sm font-semibold text-gray-700 flex items-center">
+          <i class="fas fa-user-plus mr-2 text-blue-500 text-xs"></i>Add New Supplier
+        </h3>
+        <span class="close text-gray-400 hover:text-gray-600 text-lg cursor-pointer">&times;</span>
+      </div>
+      
+      <form id="addSupplierForm" class="space-y-3">
+        <!-- Supplier Name - Mandatory -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Supplier Name <span class="text-red-500">*</span>
+          </label>
+          <div class="relative">
+            <input 
+              type="text" 
+              id="supplierName" 
+              name="name" 
+              class="w-full pl-8 pr-3 py-2 text-xs border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-200 focus:outline-none bg-gray-50" 
+              placeholder="Enter supplier name"
+              required
+            >
+            <i class="fas fa-building absolute left-2.5 top-2.5 text-gray-400 text-xs"></i>
+          </div>
+        </div>
+
+        <!-- Two column layout for State and Phone -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">State</label>
+            <div class="relative">
+              <input 
+                type="text" 
+                id="supplierState" 
+                name="state" 
+                class="w-full pl-8 pr-3 py-2 text-xs border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-200 focus:outline-none bg-gray-50" 
+                placeholder="State"
+              >
+              <i class="fas fa-map-marker-alt absolute left-2.5 top-2.5 text-gray-400 text-xs"></i>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+            <div class="relative">
+              <input 
+                type="tel" 
+                id="supplierPhone" 
+                name="phone" 
+                class="w-full pl-8 pr-3 py-2 text-xs border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-200 focus:outline-none bg-gray-50" 
+                placeholder="Phone number"
+              >
+              <i class="fas fa-phone absolute left-2.5 top-2.5 text-gray-400 text-xs"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- GST Number -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">GST Number</label>
+          <div class="relative">
+            <input 
+              type="text" 
+              id="supplierGst" 
+              name="gst" 
+              class="w-full pl-8 pr-3 py-2 text-xs border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-200 focus:outline-none bg-gray-50" 
+              placeholder="GST number"
+            >
+            <i class="fas fa-receipt absolute left-2.5 top-2.5 text-gray-400 text-xs"></i>
+          </div>
+        </div>
+
+        <!-- Address -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Address</label>
+          <div class="relative">
+            <textarea 
+              id="supplierAddress" 
+              name="address" 
+              rows="2"
+              class="w-full pl-8 pr-3 py-2 text-xs border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-200 focus:outline-none bg-gray-50 resize-none" 
+              placeholder="Complete address"
+            ></textarea>
+            <i class="fas fa-map-marker-alt absolute left-2.5 top-2.5 text-gray-400 text-xs"></i>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-2">
+          <button 
+            type="submit" 
+            class="w-full flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium py-2.5 px-4 rounded-md transition-colors duration-200"
+          >
+            <i class="fas fa-save mr-2 text-xs"></i> 
+            Save Supplier
+          </button>
+        </div>
+      </form>
+    </div>
+</div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg transform transition-transform duration-300 translate-x-full flex items-center">
+    <i class="fas fa-check-circle mr-2"></i>
+    <span id="toastMessage">Supplier added successfully!</span>
+  </div>
 
   <script src="js/add-stock.js"></script>
+  <!-- Add these before closing body tag -->
 <script src="assets/js/stock-stats.js"></script>
-<script src="assets/js/tabs.js"></script>
+<script src="assets/js/tab.js"></script>
 <script>
-// Initialize when document is ready
 document.addEventListener('DOMContentLoaded', function() {
-  // Initialize tabs
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  tabButtons.forEach(button => {
-    button.addEventListener('click', function() {
-      switchTab(this.dataset.tab);
+    // Initialize tabs
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            switchTab(this.dataset.tab);
+        });
     });
-  });
 
-  // Load initial stats
-  loadStockStats();
-
-  // Function to fetch and update market rate
-  async function fetchMarketRate() {
-    const materialType = document.getElementById('stockMetalType').value;
-    // Determine the finest purity based on material type
-    let finestPurity;
-    if (materialType === 'Gold') {
-      finestPurity = 99.99;
-    } else if (materialType === 'Silver') {
-      finestPurity = 999.9;
-    } else {
-      // Handle other material types or set a default
-      document.getElementById('stockRate').value = ''; // Clear rate for unhandled material types
-      return;
-    }
-
-    // Get firm_id from PHP variable
-    const firmId = <?php echo json_encode($firm_id); ?>;
-
-    const stockRateInput = document.getElementById('stockRate');
-
-    if (materialType && finestPurity && firmId) {
-      try {
-        // Fetch rate using the determined finest purity
-        const response = await fetch(`api/get-price-config.php?firm_id=${firmId}&material_type=${materialType}&purity=${finestPurity}`);
-        const data = await response.json();
-
-        if (data.success) {
-          stockRateInput.value = data.rate.toFixed(2);
-        } else {
-          console.error('Error fetching rate:', data.message);
-          stockRateInput.value = ''; // Clear rate if not found
-        }
-      } catch (error) {
-        console.error('Error fetching rate:', error);
-        stockRateInput.value = ''; // Clear rate on error
-      }
-    } else {
-      // Clear rate if material type or firmId is not selected
-      stockRateInput.value = '';
-    }
-  }
-
-  // Add event listeners to trigger rate fetching
-  document.getElementById('stockMetalType').addEventListener('change', fetchMarketRate);
-
-  // Initial rate fetch on page load
-  fetchMarketRate();
+    // Load initial stats
+    loadStockStats();
 });
 </script>
-
-<!-- Supplier Modal -->
-<div id="supplierModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-2">
-  <div class="bg-white rounded-lg p-4 w-full max-w-sm mx-auto shadow-lg">
-    <div class="flex justify-between items-center mb-3">
-      <h3 class="text-base font-bold text-gray-800">Add New Supplier</h3>
-      <button type="button" onclick="closeSupplierModal()" class="text-gray-500 hover:text-gray-700">
-        <i class="fas fa-times"></i>
-      </button>
-    </div>
-    
-    <form id="supplierForm" onsubmit="return false;" class="space-y-3">
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Name *</label>
-        <input type="text" id="supplierName" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500" required>
-        <i class="fas fa-user-tie field-icon text-purple-500 text-sm"></i>
-      </div>
-      
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Contact Info</label>
-        <input type="text" id="supplierContact" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
-        <i class="fas fa-address-book field-icon text-purple-500 text-sm"></i>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Email</label>
-        <input type="email" id="supplierEmail" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
-        <i class="fas fa-envelope field-icon text-purple-500 text-sm"></i>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Phone</label>
-        <input type="tel" id="supplierPhone" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
-        <i class="fas fa-phone field-icon text-purple-500 text-sm"></i>
-      </div>
-      
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Address</label>
-        <textarea id="supplierAddress" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500" rows="2"></textarea>
-        <i class="fas fa-map-marker-alt field-icon text-purple-500 text-sm"></i>
-      </div>
-      
-      <div>
-        <label class="block text-xs font-medium text-gray-700">GST/Tax ID</label>
-        <input type="text" id="supplierGst" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
-        <i class="fas fa-file-invoice-dollar field-icon text-purple-500 text-sm"></i>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Payment Terms</label>
-        <input type="text" id="supplierPaymentTerms" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500">
-        <i class="fas fa-handshake field-icon text-purple-500 text-sm"></i>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-700">Notes</label>
-        <textarea id="supplierNotes" class="input-field text-xs font-bold py-1.5 pl-7 h-8 bg-white border border-purple-200 rounded-md w-full focus:border-purple-500 focus:ring-purple-500" rows="2"></textarea>
-        <i class="fas fa-sticky-note field-icon text-purple-500 text-sm"></i>
-      </div>
-      
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick="closeSupplierModal()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md">
-          Cancel
-        </button>
-        <button type="button" onclick="submitSupplierForm()" class="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md">
-          Add Supplier
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
 </body>
 </html>

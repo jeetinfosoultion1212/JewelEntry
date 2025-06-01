@@ -112,6 +112,73 @@ function getSuppliers() {
     }
 }
 
+function addSupplier($data) {
+    global $conn;
+    
+    try {
+        // Get firm_id from session
+        $firmId = $_SESSION['firmID'] ?? 1;
+        
+        // Validate required field
+        if (empty($data['name'])) {
+            return json_encode([
+                'success' => false,
+                'error' => 'Supplier name is required'
+            ]);
+        }
+        
+        // Prepare the SQL statement - excluding date_added as it has default value
+        $stmt = $conn->prepare("INSERT INTO suppliers (
+            firm_id, name,state,phone,gst,address                   
+        ) VALUES (?, ?, ?, ?, ?, ?)");
+        
+        // Check if prepare was successful
+        if (!$stmt) {
+            throw new Exception("Failed to prepare statement: " . $conn->error);
+        }
+        
+        // Bind parameters - 1 integer (firm_id) + 9 strings
+        $stmt->bind_param(
+            "isssss",
+            $firmId,
+            $data['name'],
+            $data['state'],
+            $data['phone'],
+            $data['gst'],
+            $data['address']
+           
+        );
+        
+        // Execute the statement
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to execute statement: " . $stmt->error);
+        }
+        
+        // Get the ID of the newly inserted supplier
+        $newSupplierId = $conn->insert_id;
+        
+        // Close the statement
+        $stmt->close();
+        
+        // Return success response with the new supplier data
+        return json_encode([
+            'success' => true,
+            'message' => 'Supplier added successfully',
+            'supplier' => [
+                'id' => $newSupplierId,
+                'name' => $data['name']
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("Error in addSupplier: " . $e->getMessage());
+        return json_encode([
+            'success' => false,
+            'error' => 'Failed to add supplier: ' . $e->getMessage()
+        ]);
+    }
+}
+
 // Function to add stock
 function addStock($data) {
     global $conn;
@@ -120,7 +187,7 @@ function addStock($data) {
         $conn->begin_transaction();
         
         // Set default values
-         $firmId = $_SESSION['firmID'] ?? 1; // Get firm_id from session
+        $firmId = $_SESSION['firmID'] ?? 1; // Get firm_id from session
         $quantity = isset($data['quantity']) ? intval($data['quantity']) : 1;
         $weight = floatval($data['weight']);
         $rate = floatval($data['rate']);
@@ -131,7 +198,8 @@ function addStock($data) {
             // Purchase entry
             $supplierId = $data['supplier_id'];
             $paidAmount = floatval($data['paid_amount']);
-            $paymentMode = ($paidAmount <= 0) ? '' : ($data['payment_mode'] ?? '');
+            // Set payment mode to empty string if paid amount is 0
+            $paymentMode = ($paidAmount > 0) ? $data['payment_mode'] : '';
             $invoiceNumber = $data['invoice_number'];
             $entryType = 'purchase';
         } else {
@@ -201,14 +269,6 @@ function addStock($data) {
         // Calculate payment status
         $paymentStatus = calculatePaymentStatus($totalAmount, $paidAmount);
 
-        // *** Temporary Logging for Debugging ***
-        $logData = "Payment Status: " . $paymentStatus . "\n";
-        $logData .= "Total Amount: " . $totalAmount . "\n";
-        $logData .= "Paid Amount: " . $paidAmount . "\n";
-        $logFile = 'debug_stock_log.txt';
-        file_put_contents($logFile, $logData, FILE_APPEND);
-        // *** End Temporary Logging ***
-
         // Create purchase record
         $purchaseStmt = $conn->prepare(
             "INSERT INTO metal_purchases (
@@ -243,47 +303,6 @@ function addStock($data) {
         }
 
         $purchaseId = $conn->insert_id;
-
-        // If a payment was made, record it in the jewellery_payments table
-        if ($paidAmount > 0) {
-            $paymentStmt = $conn->prepare(
-                "INSERT INTO jewellery_payments (
-                    firm_id, reference_id, reference_type, party_type, party_id,
-                    sale_id, payment_type, amount, payment_notes, reference_no,
-                    remarks, created_at, transctions_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)"
-            );
-        
-            $nullSaleId = null;
-        
-            // ✅ Define all string values as variables (DO NOT hardcode in bind_param)
-            $referenceType = 'purchase';
-            $partyType = 'supplier'; // corrected from 'suppiler'
-            $paymentNotes = '';
-            $remarks = '';
-            $transactionsType = 'debit';
-        
-            $paymentStmt->bind_param(
-                "iissisdsdsss", // Types: int, int, string, string, int, int|null, string, double, string, string, string, string
-                $firmId,
-                $purchaseId,
-                $referenceType,
-                $partyType,
-                $supplierId,
-                $nullSaleId,
-                $paymentMode,
-                $paidAmount,
-                $paymentNotes,
-                $invoiceNumber,
-                $remarks,
-                $transactionsType
-            );
-        
-            if (!$paymentStmt->execute()) {
-                throw new Exception("Failed to create payment record: " . $paymentStmt->error);
-            }
-        }
-        
 
         // Update inventory record with source_id
         $updateStmt = $conn->prepare(
@@ -618,60 +637,23 @@ function getPurityHistory($materialType, $purity) {
 // Add to stock_functions.php
 function getCurrentRate($materialType) {
     global $conn;
-
-    $purityToFetch = '';
-    if ($materialType === 'Gold') {
-        $purityToFetch = '99.99';
-    } else if ($materialType === 'Silver') {
-        $purityToFetch = '999.9';
-    } else {
-        // Handle other material types or a default if necessary
-        // For now, we'll return no rate if not Gold or Silver
-        return ['success' => false, 'error' => 'No fine rate defined for this material type'];
-    }
-
-    $sql = "SELECT rate
-            FROM jewellery_price_config
-            WHERE material_type = ? AND purity = ?
-            ORDER BY effective_date DESC
+    
+    $sql = "SELECT rate 
+            FROM jewellery_price_config 
+            WHERE material_type = ? AND purity='24K' 
+            ORDER BY effective_date DESC 
             LIMIT 1";
-
+            
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ss", $materialType, $purityToFetch);
+    $stmt->bind_param("s", $materialType);
     $stmt->execute();
     $result = $stmt->get_result();
-
+    
     if($row = $result->fetch_assoc()) {
-        // The fetched rate is for the 'fine' purity (99.99 or 999.9)
-        // We can return this directly. The frontend JavaScript will use this as the base rate.
         return ['success' => true, 'rate' => $row['rate']];
     }
-
-    return ['success' => false, 'error' => 'No rate found for the specified fine purity'];
-}
-
-// Add function to search suppliers for autosuggestion
-function searchSuppliers($searchTerm) {
-    global $conn;
-    try {
-        $searchTerm = "%" . $searchTerm . "%";
-         $firmId = $_SESSION['firmID'] ?? 1; // Get firm_id from session
-        $stmt = $conn->prepare("SELECT id, name FROM suppliers WHERE firm_id = ? AND name LIKE ? ORDER BY name LIMIT 10");
-        $stmt->bind_param("is", $firmId, $searchTerm);
-        $stmt->execute();
-        $result = $stmt->get_result();
-
-        $suppliers = array();
-        while($row = $result->fetch_assoc()) {
-            $suppliers[] = $row;
-        }
-
-        return json_encode($suppliers);
-
-    } catch (Exception $e) {
-        error_log("Error in searchSuppliers: " . $e->getMessage());
-        return json_encode(['error' => $e->getMessage()]);
-    }
+    
+    return ['success' => false, 'error' => 'No rate found'];
 }
 
 // Handle AJAX requests
@@ -699,6 +681,10 @@ if(isset($_POST['action'])) {
                 
             case 'getSuppliers':
                 echo getSuppliers();
+                break;
+                
+            case 'addSupplier':
+                echo addSupplier($_POST);
                 break;
                 
             case 'addStock':
@@ -757,10 +743,6 @@ if(isset($_POST['action'])) {
                 
             case 'getCurrentRate':
                 echo json_encode(getCurrentRate($_POST['material_type']));
-                break;
-                
-            case 'searchSuppliers':
-                echo searchSuppliers($_POST['search_term']);
                 break;
                 
             default:
