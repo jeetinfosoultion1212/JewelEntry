@@ -2050,6 +2050,19 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
   </div>
 </div>
 
+<!-- Place the cropper modal here, just before </body> -->
+<div id="cropperModal" class="cropper-modal hidden">
+  <div class="cropper-container">
+    <img id="cropperImage" src="" alt="Crop" style="max-width:100%; display:block; margin:auto;" />
+  </div>
+  <div class="cropper-controls mt-2">
+    <button id="cropperCropBtn" class="bg-green-500 text-white px-3 py-1 rounded font-bold mr-2"><i class="fas fa-crop"></i> Crop</button>
+    <button id="cropperRotateBtn" class="bg-blue-500 text-white px-3 py-1 rounded font-bold mr-2"><i class="fas fa-undo"></i> Rotate</button>
+    <button id="cropperFlipBtn" class="bg-purple-500 text-white px-3 py-1 rounded font-bold mr-2"><i class="fas fa-arrows-alt-h"></i> Flip</button>
+    <button id="cropperCancelBtn" class="bg-gray-400 text-white px-3 py-1 rounded font-bold"><i class="fas fa-times"></i> Cancel</button>
+  </div>
+</div>
+
 <script src="js/add.js"></script>
 </body>
 </html>

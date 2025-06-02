@@ -2233,4 +2233,90 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Load items on page load
   loadItems()
+
+  let cropper = null;
+  let currentCropImg = null;
+  const cropperModal = document.getElementById('cropperModal');
+  const cropperImage = document.getElementById('cropperImage');
+  const cropperCropBtn = document.getElementById('cropperCropBtn');
+  const cropperRotateBtn = document.getElementById('cropperRotateBtn');
+  const cropperFlipBtn = document.getElementById('cropperFlipBtn');
+  const cropperCancelBtn = document.getElementById('cropperCancelBtn');
+  let cropperFlipped = false;
+
+  // Image Preview Crop Handler
+  if (imagePreview) {
+    imagePreview.addEventListener('click', function(e) {
+      if (e.target.tagName === 'IMG') {
+        // Open cropper modal with clicked image
+        currentCropImg = e.target;
+        cropperImage.src = currentCropImg.src;
+        cropperModal.classList.remove('hidden');
+        // Destroy previous cropper if any
+        if (cropper) { cropper.destroy(); cropper = null; }
+        cropperFlipped = false;
+        // Wait for image to load before initializing cropper
+        cropperImage.onload = function() {
+          cropper = new Cropper(cropperImage, {
+            viewMode: 1,
+            autoCropArea: 1,
+            movable: true,
+            zoomable: true,
+            scalable: true,
+            rotatable: true,
+            responsive: true,
+            background: false,
+            modal: true,
+            guides: true,
+            highlight: true,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            dragMode: 'crop',
+            aspectRatio: NaN // Free crop
+          });
+        };
+      }
+    });
+  }
+
+  // Cropper Modal Controls
+  if (cropperCropBtn) {
+    cropperCropBtn.addEventListener('click', function() {
+      if (cropper && currentCropImg) {
+        const canvas = cropper.getCroppedCanvas();
+        if (canvas) {
+          currentCropImg.src = canvas.toDataURL('image/jpeg');
+        }
+        cropperModal.classList.add('hidden');
+        cropper.destroy();
+        cropper = null;
+        currentCropImg = null;
+      }
+    });
+  }
+  if (cropperRotateBtn) {
+    cropperRotateBtn.addEventListener('click', function() {
+      if (cropper) {
+        cropper.rotate(90);
+      }
+    });
+  }
+  if (cropperFlipBtn) {
+    cropperFlipBtn.addEventListener('click', function() {
+      if (cropper) {
+        cropperFlipped = !cropperFlipped;
+        cropper.scaleX(cropperFlipped ? -1 : 1);
+      }
+    });
+  }
+  if (cropperCancelBtn) {
+    cropperCancelBtn.addEventListener('click', function() {
+      cropperModal.classList.add('hidden');
+      if (cropper) {
+        cropper.destroy();
+        cropper = null;
+      }
+      currentCropImg = null;
+    });
+  }
 })

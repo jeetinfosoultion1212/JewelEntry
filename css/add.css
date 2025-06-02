@@ -545,38 +545,63 @@
       background-color: rgba(239, 68, 68, 0.2);
     }
     
-    /* Image Cropper Modal */
+    /* Cropper Modal Overlay */
     .cropper-modal {
       position: fixed;
       top: 0;
       left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(0, 0, 0, 0.8);
-      z-index: 100;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(30, 41, 59, 0.7); /* dark overlay */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.2s;
+    }
+    
+    /* Modal Content Container */
+    .cropper-container {
+      background: #fff;
+      border-radius: 1rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      padding: 2rem 1.5rem 1rem 1.5rem;
+      max-width: 95vw;
+      max-height: 80vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-    
-    .cropper-container {
       position: relative;
-      width: 100%;
-      max-width: 500px;
-      background-color: #000;
-      border-radius: 0.5rem;
-      overflow: hidden;
     }
     
+    /* Cropper Image */
+    #cropperImage {
+      max-width: 70vw;
+      max-height: 50vh;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-bottom: 1rem;
+    }
+    
+    /* Cropper Controls */
     .cropper-controls {
       display: flex;
-      justify-content: space-around;
-      padding: 1rem;
-      background-color: #1f2937;
-      border-radius: 0.5rem;
+      justify-content: center;
+      gap: 0.5rem;
       margin-top: 1rem;
+    }
+    
+    /* Responsive for mobile */
+    @media (max-width: 600px) {
+      .cropper-container {
+        padding: 1rem 0.5rem 0.5rem 0.5rem;
+        max-width: 98vw;
+        max-height: 90vh;
+      }
+      #cropperImage {
+        max-width: 95vw;
+        max-height: 40vh;
+      }
     }
     
     /* Enhanced Header */
