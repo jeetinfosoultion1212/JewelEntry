@@ -29,7 +29,7 @@ $userInfo = $userResult->fetch_assoc();
 
 // Fetch all customers for this firm
 $customers = [];
-$customerQuery = "SELECT id, FirstName, LastName, Address, City, State, PhoneNumber, Email FROM customer WHERE FirmID = ? ORDER BY FirstName, LastName";
+$customerQuery = "SELECT id, FirstName, LastName, Address, City, State, PhoneNumber, Email FROM customer WHERE firm_id = ? ORDER BY FirstName, LastName";
 $customerStmt = $conn->prepare($customerQuery);
 $customerStmt->bind_param("i", $firm_id);
 $customerStmt->execute();

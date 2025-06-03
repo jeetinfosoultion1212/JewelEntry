@@ -5,6 +5,7 @@ if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
     exit();
 }
 $current_firm_id = $_SESSION['firmID'];
+$user_id = $_SESSION['id']; // Get user ID for fetching user details
 
 // Database Connection
 $servername = "localhost";
@@ -16,6 +17,25 @@ $conn = new mysqli($servername, $username, $password, $dbname);
 
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
+}
+
+// --- Fetch User Details for Header ---
+$userInfo = array();
+$sql_user = "SELECT u.Name, u.Role, u.image_path FROM Firm_Users u WHERE u.id = ? LIMIT 1";
+$stmt_user = $conn->prepare($sql_user);
+$stmt_user->bind_param("i", $user_id);
+$stmt_user->execute();
+$result_user = $stmt_user->get_result();
+
+if ($result_user->num_rows > 0) {
+    $userInfo = $result_user->fetch_assoc();
+} else {
+    // Provide default user details if not found
+    $userInfo = array(
+        'Name' => 'User',
+        'Role' => 'Guest',
+        'image_path' => null // Or a path to a default user image
+    );
 }
 
 // --- FETCH PRICE CONFIGURATION FIRST (FIXED) ---
@@ -423,35 +443,36 @@ $conn->close();
 </head>
 <body class="bg-gray-50 font-inter overflow-hidden"> <!-- Added overflow-hidden to body to prevent main page scroll when detail is open -->
     <!-- Original Header Design -->
-    <header class="bg-gray-800 shadow-lg sticky top-0 z-50">
-        <div class="container mx-auto px-4 py-3">
+    <header class="header-glass sticky top-0 z-50 shadow-md">
+        <div class="px-3 py-2">
             <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <button id="backBtn" aria-label="Go back to product list" class="mr-3 p-2 rounded-full hover:bg-gray-700 transition-all hidden text-white" onclick="showProductList()">
-                        <i class="fas fa-arrow-left"></i>
+                <div class="flex items-center space-x-2">
+                    <!-- Back button -->
+                    <button id="backBtn" aria-label="Go back" class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating" onclick="window.location.href = 'home.php';">
+                        <i class="fas fa-arrow-left text-yellow-500 text-sm"></i>
                     </button>
-                    <div class="flex items-center">
-                        <div class="w-10 h-10 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center mr-3 shadow-lg">
-                            <i class="fas fa-gem text-white text-lg"></i>
-                        </div>
-                        <div>
-                            <h1 class="text-xl font-playfair font-bold text-white">Jewellers Wala</h1>
-                            <p class="text-xs text-gray-300">Premium Collection</p>
-                        </div>
+                    <div>
+                        <h1 class="text-sm font-bold text-gray-800"><?php echo $firmDetails['FirmName']; ?></h1>
+                        <p class="text-xs text-gray-600 font-medium">Premium Collection</p>
                     </div>
                 </div>
+                <!-- User Info and Profile Image -->
                 <div class="flex items-center space-x-2">
-                    <button aria-label="Search products" class="relative p-2 hover:bg-gray-700 rounded-full transition-all text-white">
-                        <i class="fas fa-search"></i>
-                    </button>
-                    <button aria-label="View wishlist" class="relative p-2 hover:bg-gray-700 rounded-full transition-all text-white" onclick="showWishlist()">
-                        <i class="fas fa-heart"></i>
-                        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center" id="wishlist-count" aria-live="polite">0</span>
-                    </button>
-                    <button aria-label="View cart" class="relative p-2 hover:bg-gray-700 rounded-full transition-all text-white">
-                        <i class="fas fa-shopping-bag"></i>
-                        <span class="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center" id="cart-count" aria-live="polite">0</span>
-                    </button>
+                    <div class="text-right">
+                        <p id="headerUserName" class="text-sm font-bold text-gray-800"><?php echo htmlspecialchars($userInfo['Name']); ?></p>
+                        <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo htmlspecialchars($userInfo['Role']); ?></p>
+                    </div>
+                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
+                        <?php 
+                        $defaultImage = 'public/uploads/user.png';
+                        if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
+                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="User Profile" class="w-full h-full object-cover">
+                        <?php elseif (file_exists($defaultImage)): ?>
+                            <img src="<?php echo htmlspecialchars($defaultImage); ?>" alt="Default User" class="w-full h-full object-cover">
+                        <?php else: ?>
+                            <i class="fas fa-user-circle text-white text-sm"></i> <!-- Changed from user-crown to user-circle as seen in home/billing -->
+                        <?php endif; ?>
+                    </a>
                 </div>
             </div>
         </div>
@@ -729,76 +750,83 @@ $conn->close();
             }
         }
 
-function showProductDetails(productId) {
-    currentProductId = String(productId); // Ensure string for consistency
-    const product = products[currentProductId];
-    
-    if (!product) {
-        showToast('Product not found', 'error');
-        return;
-    }
-    
-    document.getElementById('detailTitle').textContent = product.name;
-    
-    document.getElementById('grossWeight').textContent = product.grossWeight + 'g';
-    document.getElementById('netWeight').textContent = product.netWeight + 'g';
-    document.getElementById('purity').textContent = product.purity;
-    
-    const stoneLabelEl = document.getElementById('stoneLabel');
-    const stoneWeightEl = document.getElementById('stoneWeight');
-    if (product.stoneWeight) {
-        stoneLabelEl.textContent = 'Stone Wt.';
-        stoneWeightEl.textContent = product.stoneWeight;
-    } else {
-        stoneLabelEl.textContent = 'HUID';
-        stoneWeightEl.textContent = product.huid_code || 'N/A';
-    }
+        function showProductDetails(productId) {
+            currentProductId = String(productId); // Ensure string for consistency
+            const product = products[currentProductId];
+            
+            if (!product) {
+                showToast('Product not found', 'error');
+                return;
+            }
+            
+            document.getElementById('detailTitle').textContent = product.name;
+            
+            document.getElementById('grossWeight').textContent = product.grossWeight + 'g';
+            document.getElementById('netWeight').textContent = product.netWeight + 'g';
+            document.getElementById('purity').textContent = product.purity;
+            
+            const stoneLabelEl = document.getElementById('stoneLabel');
+            const stoneWeightEl = document.getElementById('stoneWeight');
+            if (product.stoneWeight) {
+                stoneLabelEl.textContent = 'Stone Wt.';
+                stoneWeightEl.textContent = product.stoneWeight;
+            } else {
+                stoneLabelEl.textContent = 'HUID';
+                stoneWeightEl.textContent = product.huid_code || 'N/A';
+            }
 
-    const priceContainer = document.getElementById('priceBreakdown');
-    priceContainer.innerHTML = `
-        <div class="flex justify-between text-xs">
-            <span class="text-gray-700">Gold Value:</span>
-            <span class="font-semibold text-gray-800">₹${Math.round(product.marketPrice).toLocaleString()}</span>
-        </div>
-        <div class="flex justify-between text-xs">
-            <span class="text-gray-700">Making Charges:</span>
-            <span class="font-semibold text-gray-800">₹${Math.round(product.makingCharges).toLocaleString()}</span>
-        </div>
-        <div class="flex justify-between text-sm font-bold border-t pt-1 mt-1">
-            <span class="text-gray-900">Total Price:</span>
-            <span class="gold-gradient">₹${Math.round(product.totalPrice).toLocaleString()}</span>
-        </div>
-    `;
-    
-    if (product.images && product.images.length > 0) {
-        updateImageCarousel(product.images);
-    } else {
-        updateImageCarousel(['https://via.placeholder.com/400x300?text=No+Image+Available']);
-    }
-    
-    generateQRCode(currentProductId);
-    updateWishlistButton(currentProductId);
+            const priceContainer = document.getElementById('priceBreakdown');
+            priceContainer.innerHTML = `
+                <div class="flex justify-between text-xs">
+                    <span class="text-gray-700">Gold Value:</span>
+                    <span class="font-semibold text-gray-800">₹${Math.round(product.marketPrice).toLocaleString()}</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-gray-700">Making Charges:</span>
+                    <span class="font-semibold text-gray-800">₹${Math.round(product.makingCharges).toLocaleString()}</span>
+                </div>
+                <div class="flex justify-between text-sm font-bold border-t pt-1 mt-1">
+                    <span class="text-gray-900">Total Price:</span>
+                    <span class="gold-gradient">₹${Math.round(product.totalPrice).toLocaleString()}</span>
+                </div>
+            `;
+            
+            if (product.images && product.images.length > 0) {
+                updateImageCarousel(product.images);
+            } else {
+                updateImageCarousel(['https://via.placeholder.com/400x300?text=No+Image+Available']);
+            }
+            
+            generateQRCode(currentProductId);
+            updateWishlistButton(currentProductId);
 
-    const firmNameEl = document.getElementById('firmNameDetails');
-    const firmAddressSpan = document.getElementById('firmAddressDetails')?.querySelector('span');
-    const firmPhoneSpan = document.getElementById('firmPhoneDetails')?.querySelector('span');
+            const firmNameEl = document.getElementById('firmNameDetails');
+            const firmAddressSpan = document.getElementById('firmAddressDetails')?.querySelector('span');
+            const firmPhoneSpan = document.getElementById('firmPhoneDetails')?.querySelector('span');
 
-    if (firmDetails) {
-        if (firmNameEl) firmNameEl.textContent = firmDetails.firm_name || 'N/A';
-        
-        let fullAddress = [firmDetails.address1, firmDetails.address2, firmDetails.city, firmDetails.state, firmDetails.pincode]
+            if (firmDetails) {
+                if (firmNameEl) firmNameEl.textContent = firmDetails.firm_name || 'N/A';
+                
+                let fullAddress = [firmDetails.address1, firmDetails.address2, firmDetails.city, firmDetails.state, firmDetails.pincode]
                             .filter(Boolean).join(', ');
-        if (firmAddressSpan) firmAddressSpan.textContent = fullAddress || 'Address not available';
-        
-        if (firmPhoneSpan) firmPhoneSpan.textContent = firmDetails.phone_number || 'Phone not available';
-    } else {
-        if (firmNameEl) firmNameEl.textContent = 'Firm details not available';
-        if (firmAddressSpan) firmAddressSpan.textContent = '';
-        if (firmPhoneSpan) firmPhoneSpan.textContent = '';
-    }
-    
-    showDetailsView();
-}
+                if (firmAddressSpan) firmAddressSpan.textContent = fullAddress || 'Address not available';
+                
+                if (firmPhoneSpan) firmPhoneSpan.textContent = firmDetails.phone_number || 'Phone not available';
+            } else {
+                if (firmNameEl) firmNameEl.textContent = 'Firm details not available';
+                if (firmAddressSpan) firmAddressSpan.textContent = '';
+                if (firmPhoneSpan) firmPhoneSpan.textContent = '';
+            }
+            
+            showDetailsView();
+
+            // Update back button to go to list
+            const backBtn = document.getElementById('backBtn');
+            if (backBtn) {
+                backBtn.onclick = showProductList;
+                // backBtn.classList.remove('hidden'); // Button is always visible now
+            }
+        }
 
         function updateImageCarousel(images) {
             const carousel = document.getElementById('imageCarousel');
@@ -875,15 +903,18 @@ function showProductDetails(productId) {
         function showDetailsView() {
             document.getElementById('productList').classList.remove('active');
             document.getElementById('productDetails').classList.add('active');
-            document.getElementById('backBtn').classList.remove('hidden');
             document.body.style.overflow = 'hidden'; 
         }
 
         function showProductList() {
             document.getElementById('productDetails').classList.remove('active');
             document.getElementById('productList').classList.add('active');
-            document.getElementById('backBtn').classList.add('hidden');
-            document.body.style.overflow = ''; 
+            // Update back button to go to home
+            const backBtn = document.getElementById('backBtn');
+            if (backBtn) {
+                backBtn.onclick = () => { window.location.href = 'home.php'; };
+                // backBtn.classList.remove('hidden'); // Button is always visible now
+            }
         }
         
         function toggleWishlist(button, productId) {
@@ -1123,6 +1154,13 @@ function showProductDetails(productId) {
                     });
                 });
             }
+
+            // Initialize back button on page load to go to home.php
+            const backBtn = document.getElementById('backBtn');
+            if (backBtn) {
+                 backBtn.onclick = () => { window.location.href = 'home.php'; };
+                 // backBtn.classList.remove('hidden'); // Button is always visible now
+            }
         });
 
         // --- Cropper.js Integration for Image Preview ---
@@ -1214,38 +1252,5 @@ function showProductDetails(productId) {
           }
         });
     </script>
-    <nav class="bottom-nav">
-     <!-- Home -->
-     <a href="main.php" class="nav-item">
-       <i class="nav-icon fas fa-home"></i>
-       <span class="nav-text">Home</span>
-     </a>
-     
-    <a href="catalog.php" class="nav-item active">
-       <i class="nav-icon fa-solid fa-gem"></i>
-       <span class="nav-text">Catalog</span>
-     </a>
-      <a href="add-stock.php" class="nav-item ">
-       <i class="nav-icon fa-solid fa-store"></i>
-       <span class="nav-text">Stock</span>
-     </a>
-
-    <a href="order.php" class="nav-item">
-       <i class="nav-icon fa-solid fa-user-tag"></i>
-       <span class="nav-text">Orders</span>
-     </a>
-
-    <a href="sale-entry.php" class="nav-item">
-       <i class="nav-icon fas fa-shopping-cart"></i>
-       <span class="nav-text">Sale</span>
-     </a>
-     <!-- Sales List -->
-
-     <!-- Reports -->
-     <a href="reports.php" class="nav-item">
-       <i class="nav-icon fas fa-chart-pie"></i>
-       <span class="nav-text">Reports</span>
-     </a>
-    </nav>
 </body>
 </html>

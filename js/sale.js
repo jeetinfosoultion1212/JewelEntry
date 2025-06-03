@@ -1180,7 +1180,74 @@
     
       if (cartBottomSheet) cartBottomSheet.style.transform = "translateY(0)"
       isCartVisible = true
+    
+      // Fetch and display customer coupons if a customer is selected
+      if (selectedCustomer) {
+        fetchAndDisplayCustomerCoupons(selectedCustomer.id);
+      } else {
+        // Hide coupons section if no customer is selected
+        const availableCouponsContainer = document.getElementById('availableCouponsContainer');
+        if (availableCouponsContainer) {
+          availableCouponsContainer.classList.add('hidden');
+        }
+      }
     }
+    
+    // NEW: Function to fetch and display customer coupons
+    async function fetchAndDisplayCustomerCoupons(customerId) {
+      const availableCouponsContainer = document.getElementById('availableCouponsContainer');
+      const availableCouponsList = document.getElementById('availableCouponsList');
+
+      if (!availableCouponsContainer || !availableCouponsList) return;
+
+      availableCouponsList.innerHTML = ''; // Clear previous list
+      availableCouponsContainer.classList.add('hidden'); // Hide by default
+
+      try {
+        const response = await fetch(`sale-entry.php?action=getCustomerCoupons&customerId=${customerId}`);
+        const data = await response.json();
+
+        console.log("Fetch customer coupons response:", data);
+
+        if (data.success && data.coupons && data.coupons.length > 0) {
+          data.coupons.forEach(coupon => {
+            const couponElement = document.createElement('div');
+            couponElement.className = 'border border-yellow-200 rounded-md p-2 bg-yellow-50 text-yellow-800 flex justify-between items-center';
+            couponElement.innerHTML = `
+              <div>
+                <div class="font-semibold text-xs">${coupon.code}</div>
+                <div class="text-[10px]">${coupon.description}</div>
+                <div class="text-[10px] text-yellow-600">Usage left: ${coupon.usageLeft}</div>
+              </div>
+              <button class="apply-coupon-btn px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-[10px] font-medium hover:bg-yellow-300 transition-colors" data-coupon-code="${coupon.code}">
+                Apply
+              </button>
+            `;
+            availableCouponsList.appendChild(couponElement);
+          });
+          availableCouponsContainer.classList.remove('hidden');
+        } else {
+          // Optionally display a message if no coupons are available
+          // console.log('No coupons available for this customer.');
+        }
+      } catch (error) {
+        console.error('Error fetching customer coupons:', error);
+        // Optionally show a toast or message about the error
+      }
+    }
+
+    // Add event listener for applying coupons using event delegation
+    document.getElementById('availableCouponsList')?.addEventListener('click', function(event) {
+      const target = event.target;
+      if (target.classList.contains('apply-coupon-btn')) {
+        const couponCode = target.dataset.couponCode;
+        if (couponCode && selectedCustomer) {
+          applyCouponCode(couponCode, selectedCustomer.id, cart.gstEnabled);
+          // Optionally disable the apply button after clicking
+          // target.disabled = true;
+        }
+      }
+    });
     
     // NEW: Enhanced function to set up listeners for discount and URD functionality with coupon validation
     function setupDiscountListeners() {
@@ -1955,10 +2022,23 @@
     function updateCartTotals() {
       if (!window.cart) initializeCart()
     
-      const totalAmountAllItems = cartItems.reduce((sum, item) => sum + Number.parseFloat(item.total || 0), 0)
+      const totalMetalAmount = cartItems.reduce((sum, item) => sum + Number.parseFloat(item.metalAmount || 0), 0);
+      const totalStoneAmount = cartItems.reduce((sum, item) => sum + (Number.parseFloat(item.stonePrice) || 0), 0);
+      const totalMakingCharges = cartItems.reduce((sum, item) => sum + Number.parseFloat(item.makingCharges || 0), 0);
+      const totalOtherCharges = cartItems.reduce((sum, item) => sum + (Number.parseFloat(item.hmCharges) || 0) + (Number.parseFloat(item.otherCharges) || 0), 0);
     
-      cart.discount = calculateTotalDiscount(totalAmountAllItems)
-      cart.subtotal = Math.max(0, totalAmountAllItems - cart.discount)
+      const totalAmountBeforeDiscounts = totalMetalAmount + totalStoneAmount + totalMakingCharges + totalOtherCharges;
+    
+      // Calculate discount based on total making charges
+      cart.discount = calculateTotalDiscount(totalMakingCharges);
+    
+      // Calculate subtotal: sum of components - discount (applied to making charges)
+      cart.subtotal = totalAmountBeforeDiscounts - cart.discount;
+      // Ensure subtotal is not negative
+      cart.subtotal = Math.max(0, cart.subtotal);
+    
+      // Note: The individual item totals in cartItems still include the original making charges.
+      // The discount is reflected only in the overall cart totals (subtotal, grandTotal).
     
       const gstApplicableEl = document.getElementById("gstApplicable")
       const gstToggleInCartView = document.getElementById("gstToggle")
@@ -1999,7 +2079,7 @@
                         <div class="text-xs text-gray-600">Other Chrgs:</div>
                         <div class="text-xs font-semibold text-right">${formatCurrency(totalOtherCharges)}</div>
                         <div class="text-xs text-gray-600 font-medium">Subtotal:</div>
-                        <div class="text-xs font-semibold text-right">${formatCurrency(totalAmountAllItems)}</div>
+                        <div class="text-xs font-semibold text-right">${formatCurrency(totalAmountBeforeDiscounts)}</div>
                         ${
                           cart.discount > 0
                             ? `

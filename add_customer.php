@@ -52,7 +52,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
 if ($conn->connect_error) {
     die('DB connection failed');
 }
-$stmt = $conn->prepare("INSERT INTO customer (FirmID, FirstName, LastName, Email, PhoneNumber, Address, City, State, PostalCode, Country, DateOfBirth, Gender, PANNumber, AadhaarNumber, CustomerImage, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+$stmt = $conn->prepare("INSERT INTO customer (firm_id, FirstName, LastName, Email, PhoneNumber, Address, City, State, PostalCode, Country, DateOfBirth, Gender, PANNumber, AadhaarNumber, CustomerImage, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
 $stmt->bind_param('issssssssssssss', $firmID, $firstName, $lastName, $email, $phone, $address, $city, $state, $postal, $country, $dob, $gender, $pan, $aadhaar, $imagePath);
 $success = $stmt->execute();
 $stmt->close();

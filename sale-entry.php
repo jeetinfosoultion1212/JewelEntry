@@ -1,9 +1,12 @@
 <?php
+error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 
 // Start session and include database config
+
+error_log("POST data: " . print_r($_POST, true));
+
 session_start();
 require 'config/config.php';
 date_default_timezone_set('Asia/Kolkata');
@@ -23,6 +26,50 @@ $conn = new mysqli($servername, $username, $password, $dbname);
 if ($conn->connect_error) {
    die("Connection failed: " . $conn->connect_error);
 }
+
+// Enhanced subscription status check
+$subscriptionQuery = "SELECT fs.*, sp.name as plan_name, sp.price, sp.duration_in_days, sp.features 
+                    FROM firm_subscriptions fs 
+                    JOIN subscription_plans sp ON fs.plan_id = sp.id 
+                    WHERE fs.firm_id = ? AND fs.is_active = 1 
+                    ORDER BY fs.end_date DESC LIMIT 1";
+$subStmt = $conn->prepare($subscriptionQuery);
+$subStmt->bind_param("i", $firm_id);
+$subStmt->execute();
+$subscription = $subStmt->get_result()->fetch_assoc();
+
+// Enhanced subscription status variables
+$isTrialUser = false;
+$isPremiumUser = false;
+$isExpired = false;
+$daysRemaining = 0;
+$subscriptionStatus = 'none';
+
+if ($subscription) {
+    $endDate = new DateTime($subscription['end_date']);
+    $now = new DateTime();
+    $isExpired = $now > $endDate;
+    $daysRemaining = max(0, $now->diff($endDate)->days);
+    
+    if ($subscription['is_trial']) {
+        $isTrialUser = true;
+        $subscriptionStatus = $isExpired ? 'trial_expired' : 'trial_active';
+    } else {
+        $isPremiumUser = true;
+        $subscriptionStatus = $isExpired ? 'premium_expired' : 'premium_active';
+    }
+} else {
+    $subscriptionStatus = 'no_subscription';
+    $isExpired = true; // If no subscription found, consider it expired
+}
+
+// Feature access control
+$hasFeatureAccess = ($isPremiumUser && !$isExpired) || ($isTrialUser && !$isExpired);
+
+// Debug logging
+error_log("Subscription Status: " . $subscriptionStatus);
+error_log("Is Expired: " . ($isExpired ? 'true' : 'false'));
+error_log("Has Feature Access: " . ($hasFeatureAccess ? 'true' : 'false'));
 
 // Fetch user and firm details
 $userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName
@@ -201,7 +248,7 @@ if (isset($_GET['action'])) {
        $search = $_GET['term'];
        $sql = "SELECT c.id, c.FirstName, c.LastName, c.PhoneNumber, c.Email, c.Address 
                FROM Customer c
-               WHERE c.FirmID = ? AND (c.FirstName LIKE ? OR c.LastName LIKE ? OR c.PhoneNumber LIKE ?)
+               WHERE c.firm_id = ? AND (c.FirstName LIKE ? OR c.LastName LIKE ? OR c.PhoneNumber LIKE ?)
                LIMIT 10";
        
        $stmt = $conn->prepare($sql);
@@ -380,12 +427,12 @@ if (isset($_GET['action'])) {
            $conn->begin_transaction();
            
            // Insert new customer
-           $sql = "INSERT INTO Customer (FirmID, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
+           $sql = "INSERT INTO Customer (firm_id, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
            
            $stmt = $conn->prepare($sql);
            $isGstRegistered = !empty($gst) ? 1 : 0;
-           $stmt->bind_param("isssssssssss", $firm_id, $firstName, $lastName, $phone, $email, $address, $city, $state, $postalCode, $country, $isGstRegistered, $gst);
+           $stmt->bind_param("isssssssssis", $firm_id, $firstName, $lastName, $phone, $email, $address, $city, $state, $postalCode, $country, $isGstRegistered, $gst);
            
            if (!$stmt->execute()) {
                throw new Exception('Failed to add customer: ' . $stmt->error);
@@ -419,20 +466,20 @@ if (isset($_GET['action'])) {
                        
                        // Assign welcome coupon to customer
                        $assignQuery = "INSERT INTO customer_assigned_coupons 
-                                      (customer_id, coupon_id, assigned_date, status, times_used) 
-                                      VALUES (?, ?, NOW(), 'available', 0)";
+                                      (customer_id, coupon_id, assigned_date, status, times_used, firm_id) 
+                                      VALUES (?, ?, NOW(), 'available', 0, ?)";
                        $assignStmt = $conn->prepare($assignQuery);
-                       $assignStmt->bind_param("ii", $customerId, $coupon['id']);
+                       $assignStmt->bind_param("iii", $customerId, $coupon['id'], $firm_id);
                        
                        if ($assignStmt->execute()) {
-                           $welcomeCouponMessage = "Customer added successfully! Welcome coupon '{$coupon['code']}' has been assigned for their next purchase.";
+                           $welcomeCouponMessage = "Customer added successfully! Welcome coupon '{$coupon['coupon_code']}' has been assigned for their next purchase.";
                        }
                    }
                }
            }
            
            // Check for active schemes and auto-enter customer
-           checkAndEnterCustomerInSchemes($conn, $customerId, $firm_id);
+           checkSchemeParticipationOnPurchase($conn, $customerId, $firm_id, 0, 0); // Call the correctly named function with dummy values, as the function checks purchase amount internally.
            
            $conn->commit();
            
@@ -1657,7 +1704,7 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
         </div>
 
         <!-- Additional Info Content -->
-        <div id="additional-info-content" class="
+        <div id="additional-info-content" class="modal-tab-content p-4 space-y-4">
             <!-- Address -->
             <div class="form-group">
                 <label class="block text-xs font-medium text-gray-700 mb-1">Address</label>
@@ -2115,6 +2162,91 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
    </a>
  </nav>
  <script src="js/sale.js"></script>
+
+ <!-- Subscription Expiration Modal -->
+ <div id="subscriptionExpiredModal" class="modal fixed inset-0 z-[200] items-center justify-center bg-black/50 hidden">
+     <div class="modal-content p-0 overflow-hidden flex flex-col max-w-lg w-11/12 bg-white rounded-xl">
+         <!-- Header -->
+         <div class="bg-gradient-to-r from-red-600 to-red-700 p-4 text-white">
+             <div class="flex justify-between items-center">
+                 <div class="flex items-center gap-2">
+                     <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                         <i class="fas fa-exclamation-triangle text-white"></i>
+                     </div>
+                     <div>
+                         <h3 class="text-lg font-semibold">
+                             <?php echo $isTrialUser ? 'Trial Expired' : 'Subscription Expired'; ?>
+                         </h3>
+                         <p class="text-sm text-white/80">
+                             Your <?php echo $isTrialUser ? 'trial period' : 'subscription'; ?> has ended
+                         </p>
+                     </div>
+                 </div>
+             </div>
+         </div>
+
+         <!-- Content -->
+         <div class="p-4 space-y-4">
+             <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                 <div class="flex items-start gap-3">
+                     <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                         <i class="fas fa-lock text-red-500"></i>
+                     </div>
+                     <div>
+                         <h4 class="font-semibold text-red-800 mb-1">Access Restricted</h4>
+                         <p class="text-sm text-red-700">
+                             To continue using all features, please upgrade your plan or renew your subscription.
+                         </p>
+                     </div>
+                 </div>
+             </div>
+
+             <div class="space-y-2">
+                 <h4 class="font-medium text-gray-800">Available Plans:</h4>
+                 <?php
+                 $plansQuery = "SELECT * FROM subscription_plans WHERE is_active = 1 AND name != 'Trial' ORDER BY price ASC";
+                 $plansResult = $conn->query($plansQuery);
+                 while ($plan = $plansResult->fetch_assoc()):
+                     $duration = (int)$plan['duration_in_days'];
+                     $durationText = $duration == 30 ? '1 Month' : ($duration == 365 ? '1 Year' : $duration . ' Days');
+                     $color = stripos($plan['name'], 'Premium') !== false ? 'green' : (stripos($plan['name'], 'Standard') !== false ? 'purple' : 'blue');
+                 ?>
+                 <div class="border border-gray-200 rounded-lg p-3 hover:border-<?php echo $color; ?>-300 transition-colors">
+                     <div class="flex justify-between items-start">
+                         <div>
+                             <h5 class="font-bold text-<?php echo $color; ?>-700"><?php echo htmlspecialchars($plan['name']); ?></h5>
+                             <p class="text-sm text-gray-600"><?php echo $durationText; ?></p>
+                         </div>
+                         <div class="text-right">
+                             <span class="text-xl font-bold text-<?php echo $color; ?>-600">₹<?php echo number_format($plan['price']); ?></span>
+                             <p class="text-xs text-gray-500">one-time</p>
+                         </div>
+                     </div>
+                 </div>
+                 <?php endwhile; ?>
+             </div>
+         </div>
+
+         <!-- Footer -->
+         <div class="bg-gray-50 p-4 flex justify-end gap-2 border-t">
+             <a href="home.php" class="px-4 py-2 border border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:bg-gray-100">
+                 Back to Home
+             </a>
+             <a href="subscription.php" class="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg text-sm font-medium hover:opacity-90">
+                 Upgrade Now
+             </a>
+         </div>
+     </div>
+ </div>
+
+ <script>
+     // Show subscription expired modal if subscription is expired
+     <?php if ($isExpired): ?>
+     document.addEventListener('DOMContentLoaded', function() {
+         document.getElementById('subscriptionExpiredModal').classList.remove('hidden');
+     });
+     <?php endif; ?>
+ </script>
 
 </body>
 </html>
