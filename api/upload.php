@@ -63,7 +63,7 @@ if (!move_uploaded_file($file['tmp_name'], $filepath)) {
 
 // Update database if needed
 if ($type === 'firm_logo') {
-    $stmt = $conn->prepare("UPDATE Firm SET Logo = ? WHERE id = ?");
+    $stmt = $conn->prepare("UPDATE firm SET Logo = ? WHERE id = ?");
     $stmt->bind_param("si", $relativePath, $_SESSION['firmID']);
     $stmt->execute();
 } elseif ($type === 'user_image') {

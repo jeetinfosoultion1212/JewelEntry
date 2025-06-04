@@ -1081,6 +1081,18 @@ if (empty(trim($marqueeText))) {
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Lucky Draw</h3>
                     <p class="text-xs mt-1"><span class="text-red-600 font-bold">View Entries</span></p>
                 </a>
+
+                <!-- Expense Module -->
+                <a href="expenses.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-receipt text-purple-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Expenses</h3>
+                    <p class="text-xs mt-1"><span class="text-purple-600 font-bold">Track Expenses</span></p>
+                </a>
                 <?php else: ?>
                 <div class="menu-card menu-gradient-red rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
                     <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
@@ -1094,6 +1106,19 @@ if (empty(trim($marqueeText))) {
                     </div>
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Lucky Draw</h3>
                     <p class="text-xs mt-1"><span class="text-red-600 font-bold">View Entries</span></p>
+                </div>
+                <div class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
+                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                        <i class="fas fa-lock text-white text-lg"></i>
+                    </div>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-receipt text-purple-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Expenses</h3>
+                    <p class="text-xs mt-1"><span class="text-purple-600 font-bold">Track Expenses</span></p>
                 </div>
                 <?php endif; ?>
             </div>

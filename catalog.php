@@ -11,7 +11,7 @@ $user_id = $_SESSION['id']; // Get user ID for fetching user details
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "jewelentry";
+$dbname = "jewelentryapp";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 
@@ -312,10 +312,14 @@ $conn->close();
             left: -9999px;
             top: -9999px;
             z-index: -1;
+            width: 400px;
+            background: white;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
         }
 
         #catalog-card-export {
-            width: 400px;
+            width: 100%;
             background: linear-gradient(135deg, #FDF5EC 0%, #FFF9F0 100%);
             border-radius: 16px;
             padding: 20px;
@@ -325,11 +329,11 @@ $conn->close();
 
         .catalog-title {
             font-family: 'Playfair Display', serif;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 700;
             text-align: center;
             color: #5D4037;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
@@ -400,8 +404,8 @@ $conn->close();
         }
 
         .company-name-export {
-            font-weight: 600;
-            font-size: 14px;
+            font-weight: 700;
+            font-size: 16px;
             color: #5D4037;
             margin-bottom: 4px;
         }
@@ -412,8 +416,8 @@ $conn->close();
         }
 
         .qr-code-container-export {
-            width: 64px;
-            height: 64px;
+            width: 72px;
+            height: 72px;
             background: white;
             padding: 4px;
             border-radius: 8px;
@@ -421,10 +425,28 @@ $conn->close();
         }
 
         /* Toast styles */
-        .toast-info { background-color: #2196F3; }
-        .toast-success { background-color: #4CAF50; }
-        .toast-warning { background-color: #FFC107; color: #000; }
-        .toast-error { background-color: #F44336; }
+        .toast {
+            transform: translateY(100%);
+            opacity: 0;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .toast-info { 
+            background-color: #2196F3; 
+        }
+
+        .toast-success { 
+            background-color: #4CAF50; 
+        }
+
+        .toast-warning { 
+            background-color: #FFC107; 
+            color: #000; 
+        }
+
+        .toast-error { 
+            background-color: #F44336; 
+        }
 
         .line-clamp-2 {
             display: -webkit-box;
@@ -656,7 +678,7 @@ $conn->close();
     <!-- Original Catalog Export Container -->
     <div id="catalog-card-export-container" aria-hidden="true">
         <div id="catalog-card-export">
-            <div class="catalog-title">GOLD RING CATALOGUE</div>
+            <div class="catalog-title">GOLD CATALOGUE</div>
             <div class="image-container-export">
                 <img id="export-card-image" src="/placeholder.svg" alt="Product Image for Export">
             </div>
@@ -805,7 +827,7 @@ $conn->close();
             const firmPhoneSpan = document.getElementById('firmPhoneDetails')?.querySelector('span');
 
             if (firmDetails) {
-                if (firmNameEl) firmNameEl.textContent = firmDetails.firm_name || 'N/A';
+                if (firmNameEl) firmNameEl.textContent = firmDetails.FirmName || 'N/A';
                 
                 let fullAddress = [firmDetails.address1, firmDetails.address2, firmDetails.city, firmDetails.state, firmDetails.pincode]
                             .filter(Boolean).join(', ');
@@ -983,13 +1005,62 @@ $conn->close();
             }
         }
 
+        function formatDateForCard() {
+            const date = new Date();
+            return date.toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+            });
+        }
+
+        // Add Toast Notification System
+        function showToast(message, type = 'info', duration = 3000) {
+            // Remove any existing toasts
+            const existingToasts = document.querySelectorAll('.toast');
+            existingToasts.forEach(toast => toast.remove());
+
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `toast fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white shadow-lg z-50 transform transition-all duration-300 translate-y-0 opacity-100 ${type ? 'toast-' + type : ''}`;
+            toast.textContent = message;
+
+            // Add to document
+            document.body.appendChild(toast);
+
+            // Animate in
+            setTimeout(() => {
+                toast.style.transform = 'translateY(0)';
+                toast.style.opacity = '1';
+            }, 10);
+
+            // Remove after duration
+            setTimeout(() => {
+                toast.style.transform = 'translateY(100%)';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
         function generateCatalog() {
-            if (!currentProductId) return;
-            if (typeof html2canvas === 'undefined') {
-                showToast('html2canvas library failed to load.', 'error');
+            if (!currentProductId) {
+                showToast('No product selected', 'error');
                 return;
             }
+
+            // Check if html2canvas is loaded
+            if (typeof html2canvas === 'undefined') {
+                showToast('html2canvas library not loaded. Please refresh the page.', 'error');
+                console.error('html2canvas is not defined');
+                return;
+            }
+
             const product = products[currentProductId];
+            if (!product) {
+                showToast('Product data not found', 'error');
+                return;
+            }
+
             showToast(`Generating catalog for ${product.name}...`, 'info');
 
             const exportImage = document.getElementById('export-card-image');
@@ -1015,8 +1086,10 @@ $conn->close();
             const totalPrice = Math.round(product.totalPrice);
             document.getElementById('export-card-price').innerHTML = 
                 `Price: <strong class="price-value-export">₹${totalPrice.toLocaleString()}</strong>`;
-            document.getElementById('export-card-company-name').textContent = firmDetails.firm_name || 'Your Company Name';
+            document.getElementById('export-card-company-name').textContent = firmDetails.FirmName || 'Your Company Name';
             document.getElementById('export-card-date').textContent = formatDateForCard();
+
+            // Generate QR Code
             const qrCodeContainer = document.getElementById('export-card-qr-code');
             qrCodeContainer.innerHTML = '';
             const productUrl = `${window.location.origin}/product.php?id=${currentProductId}`;
@@ -1042,27 +1115,47 @@ $conn->close();
 
             const elementToCapture = document.getElementById('catalog-card-export');
             const container = document.getElementById('catalog-card-export-container');
-            container.style.left = '0px';
-            container.style.top = '0px';
+            
+            // Make sure the container is visible for capture
+            container.style.position = 'absolute';
+            container.style.left = '0';
+            container.style.top = '0';
             container.style.zIndex = '2000';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
 
             // Wait for the export image to load before capturing
             exportImage.onload = function() {
                 if (imageLoaded) return; // Prevent double firing
                 imageLoaded = true;
+                
+                console.log('Starting html2canvas capture...');
                 html2canvas(elementToCapture, {
                     allowTaint: true,
                     useCORS: true,
                     scale: 3,
-                    backgroundColor: null
+                    backgroundColor: null,
+                    logging: true, // Enable logging
+                    onclone: function(clonedDoc) {
+                        console.log('Document cloned successfully');
+                    }
                 }).then(canvas => {
+                    console.log('Canvas generated successfully');
                     container.style.left = '-9999px';
                     container.style.top = '-9999px';
                     container.style.zIndex = '-1';
+                    
                     canvas.toBlob(function(blob) {
+                        if (!blob) {
+                            console.error('Failed to create blob from canvas');
+                            showToast('Failed to generate image', 'error');
+                            return;
+                        }
+                        
                         const fileName = `${product.name.replace(/\s+/g, '-')}-catalog.png`;
                         const newFile = new File([blob], fileName, { type: "image/png" });
-                        const shareText = `Check out: ${product.name} from ${firmDetails.firm_name || 'Our Store'}! ₹${totalPrice.toLocaleString()}`;
+                        const shareText = `Check out: ${product.name} from ${firmDetails.FirmName || 'Our Store'}! ₹${totalPrice.toLocaleString()}`;
+                        
                         if (navigator.share && navigator.canShare && navigator.canShare({ files: [newFile] })) {
                             navigator.share({
                                 files: [newFile],
@@ -1085,15 +1178,18 @@ $conn->close();
                         }
                     }, 'image/png', 1.0);
                 }).catch(err => {
+                    console.error("Error generating catalog image:", err);
                     container.style.left = '-9999px';
                     container.style.top = '-9999px';
                     container.style.zIndex = '-1';
-                    console.error("Error generating catalog image:", err);
                     showToast('Could not generate catalog image. Please try again.', 'error');
                 });
             };
+
             exportImage.onerror = function() {
+                console.error('Failed to load export image:', imageToUse);
                 if (imageToUse !== fallbackImage) {
+                    console.log('Trying fallback image...');
                     exportImage.src = fallbackImage;
                 } else {
                     showToast('Failed to load export image.', 'error');
@@ -1102,6 +1198,8 @@ $conn->close();
                     container.style.zIndex = '-1';
                 }
             };
+
+            console.log('Setting export image source:', imageToUse);
             exportImage.src = imageToUse;
         }
 
@@ -1111,15 +1209,6 @@ $conn->close();
             link.download = fileName;
             link.href = image;
             link.click();
-        }
-
-        function formatDateForCard() {
-            const date = new Date();
-            return date.toLocaleDateString('en-IN', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric'
-            });
         }
 
         // Event listeners

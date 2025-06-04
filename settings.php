@@ -77,6 +77,14 @@ $userStmt->bind_param("i", $user_id);
 $userStmt->execute();
 $userResult = $userStmt->get_result();
 $userInfo = $userResult->fetch_assoc();
+
+// Fetch firm configurations
+$configQuery = "SELECT * FROM firm_configurations WHERE firm_id = ?";
+$configStmt = $conn->prepare($configQuery);
+$configStmt->bind_param("i", $firm_id);
+$configStmt->execute();
+$configResult = $configStmt->get_result();
+$firmConfig = $configResult->fetch_assoc();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -128,7 +136,92 @@ $userInfo = $userResult->fetch_assoc();
     <div class="px-3 pb-72">
         <div class="py-4">
             <h2 class="text-lg font-bold text-gray-800 mb-4">Store Settings</h2>
-            <!-- Add your settings content here -->
+            
+            <form id="settingsForm" class="space-y-4">
+                <div class="bg-white rounded-xl p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-gray-800 mb-3">Business Settings</h3>
+                    
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Loyalty Discount (%)</label>
+                            <input type="number" step="0.01" name="loyalty_discount_percentage" value="<?php echo htmlspecialchars($firmConfig['loyalty_discount_percentage'] ?? '0.02'); ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-gray-800 mb-3">Billing Settings</h3>
+                    
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Non-GST Bill Page URL</label>
+                            <input type="text" name="non_gst_bill_page_url" value="<?php echo htmlspecialchars($firmConfig['non_gst_bill_page_url'] ?? 'thermal_invoice.php'); ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">GST Bill Page URL</label>
+                            <input type="text" name="gst_bill_page_url" value="<?php echo htmlspecialchars($firmConfig['gst_bill_page_url'] ?? 'invoice.php'); ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-gray-800 mb-3">Promotional Settings</h3>
+                    
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700">Enable Coupon Codes</label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="coupon_code_apply_enabled" class="sr-only peer" 
+                                       <?php echo ($firmConfig['coupon_code_apply_enabled'] ?? '1') == '1' ? 'checked' : ''; ?>>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700">Enable Schemes</label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="schemes_enabled" class="sr-only peer" 
+                                       <?php echo ($firmConfig['schemes_enabled'] ?? '1') == '1' ? 'checked' : ''; ?>>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700">Enable Welcome Coupon</label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="welcome_coupon_enabled" class="sr-only peer" 
+                                       <?php echo ($firmConfig['welcome_coupon_enabled'] ?? '1') == '1' ? 'checked' : ''; ?>>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Welcome Coupon Code</label>
+                            <input type="text" name="welcome_coupon_code" value="<?php echo htmlspecialchars($firmConfig['welcome_coupon_code'] ?? 'WELCOME10'); ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                        </div>
+
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700">Auto Scheme Entry</label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="auto_scheme_entry" class="sr-only peer" 
+                                       <?php echo ($firmConfig['auto_scheme_entry'] ?? '1') == '1' ? 'checked' : ''; ?>>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end mt-6">
+                    <button type="submit" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -171,6 +264,7 @@ $userInfo = $userResult->fetch_assoc();
     </nav>
 
     <script type="module" src="js/home.js"></script>
+    <script src="js/settings.js"></script>
 </body>
 </html>
 
