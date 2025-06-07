@@ -29,17 +29,17 @@ logDebug("=== PAYMENT PROCESSING STARTED ===");
 logDebug("POST Data Received", $_POST);
 logDebug("Session Data", [
     'user_id' => $_SESSION['id'] ?? 'not set',
-    'firm_id' => $_SESSION['firmID'] ?? 'not set'
+    'firm_id' => $_SESSION['firm_id'] ?? 'not set'
 ]);
 
 // Check if user is logged in and firm ID is set
-if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
+if (!isset($_SESSION['id']) || !isset($_SESSION['firm_id'])) {
     logError("Authentication failed - missing session data");
     header("Location: login.php");
     exit();
 }
 
-$firm_id = $_SESSION['firmID'];
+$firm_id = $_SESSION['firm_id'];
 $user_id = $_SESSION['id'];
 logDebug("Authentication successful", ['user_id' => $user_id, 'firm_id' => $firm_id]);
 
@@ -132,7 +132,7 @@ logDebug("Database transaction started");
 
 try {
     // Verify customer exists and belongs to firm
-    $customerCheckQuery = "SELECT id, FirstName, LastName FROM customer WHERE id = ? AND FirmID = ?";
+    $customerCheckQuery = "SELECT id, FirstName, LastName FROM customer WHERE id = ? AND firm_id = ?";
     $customerCheckStmt = $conn->prepare($customerCheckQuery);
     if (!$customerCheckStmt) {
         throw new Exception("Customer verification query preparation failed: " . $conn->error);
@@ -236,14 +236,14 @@ try {
                 $updateSaleStmt->close();
 
                 // Insert detailed payment record
-                $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
                 if (!$insertPaymentStmt) {
                     throw new Exception("Payment insert preparation failed: " . $conn->error);
                 }
 
                 $payment_remarks = "FIFO allocation for Sale #$sale_id";
-                $insertPaymentStmt->bind_param("issiisdsssssi",
+                $insertPaymentStmt->bind_param("issiisdsssssii",
                     $sale_id,                    // reference_id
                     $payment_type_form,          // reference_type
                     $party_type,                 // party_type
@@ -256,7 +256,7 @@ try {
                     $payment_remarks,            // remarks
                     $created_at,                 // created_at
                     $transactions_type,          // transctions_type
-                    $firm_id                     // Firm_id
+                    $firm_id                     // firm_id
                 );
                 
                 $insertPaymentStmt->execute();
@@ -302,7 +302,7 @@ try {
         logDebug("Processing non-Sale Due payment or no allocations");
         
         // Handle other payment types (Loan EMI, Scheme Installment, etc.)
-        $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
         if (!$insertPaymentStmt) {
             throw new Exception("Payment insert preparation failed: " . $conn->error);

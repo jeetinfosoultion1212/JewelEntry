@@ -32,18 +32,18 @@ logDebug("=== FETCH DUE AMOUNT REQUEST STARTED ===");
 logDebug("POST Data", $_POST);
 logDebug("Session Data", [
     'user_id' => $_SESSION['id'] ?? 'not set',
-    'firm_id' => $_SESSION['firmID'] ?? 'not set'
+    'firm_id' => $_SESSION['firm_id'] ?? 'not set'
 ]);
 
 // Check authentication
-if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
+if (!isset($_SESSION['id']) || !isset($_SESSION['firm_id'])) {
     logError("Authentication failed");
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized access']);
     exit();
 }
 
-$firm_id = $_SESSION['firmID'];
+$firm_id = $_SESSION['firm_id'];
 $user_id = $_SESSION['id'];
 logDebug("Authentication successful", ['user_id' => $user_id, 'firm_id' => $firm_id]);
 
@@ -102,7 +102,7 @@ $conn->set_charset("utf8");
 logDebug("Database connected successfully");
 
 // Verify customer exists and belongs to firm
-$customerCheckQuery = "SELECT id, FirstName, LastName FROM customer WHERE id = ? AND FirmID = ?";
+$customerCheckQuery = "SELECT id, FirstName, LastName FROM customer WHERE id = ? AND firm_id = ?";
 $customerCheckStmt = $conn->prepare($customerCheckQuery);
 
 if (!$customerCheckStmt) {

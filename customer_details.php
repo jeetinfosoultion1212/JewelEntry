@@ -8,7 +8,7 @@ if (!isset($_SESSION['id'])) {
     exit();
 }
 
-$firm_id = $_SESSION['firmID'];
+$firm_id = $_SESSION['firm_id'];
 
 // Get customer ID from URL
 $customer_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -34,7 +34,7 @@ $userStmt->close();
 
 // Fetch customer details
 $customer = null;
-$customerQuery = "SELECT id, FirstName, LastName, Address, City, State, PhoneNumber, Email, DateOfBirth, Gender, PANNumber, AadhaarNumber, CustomerImage FROM customer WHERE id = ? AND FirmID = ?";
+$customerQuery = "SELECT id, FirstName, LastName, Address, City, State, PhoneNumber, Email, DateOfBirth, Gender, PANNumber, AadhaarNumber, CustomerImage FROM customer WHERE id = ? AND firm_id = ?";
 $customerStmt = $conn->prepare($customerQuery);
 $customerStmt->bind_param("ii", $customer_id, $firm_id);
 $customerStmt->execute();

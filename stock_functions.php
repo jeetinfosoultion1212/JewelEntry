@@ -1,4 +1,7 @@
 <?php
+// Start session
+session_start();
+
 // filepath: c:\Users\HP\JewelEntry2.01\includes\Database.php
 class Database {
     private static $instance = null;
@@ -43,10 +46,14 @@ ini_set('display_errors', 1);
 function searchStockNames($materialType, $searchTerm = '') {
     global $conn;
     try {
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
         $searchTerm = "%" . $searchTerm . "%";
         $stmt = $conn->prepare("SELECT DISTINCT stock_name FROM inventory_metals 
-                WHERE material_type = ? AND stock_name LIKE ?");
-        $stmt->bind_param("ss", $materialType, $searchTerm);
+                WHERE firm_id = ? AND material_type = ? AND stock_name LIKE ?");
+        $stmt->bind_param("iss", $firmId, $materialType, $searchTerm);
         $stmt->execute();
         $result = $stmt->get_result();
         
@@ -65,15 +72,19 @@ function searchStockNames($materialType, $searchTerm = '') {
 // Function to get total stock details for a specific purity
 function getPurityStockDetails($materialType, $purity) {
     global $conn;
+    if (!isset($_SESSION['firmID'])) {
+        return json_encode(['error' => 'Firm ID not found in session']);
+    }
+    $firmId = $_SESSION['firmID'];
     $sql = "SELECT 
                 SUM(current_stock) as total_current_stock,
                 SUM(remaining_stock) as total_remaining_stock,
                 COUNT(DISTINCT stock_name) as total_stock_names,
                 GROUP_CONCAT(DISTINCT stock_name) as stock_names
             FROM inventory_metals 
-            WHERE material_type = ? AND purity = ?";
+            WHERE firm_id = ? AND material_type = ? AND purity = ?";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sd", $materialType, $purity);
+    $stmt->bind_param("isd", $firmId, $materialType, $purity);
     $stmt->execute();
     $result = $stmt->get_result();
     
@@ -82,10 +93,10 @@ function getPurityStockDetails($materialType, $purity) {
         $sql = "SELECT AVG(rate_per_gram) as avg_rate 
                 FROM metal_purchases mp
                 JOIN inventory_metals im ON mp.inventory_id = im.inventory_id
-                WHERE im.material_type = ? AND im.purity = ?
+                WHERE im.firm_id = ? AND im.material_type = ? AND im.purity = ?
                 ORDER BY mp.purchase_date DESC LIMIT 1";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sd", $materialType, $purity);
+        $stmt->bind_param("isd", $firmId, $materialType, $purity);
         $stmt->execute();
         $rateResult = $stmt->get_result();
         $rateRow = $rateResult->fetch_assoc();
@@ -100,7 +111,15 @@ function getPurityStockDetails($materialType, $purity) {
 function getSuppliers() {
     global $conn;
     try {
-        $result = $conn->query("SELECT id, name FROM suppliers ORDER BY name");
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
+        $stmt = $conn->prepare("SELECT id, name FROM suppliers WHERE firm_id = ? ORDER BY name");
+        $stmt->bind_param("i", $firmId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
         $suppliers = array();
         while($row = $result->fetch_assoc()) {
             $suppliers[] = $row;
@@ -116,8 +135,10 @@ function addSupplier($data) {
     global $conn;
     
     try {
-        // Get firm_id from session
-        $firmId = $_SESSION['firmID'] ?? 1;
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
         
         // Validate required field
         if (empty($data['name'])) {
@@ -127,17 +148,15 @@ function addSupplier($data) {
             ]);
         }
         
-        // Prepare the SQL statement - excluding date_added as it has default value
+        // Prepare the SQL statement
         $stmt = $conn->prepare("INSERT INTO suppliers (
-            firm_id, name,state,phone,gst,address                   
+            firm_id, name, state, phone, gst, address                   
         ) VALUES (?, ?, ?, ?, ?, ?)");
         
-        // Check if prepare was successful
         if (!$stmt) {
             throw new Exception("Failed to prepare statement: " . $conn->error);
         }
         
-        // Bind parameters - 1 integer (firm_id) + 9 strings
         $stmt->bind_param(
             "isssss",
             $firmId,
@@ -146,21 +165,15 @@ function addSupplier($data) {
             $data['phone'],
             $data['gst'],
             $data['address']
-           
         );
         
-        // Execute the statement
         if (!$stmt->execute()) {
             throw new Exception("Failed to execute statement: " . $stmt->error);
         }
         
-        // Get the ID of the newly inserted supplier
         $newSupplierId = $conn->insert_id;
-        
-        // Close the statement
         $stmt->close();
         
-        // Return success response with the new supplier data
         return json_encode([
             'success' => true,
             'message' => 'Supplier added successfully',
@@ -184,28 +197,36 @@ function addStock($data) {
     global $conn;
     
     try {
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
+        
         $conn->begin_transaction();
         
         // Set default values
-        $firmId = $_SESSION['firmID'] ?? 1; // Get firm_id from session
         $quantity = isset($data['quantity']) ? intval($data['quantity']) : 1;
         $weight = floatval($data['weight']);
         $rate = floatval($data['rate']);
         $totalAmount = $weight * $rate;
-        $userId = $_SESSION['user_id'] ?? 1; // Get logged in user ID if available
+        
+        // Get user_id from session
+        if (!isset($_SESSION['id'])) {
+            throw new Exception("User ID not found in session");
+        }
+        $userId = $_SESSION['id'];
 
         if ($data['is_purchase'] == '1') {
             // Purchase entry
             $supplierId = $data['supplier_id'];
             $paidAmount = floatval($data['paid_amount']);
-            // Set payment mode to empty string if paid amount is 0
             $paymentMode = ($paidAmount > 0) ? $data['payment_mode'] : '';
             $invoiceNumber = $data['invoice_number'];
             $entryType = 'purchase';
         } else {
             // Direct entry
-            $supplierId = 1; // Default supplier for direct entries
-            $paidAmount = $totalAmount; // Fully paid for direct entries
+            $supplierId = 1;
+            $paidAmount = $totalAmount;
             $paymentMode = 'Direct';
             $invoiceNumber = 'DIR-' . date('YmdHis');
             $entryType = 'direct';
@@ -240,24 +261,24 @@ function addStock($data) {
         // Add stock log entry
         $stockLogStmt = $conn->prepare(
             "INSERT INTO jewellery_stock_log (
-                 firm_id , inventory_id, material_type, stock_name, purity,
+                firm_id, inventory_id, material_type, stock_name, purity,
                 transaction_type, quantity_before, quantity_change, quantity_after,
                 reference_type, reference_id, user_id, notes
-            ) VALUES (?, ?,?, ?, ?, 'IN', 0, ?, ?, ?, ?, ?, ?)"
+            ) VALUES (?, ?, ?, ?, ?, 'IN', 0, ?, ?, ?, ?, ?, ?)"
         );
 
         $notes = "Initial stock entry via " . $entryType;
         $stockLogStmt->bind_param(
-            "iissdddssss",
-             $firmId,
+            "iissddsssss",
+            $firmId,
             $inventoryId,
             $data['material_type'],
             $data['stock_name'],
             $data['purity'],
-            $weight, // quantity_change
-            $weight, // quantity_after
-            $entryType, // reference_type
-            $invoiceNumber, // reference_id
+            $weight,
+            $weight,
+            $entryType,
+            $invoiceNumber,
             $userId,
             $notes
         );
@@ -272,30 +293,35 @@ function addStock($data) {
         // Create purchase record
         $purchaseStmt = $conn->prepare(
             "INSERT INTO metal_purchases (
-                firm_id, source_id, material_type, stock_name, purity,
-                quantity, weight, rate_per_gram, total_amount, paid_amount,
-                payment_mode, payment_status, invoice_number, entry_type,
-                inventory_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                source_type, source_id, material_type, stock_name, purity,
+                quantity, rate_per_gram, total_amount, payment_status,
+                inventory_id, firm_id, weight, paid_amount, payment_mode,
+                invoice_number, entry_type, transaction_reference
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
+        $sourceType = 'Supplier';
+        $transactionRef = null; // Since it's optional
+
         $purchaseStmt->bind_param(
-            "iisssdddddsssss",
-            $firmId,
+            "sisssddssiidsssss",
+            $sourceType,
             $supplierId,
             $data['material_type'],
             $data['stock_name'],
             $data['purity'],
             $quantity,
-            $weight,
             $rate,
             $totalAmount,
+            $paymentStatus,
+            $inventoryId,
+            $firmId,
+            $weight,
             $paidAmount,
             $paymentMode,
-            $paymentStatus,
             $invoiceNumber,
             $entryType,
-            $inventoryId
+            $transactionRef
         );
 
         if (!$purchaseStmt->execute()) {
@@ -314,7 +340,6 @@ function addStock($data) {
             throw new Exception("Failed to update inventory record: " . $updateStmt->error);
         }
 
-        // Commit transaction
         $conn->commit();
         
         return json_encode([
@@ -325,7 +350,6 @@ function addStock($data) {
         ]);
         
     } catch (Exception $e) {
-        // Rollback transaction on error
         $conn->rollback();
         return json_encode([
             'success' => false,
@@ -343,6 +367,10 @@ function calculatePaymentStatus($total, $paid) {
 // Function to get stock statistics for a specific purity
 function getPurityStats($materialType, $purity) {
     global $conn;
+    if (!isset($_SESSION['firmID'])) {
+        return json_encode(['error' => 'Firm ID not found in session']);
+    }
+    $firmId = $_SESSION['firmID'];
     
     $stats = array();
     
@@ -352,9 +380,9 @@ function getPurityStats($materialType, $purity) {
                 SUM(remaining_stock) as total_remaining_stock,
                 COUNT(DISTINCT stock_name) as total_stock_names
             FROM inventory_metals 
-            WHERE material_type = ? AND purity = ?";
+            WHERE firm_id = ? AND material_type = ? AND purity = ?";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sd", $materialType, $purity);
+    $stmt->bind_param("isd", $firmId, $materialType, $purity);
     $stmt->execute();
     $result = $stmt->get_result();
     $stock = $result->fetch_assoc();
@@ -372,10 +400,10 @@ function getPurityStats($materialType, $purity) {
                 MIN(rate_per_gram) as min_rate
             FROM metal_purchases mp
             JOIN inventory_metals im ON mp.inventory_id = im.inventory_id
-            WHERE im.material_type = ? AND im.purity = ?";
+            WHERE im.firm_id = ? AND im.material_type = ? AND im.purity = ?";
     
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sd", $materialType, $purity);
+    $stmt->bind_param("isd", $firmId, $materialType, $purity);
     $stmt->execute();
     $result = $stmt->get_result();
     $purchase = $result->fetch_assoc();
@@ -391,6 +419,10 @@ function getPurityStats($materialType, $purity) {
 
 function getStockStats() {
     global $conn;
+    if (!isset($_SESSION['firmID'])) {
+        return ['error' => 'Firm ID not found in session'];
+    }
+    $firmId = $_SESSION['firmID'];
     
     $query = "SELECT 
         ms.material_type,
@@ -400,11 +432,14 @@ function getStockStats() {
         ROUND(SUM(ms.remaining_stock), 2) as remaining_stock,
         ROUND(SUM(ms.current_stock - ms.remaining_stock), 2) as issue_stock
     FROM inventory_metals ms
-    WHERE ms.current_stock > 0
+    WHERE ms.firm_id = ? AND ms.current_stock > 0
     GROUP BY ms.material_type, ms.purity
     ORDER BY ms.material_type, ms.purity DESC";
     
-    $result = $conn->query($query);
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $firmId);
+    $stmt->execute();
+    $result = $stmt->get_result();
     
     if (!$result) {
         return ['error' => $conn->error];
@@ -425,11 +460,15 @@ function getStockStats() {
     return $stats;
 }
 
-
 // Function to get available inventory
 function getAvailableInventory($materialType = 'Gold') {
     global $conn;
     try {
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
+        
         $sql = "SELECT 
                     i.inventory_id,
                     i.material_type,
@@ -444,11 +483,11 @@ function getAvailableInventory($materialType = 'Gold') {
                 FROM inventory_metals i
                 LEFT JOIN metal_purchases p ON i.inventory_id = p.inventory_id
                 LEFT JOIN suppliers s ON p.source_id = s.id
-                WHERE i.purity = ? AND i.remaining_stock > 0
+                WHERE i.firm_id = ? AND i.purity = ? AND i.remaining_stock > 0
                 ORDER BY p.purchase_date DESC";
         
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $materialType);
+        $stmt->bind_param("is", $firmId, $materialType);
         $stmt->execute();
         $result = $stmt->get_result();
         
@@ -476,10 +515,15 @@ function getAvailableInventory($materialType = 'Gold') {
 function saveProductImages($productId, $images) {
     global $conn;
     try {
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
+        
         $conn->begin_transaction();
         
         $stmt = $conn->prepare("INSERT INTO jewellery_product_image 
-            (product_id, image_url, is_primary, firm_id) VALUES (?, ?, ?, 1)");
+            (product_id, image_url, is_primary, firm_id) VALUES (?, ?, ?, ?)");
         
         foreach($images as $index => $image) {
             $isPrimary = ($index === 0) ? 1 : 0;
@@ -490,7 +534,7 @@ function saveProductImages($productId, $images) {
             
             // Save image file
             if(move_uploaded_file($image['tmp_name'], $path)) {
-                $stmt->bind_param("ssi", $productId, $path, $isPrimary);
+                $stmt->bind_param("ssii", $productId, $path, $isPrimary, $firmId);
                 if(!$stmt->execute()) {
                     throw new Exception("Failed to save image record");
                 }
@@ -510,11 +554,19 @@ function saveProductImages($productId, $images) {
 function getAvailablePurities() {
     global $conn;
     try {
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
+        
         $sql = "SELECT DISTINCT purity 
                 FROM inventory_metals 
-                WHERE remaining_stock > 0 
+                WHERE firm_id = ? AND remaining_stock > 0 
                 ORDER BY purity DESC";
-        $result = $conn->query($sql);
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $firmId);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
         $purities = array();
         while($row = $result->fetch_assoc()) {
@@ -530,11 +582,16 @@ function getAvailablePurities() {
 function getRemainingStock($purity) {
     global $conn;
     try {
+        if (!isset($_SESSION['firmID'])) {
+            throw new Exception("Firm ID not found in session");
+        }
+        $firmId = $_SESSION['firmID'];
+        
         $sql = "SELECT SUM(remaining_stock) as remaining_stock 
                 FROM inventory_metals 
-                WHERE purity = ?";
+                WHERE firm_id = ? AND purity = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("d", $purity);
+        $stmt->bind_param("id", $firmId, $purity);
         $stmt->execute();
         $result = $stmt->get_result();
         $row = $result->fetch_assoc();
@@ -550,6 +607,10 @@ function getRemainingStock($purity) {
 // Function to get purity history
 function getPurityHistory($materialType, $purity) {
     global $conn;
+    if (!isset($_SESSION['firmID'])) {
+        return json_encode(['error' => 'Firm ID not found in session']);
+    }
+    $firmId = $_SESSION['firmID'];
     
     try {
         $stmt = $conn->prepare("
@@ -573,11 +634,11 @@ function getPurityHistory($materialType, $purity) {
             LEFT JOIN metal_purchases mp ON im.inventory_id = mp.inventory_id
             LEFT JOIN suppliers s ON mp.source_id = s.id
             LEFT JOIN jewellery_stock_log jsl ON im.inventory_id = jsl.inventory_id
-            WHERE im.material_type = ? AND im.purity = ?
+            WHERE im.firm_id = ? AND im.material_type = ? AND im.purity = ?
             ORDER BY mp.purchase_date DESC, jsl.transaction_date DESC
         ");
         
-        $stmt->bind_param("sd", $materialType, $purity);
+        $stmt->bind_param("isd", $firmId, $materialType, $purity);
         $stmt->execute();
         $result = $stmt->get_result();
         
@@ -634,18 +695,22 @@ function getPurityHistory($materialType, $purity) {
     }
 }
 
-// Add to stock_functions.php
+// Function to get current rate
 function getCurrentRate($materialType) {
     global $conn;
+    if (!isset($_SESSION['firmID'])) {
+        return ['success' => false, 'error' => 'Firm ID not found in session'];
+    }
+    $firmId = $_SESSION['firmID'];
     
     $sql = "SELECT rate 
             FROM jewellery_price_config 
-            WHERE material_type = ? AND purity='24K' 
+            WHERE firm_id = ? AND material_type = ? AND purity='24K' 
             ORDER BY effective_date DESC 
             LIMIT 1";
             
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $materialType);
+    $stmt->bind_param("is", $firmId, $materialType);
     $stmt->execute();
     $result = $stmt->get_result();
     

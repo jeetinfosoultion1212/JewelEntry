@@ -67,7 +67,7 @@ if ($type === 'firm_logo') {
     $stmt->bind_param("si", $relativePath, $_SESSION['firmID']);
     $stmt->execute();
 } elseif ($type === 'user_image') {
-    $stmt = $conn->prepare("UPDATE Firm_Users SET image_path = ? WHERE id = ?");
+    $stmt = $conn->prepare("UPDATE firm_users SET image_path = ? WHERE id = ?");
     $stmt->bind_param("si", $relativePath, $_SESSION['id']);
     $stmt->execute();
 }

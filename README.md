@@ -1,88 +1,76 @@
-# JewelEntry - Jewelry Store Management System
+# JewelEntry - Jewelry Management System
 
-A comprehensive web-based jewelry store management system built with PHP, MySQL, and modern web technologies.
+A comprehensive jewelry management system built with PHP, designed to handle inventory, sales, customer management, and more.
 
 ## Features
 
-- 📦 Inventory Management
-- 💰 Sales & Billing
-- 👥 Customer Management
-- 📊 Analytics & Reporting
-- 🔄 Gold Rate Management
-- 🎯 Lucky Draw Schemes
-- 💳 Gold Saving Plans
-- 🔧 Repair Management
-- 📱 Mobile Responsive Design
+- Customer Management
+- Inventory Control
+- Sales Processing
+- Order Management
+- Invoice Generation
+- Payment Processing
+- Staff Management
+- Supplier Management
+- Repair Tracking
+- Scheme Management
 
 ## Requirements
 
 - PHP 7.4 or higher
 - MySQL 5.7 or higher
 - Apache/Nginx web server
-- Composer (for PHP dependencies)
+- Composer for PHP dependencies
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/JewelEntry.git
-cd JewelEntry
+git clone [your-repository-url]
 ```
 
-2. Install PHP dependencies:
+2. Set up your web server to point to the project directory
+
+3. Create a MySQL database and import the schema:
+```bash
+mysql -u your_username -p your_database < jewelentry.sql
+```
+
+4. Configure your database connection in `config/database.php`
+
+5. Install dependencies:
 ```bash
 composer install
 ```
 
-3. Create a MySQL database and import the schema:
+6. Set appropriate permissions:
 ```bash
-mysql -u your_username -p your_database < database/schema.sql
+chmod 755 -R uploads/
 ```
-
-4. Copy the config template and update with your database credentials:
-```bash
-cp config/config.example.php config/config.php
-```
-
-5. Update the database configuration in `config/config.php` with your credentials.
-
-6. Set up your web server (Apache/Nginx) to point to the project directory.
-
-7. Access the application through your web browser.
 
 ## Configuration
 
-- Database settings are in `config/config.php`
-- Application settings can be modified in the admin panel
-- Email settings for notifications
-- SMS gateway configuration (if enabled)
+1. Copy `config/config.example.php` to `config/config.php`
+2. Update the configuration settings in `config/config.php`
+3. Set up your web server virtual host
+
+## Usage
+
+1. Access the system through your web browser
+2. Login with your credentials
+3. Start managing your jewelry business!
 
 ## Security
 
-- All passwords are hashed using secure algorithms
-- SQL injection prevention using prepared statements
-- XSS protection implemented
-- CSRF protection enabled
-- Session security measures in place
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+- All passwords are hashed
+- Input validation and sanitization
+- CSRF protection
+- XSS prevention
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+[Your chosen license]
 
 ## Support
 
-For support, email support@jewelentry.com or join our WhatsApp support group.
-
-## Acknowledgments
-
-- Developed by Prosenjit Tech Hub
-- Special thanks to all contributors
-- Built with modern web technologies 
+For support, please [contact details or issue tracker information] 
