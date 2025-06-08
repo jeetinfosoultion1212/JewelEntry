@@ -6,6 +6,7 @@ require 'config/config.php';
 error_reporting(E_ALL);
 ini_set('log_errors', 1);
 ini_set('error_log', 'payment_errors.log');
+ini_set('display_errors', 0); // Suppress direct output of errors to the browser for JSON responses
 
 function logDebug($message, $data = null) {
     $timestamp = date('Y-m-d H:i:s');
@@ -29,17 +30,17 @@ logDebug("=== PAYMENT PROCESSING STARTED ===");
 logDebug("POST Data Received", $_POST);
 logDebug("Session Data", [
     'user_id' => $_SESSION['id'] ?? 'not set',
-    'firm_id' => $_SESSION['firm_id'] ?? 'not set'
+    'firm_id' => $_SESSION['firmID'] ?? 'not set'
 ]);
 
 // Check if user is logged in and firm ID is set
-if (!isset($_SESSION['id']) || !isset($_SESSION['firm_id'])) {
+if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
     logError("Authentication failed - missing session data");
     header("Location: login.php");
     exit();
 }
 
-$firm_id = $_SESSION['firm_id'];
+$firm_id = $_SESSION['firmID'];
 $user_id = $_SESSION['id'];
 logDebug("Authentication successful", ['user_id' => $user_id, 'firm_id' => $firm_id]);
 
@@ -132,7 +133,7 @@ logDebug("Database transaction started");
 
 try {
     // Verify customer exists and belongs to firm
-    $customerCheckQuery = "SELECT id, FirstName, LastName FROM customer WHERE id = ? AND firm_id = ?";
+    $customerCheckQuery = "SELECT id, FirstName, LastName FROM customer WHERE id = ? AND firm_id  = ?";
     $customerCheckStmt = $conn->prepare($customerCheckQuery);
     if (!$customerCheckStmt) {
         throw new Exception("Customer verification query preparation failed: " . $conn->error);
@@ -193,6 +194,7 @@ try {
                 }
                 
                 $current_due = floatval($sale['due_amount']);
+                $grand_total = floatval($sale['grand_total']);
                 
                 // Enhanced validation
                 if ($allocated_amount > $current_due + 0.01) { // Allow small floating point differences
@@ -202,25 +204,36 @@ try {
                 $new_due = max(0, $current_due - $allocated_amount); // Ensure non-negative
                 $totalAllocated += $allocated_amount;
 
-                logDebug("Allocation calculation completed", [
+                // Calculate new total paid amount
+                $current_paid = $grand_total - $current_due;
+                $new_paid = $current_paid + $allocated_amount;
+
+                logDebug("Payment calculation", [
                     'sale_id' => $sale_id,
+                    'grand_total' => $grand_total,
                     'current_due' => $current_due,
+                    'current_paid' => $current_paid,
                     'allocated_amount' => $allocated_amount,
                     'new_due' => $new_due,
-                    'total_allocated_so_far' => $totalAllocated
+                    'new_paid' => $new_paid
                 ]);
 
                 // Determine new payment status
-                $new_status = ($new_due <= 0.01) ? 'Fully Paid' : 'Partial';
+                $new_status = ($new_due <= 0.01) ? 'Paid' : 'Partial';
                 
-                // Update jewellery_sales table
-                $updateSaleQuery = "UPDATE jewellery_sales SET due_amount = ?, payment_status = ?, updated_at = NOW() WHERE id = ? AND customer_id = ? AND firm_id = ?";
+                // Update jewellery_sales table with new due amount, status and total paid
+                $updateSaleQuery = "UPDATE jewellery_sales SET 
+                    due_amount = ?, 
+                    payment_status = ?, 
+                    total_paid_amount = ?,
+                    updated_at = NOW() 
+                    WHERE id = ? AND customer_id = ? AND firm_id = ?";
                 $updateSaleStmt = $conn->prepare($updateSaleQuery);
                 if (!$updateSaleStmt) {
                     throw new Exception("Sale update preparation failed: " . $conn->error);
                 }
 
-                $updateSaleStmt->bind_param("dsiii", $new_due, $new_status, $sale_id, $customer_id, $firm_id);
+                $updateSaleStmt->bind_param("dsdiii", $new_due, $new_status, $new_paid, $sale_id, $customer_id, $firm_id);
                 $updateSaleStmt->execute();
                 
                 logDebug("Sale update executed", [
@@ -236,27 +249,27 @@ try {
                 $updateSaleStmt->close();
 
                 // Insert detailed payment record
-                $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount,  reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?)";
                 $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
                 if (!$insertPaymentStmt) {
                     throw new Exception("Payment insert preparation failed: " . $conn->error);
                 }
 
                 $payment_remarks = "FIFO allocation for Sale #$sale_id";
-                $insertPaymentStmt->bind_param("issiisdsssssii",
+                $reference_type = 'due_invoice';
+                $insertPaymentStmt->bind_param("issiisdssssi",
                     $sale_id,                    // reference_id
-                    $payment_type_form,          // reference_type
+                    $reference_type,             // reference_type
                     $party_type,                 // party_type
                     $customer_id,                // party_id
                     $sale_id,                    // sale_id
                     $payment_method_form,        // payment_type
                     $allocated_amount,           // amount
-                    $notes,                      // payment_notes
                     $reference_no,               // reference_no
                     $payment_remarks,            // remarks
                     $created_at,                 // created_at
                     $transactions_type,          // transctions_type
-                    $firm_id                     // firm_id
+                    $firm_id                     // Firm_id
                 );
                 
                 $insertPaymentStmt->execute();
@@ -298,11 +311,187 @@ try {
         
         logDebug("FIFO allocation validation passed");
         
-    } else {
-        logDebug("Processing non-Sale Due payment or no allocations");
-        
+    } else if ($payment_type_form === 'Scheme Installment') {
+        logDebug("Processing Scheme Installment payment", [
+            'customer_id' => $customer_id,
+            'payment_amount' => $total_payment_amount,
+            'allocations' => $allocated_amounts
+        ]);
+
+        // Get all allocations for scheme installments
+        foreach ($allocated_amounts as $allocation_key => $allocated_amount) {
+            if ($allocated_amount <= 0) continue;
+
+            // Parse the allocation key which contains customer_plan_id-installment_number-installment_date
+            $parts = explode('-', trim($allocation_key, '[]'));
+            if (count($parts) !== 3) {
+                throw new Exception("Invalid allocation key format for scheme installment");
+            }
+
+            $customer_plan_id = $parts[0];
+            $installment_number = $parts[1];
+            $installment_date = $parts[2];
+
+            // Get scheme details
+            $schemeQuery = "SELECT cgp.*, gp.plan_name, gp.min_amount_per_installment, gp.bonus_percentage 
+                          FROM customer_gold_plans cgp 
+                          JOIN gold_saving_plans gp ON cgp.plan_id = gp.id 
+                          WHERE cgp.id = ? AND cgp.customer_id = ?";
+            $schemeStmt = $conn->prepare($schemeQuery);
+            $schemeStmt->bind_param("ii", $customer_plan_id, $customer_id);
+            $schemeStmt->execute();
+            $schemeResult = $schemeStmt->get_result();
+            
+            if ($schemeResult->num_rows === 0) {
+                throw new Exception("Invalid scheme plan ID or customer mismatch");
+            }
+            
+            $scheme = $schemeResult->fetch_assoc();
+            $schemeStmt->close();
+
+            // Fetch current gold rate for 99.99 purity from jewellery_price_config table, filtered by firm_id
+            $goldRateConfigQuery = "SELECT rate FROM jewellery_price_config WHERE purity = '99.99' AND material_type = 'Gold' AND firm_id = ? ORDER BY effective_date DESC LIMIT 1";
+            $goldRateConfigStmt = $conn->prepare($goldRateConfigQuery);
+            if (!$goldRateConfigStmt) {
+                throw new Exception("Gold rate query preparation failed: " . $conn->error);
+            }
+            $goldRateConfigStmt->bind_param("i", $firm_id);
+            $goldRateConfigStmt->execute();
+            $goldRateConfigResult = $goldRateConfigStmt->get_result();
+            
+            if ($goldRateConfigResult && $goldRateConfigResult->num_rows > 0) {
+                $goldRateRow = $goldRateConfigResult->fetch_assoc();
+                $currentGoldRate = floatval($goldRateRow['rate']);
+                logDebug("Fetched current gold rate from jewellery_price_config", ['purity' => '99.99', 'rate' => $currentGoldRate, 'firm_id' => $firm_id]);
+            } else {
+                // Fallback or error if rate not found
+                logError("Gold rate for 99.99 purity not found in jewellery_price_config for firm_id: " . $firm_id . ". Using fallback 1000.");
+                $currentGoldRate = 1000; // Fallback to 1000 if not found
+            }
+            $goldRateConfigStmt->close();
+
+            // Calculate new total amount paid
+            $new_total_paid = $scheme['total_amount_paid'] + $allocated_amount;
+            
+            // Calculate gold accrued based on bonus percentage and fetched gold rate
+            $bonus_percentage = $scheme['bonus_percentage'] / 100;
+            $goldAccrued = ($allocated_amount * (1 + $bonus_percentage)) / $currentGoldRate; // Use fetched rate
+            $new_total_gold = $scheme['total_gold_accrued'] + $goldAccrued;
+
+            // Update scheme details
+            $updateSchemeStmt = $conn->prepare("UPDATE customer_gold_plans 
+                                              SET total_amount_paid = ?, 
+                                                  total_gold_accrued = ?,
+                                                  updated_at = CURDATE()
+                                              WHERE id = ?");
+            $updateSchemeStmt->bind_param("ddi", $new_total_paid, $new_total_gold, $customer_plan_id);
+            $updateSchemeStmt->execute();
+            
+            if ($updateSchemeStmt->affected_rows === 0) {
+                throw new Exception("Failed to update scheme details");
+            }
+            $updateSchemeStmt->close();
+
+            // Insert payment record
+            $reference_type = 'scheme_installment';
+            // Ensure transactions_type is explicitly set to 'credit' for this payment right before binding
+            $transactions_type_for_scheme = 'credit'; // Fresh variable for binding
+
+            // Validate payment method
+            if (empty($payment_method_form)) {
+                throw new Exception("Payment method is required");
+            }
+            
+            // Map payment method to numeric value if needed
+            $payment_type = $payment_method_form; // Store the actual payment method string
+            
+            // Set remarks for this specific scheme installment
+            $payment_remarks_for_scheme = "Scheme Installment Payment for " . htmlspecialchars($scheme['plan_name']);
+
+            logDebug("Preparing scheme payment record for binding", [
+                'reference_type' => $reference_type,
+                'transactions_type' => $transactions_type_for_scheme, // Log the new variable
+                'payment_type' => $payment_type,
+                'payment_remarks' => $payment_remarks_for_scheme
+            ]);
+            
+            $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
+            if (!$insertPaymentStmt) {
+                throw new Exception("Payment insert preparation failed: " . $conn->error);
+            }
+
+            // Corrected bind_param types: issiisdsssssi
+            $insertPaymentStmt->bind_param("issiisdsssssi",
+                $customer_plan_id,           // reference_id (i)
+                $reference_type,             // reference_type (s)
+                $party_type,                 // party_type (s)
+                $customer_id,                // party_id (i)
+                $customer_plan_id,           // sale_id (i)
+                $payment_type,               // payment_type (s)
+                $allocated_amount,           // amount (d)
+                $notes,                      // payment_notes (s)
+                $reference_no,               // reference_no (s)
+                $payment_remarks_for_scheme, // remarks (s) - Now correctly set inside loop
+                $created_at,                 // created_at (s)
+                $transactions_type_for_scheme, // transctions_type (s) - New variable
+                $firm_id                     // Firm_id (i)
+            );
+            
+            $executeSuccess = $insertPaymentStmt->execute();
+            
+            if (!$executeSuccess) {
+                logError("Failed to execute scheme payment insertion", [
+                    'stmt_error' => $insertPaymentStmt->error,
+                    'stmt_errno' => $insertPaymentStmt->errno,
+                    'customer_plan_id' => $customer_plan_id,
+                    'reference_type' => $reference_type,
+                    'party_type' => $party_type,
+                    'customer_id' => $customer_id,
+                    'payment_type' => $payment_type,
+                    'allocated_amount' => $allocated_amount,
+                    'notes' => $notes,
+                    'reference_no' => $reference_no,
+                    'payment_remarks' => $payment_remarks_for_scheme,
+                    'created_at' => $created_at,
+                    'transactions_type' => $transactions_type_for_scheme,
+                    'firm_id' => $firm_id
+                ]);
+                throw new Exception("Failed to insert scheme payment record: " . $insertPaymentStmt->error);
+            }
+            
+            logDebug("Scheme payment record inserted", [
+                'customer_plan_id' => $customer_plan_id,
+                'affected_rows' => $insertPaymentStmt->affected_rows,
+                'insert_id' => $insertPaymentStmt->insert_id,
+                'allocated_amount' => $allocated_amount
+            ]);
+            
+            if ($insertPaymentStmt->affected_rows === 0) {
+                throw new Exception("Failed to insert scheme payment record - no rows affected");
+            }
+            
+            $paymentRecordIds[] = $insertPaymentStmt->insert_id;
+            $insertPaymentStmt->close();
+
+            $processedAllocations[] = [
+                'customer_plan_id' => $customer_plan_id,
+                'plan_name' => $scheme['plan_name'],
+                'allocated_amount' => $allocated_amount,
+                'gold_accrued' => $goldAccrued,
+                'new_total_paid' => $new_total_paid,
+                'new_total_gold' => $new_total_gold
+            ];
+        }
+    } else if ($payment_type_form === 'Loan EMI') {
+        logDebug("Processing Loan EMI payment", [
+            'customer_id' => $customer_id,
+            'payment_amount' => $total_payment_amount,
+            'notes' => $notes
+        ]);
+
         // Handle other payment types (Loan EMI, Scheme Installment, etc.)
-        $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
         if (!$insertPaymentStmt) {
             throw new Exception("Payment insert preparation failed: " . $conn->error);
@@ -310,7 +499,8 @@ try {
 
         $reference_id = NULL;
         $sale_id = 0;
-        $payment_remarks = "General payment - " . $payment_type_form;
+        $payment_remarks_general = "General payment - " . $payment_type_form; // New variable for general remarks
+        $transactions_type_general = $transactions_type; // New variable for general transactions_type
 
         $insertPaymentStmt->bind_param("issisdsssssii",
             $reference_id,
@@ -322,9 +512,52 @@ try {
             $total_payment_amount,
             $notes,
             $reference_no,
-            $payment_remarks,
+            $payment_remarks_general, // Use new remarks variable
             $created_at,
-            $transactions_type,
+            $transactions_type_general, // Use new transactions_type variable
+            $firm_id
+        );
+        
+        $insertPaymentStmt->execute();
+        
+        logDebug("General payment record inserted", [
+            'affected_rows' => $insertPaymentStmt->affected_rows,
+            'insert_id' => $insertPaymentStmt->insert_id,
+            'amount' => $total_payment_amount
+        ]);
+        
+        if ($insertPaymentStmt->affected_rows === 0) {
+            throw new Exception("Failed to insert payment record");
+        }
+        $insertPaymentStmt->close();
+    } else {
+        logDebug("Processing non-Sale Due payment or no allocations");
+        
+        // Handle other payment types (Loan EMI, Scheme Installment, etc.)
+        $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
+        if (!$insertPaymentStmt) {
+            throw new Exception("Payment insert preparation failed: " . $conn->error);
+        }
+
+        $reference_id = NULL;
+        $sale_id = 0;
+        $payment_remarks_general = "General payment - " . $payment_type_form; // New variable for general remarks
+        $transactions_type_general = $transactions_type; // New variable for general transactions_type
+
+        $insertPaymentStmt->bind_param("issisdsssssii",
+            $reference_id,
+            $payment_type_form,
+            $party_type,
+            $customer_id,
+            $sale_id,
+            $payment_method_form,
+            $total_payment_amount,
+            $notes,
+            $reference_no,
+            $payment_remarks_general, // Use new remarks variable
+            $created_at,
+            $transactions_type_general, // Use new transactions_type variable
             $firm_id
         );
         
@@ -358,7 +591,13 @@ try {
         'payment_method' => $payment_method_form
     ]);
     
-    header("Location: customer_details.php?id=" . $customer_id . "&success=" . urlencode($success_message));
+    // Send JSON response
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'message' => $success_message
+    ]);
+    exit();
 
 } catch (Exception $e) {
     // Rollback transaction
@@ -366,11 +605,17 @@ try {
     logError("Transaction rolled back due to error", [
         'error_message' => $e->getMessage(),
         'error_file' => $e->getFile(),
-        'error_line' => $e->getLine()
+        'error_line' => $e->getLine(),
+        'error_trace' => $e->getTraceAsString()
     ]);
     
-    $error_message = "Payment processing failed: " . $e->getMessage();
-    header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode($error_message));
+    // Send JSON error response
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => false,
+        'message' => "Payment processing failed: " . $e->getMessage()
+    ]);
+    exit();
 }
 
 $conn->close();

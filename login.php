@@ -85,7 +85,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                             $_SESSION["loggedin"] = true;
                             $_SESSION["id"] = $id;
                             $_SESSION["username"] = $username;
-                            $_SESSION["firm_id"] = $firmID;
+                            $_SESSION["firmID"] = $firmID;
                             $_SESSION["role"] = $role;
 
                             // Set remember me cookie if checked

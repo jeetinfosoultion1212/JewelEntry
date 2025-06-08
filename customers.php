@@ -73,24 +73,39 @@ if (count($customers) > 0) {
 
 // Fetch Gold Saving Plan Installment due for current month for these customers
 $goldDues = [];
+$goldPlanDetails = [];
 if (count($customers) > 0) {
-    $planQuery = "SELECT id, customer_id FROM customer_gold_plans WHERE customer_id IN ($ids) AND current_status = 'active'";
+    $planQuery = "SELECT 
+        cgp.id as plan_id,
+        cgp.customer_id,
+        cgp.enrollment_date,
+        cgp.maturity_date,
+        cgp.total_amount_paid,
+        cgp.total_gold_accrued,
+        gp.plan_name,
+        gp.duration_months,
+        gp.min_amount_per_installment,
+        gp.installment_frequency,
+        gp.bonus_percentage,
+        DATEDIFF(CURDATE(), cgp.enrollment_date) as days_enrolled,
+        DATEDIFF(cgp.maturity_date, CURDATE()) as days_remaining,
+        FLOOR(DATEDIFF(CURDATE(), cgp.enrollment_date) / 30) as months_completed,
+        gp.duration_months - FLOOR(DATEDIFF(CURDATE(), cgp.enrollment_date) / 30) as months_remaining,
+        FLOOR(cgp.total_amount_paid / gp.min_amount_per_installment) as installments_paid,
+        gp.duration_months - FLOOR(cgp.total_amount_paid / gp.min_amount_per_installment) as installments_remaining
+    FROM customer_gold_plans cgp 
+    JOIN gold_saving_plans gp ON gp.id = cgp.plan_id 
+    WHERE cgp.customer_id IN ($ids) AND cgp.current_status = 'active'";
+    
     $planResult = $conn->query($planQuery);
-    $planMap = [];
     if ($planResult) {
         while ($row = $planResult->fetch_assoc()) {
-            $planMap[$row['id']] = $row['customer_id'];
-        }
-    }
-    if (count($planMap) > 0) {
-        $planIds = implode(',', array_map('intval', array_keys($planMap)));
-        $installmentQuery = "SELECT customer_plan_id, SUM(min_amount_per_installment) as gold_due FROM gold_saving_plans gp JOIN customer_gold_plans cgp ON gp.id = cgp.plan_id WHERE cgp.id IN ($planIds) AND cgp.current_status = 'active' GROUP BY cgp.id";
-        $installmentResult = $conn->query($installmentQuery);
-        if ($installmentResult) {
-            while ($row = $installmentResult->fetch_assoc()) {
-                $customer_id = $planMap[$row['customer_plan_id']];
-                $goldDues[$customer_id] = ($goldDues[$customer_id] ?? 0) + $row['gold_due'];
-            }
+            $customer_id = $row['customer_id'];
+            $goldPlanDetails[$customer_id][] = $row;
+            
+            // Calculate monthly due amount
+            $monthlyDue = $row['min_amount_per_installment'];
+            $goldDues[$customer_id] = ($goldDues[$customer_id] ?? 0) + $monthlyDue;
         }
     }
 }
@@ -388,6 +403,38 @@ $totalGoldDue = count($goldDues);
                             </span>
                         <?php endif; ?>
                     </div>
+
+                    <!-- Gold Plan Details -->
+                    <?php if (isset($goldPlanDetails[$id])): ?>
+                        <div class="mt-2 space-y-1">
+                            <?php foreach ($goldPlanDetails[$id] as $plan): ?>
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-2">
+                                    <div class="flex justify-between items-start">
+                                        <div class="flex-1">
+                                            <p class="text-xs font-medium text-amber-800"><?= htmlspecialchars($plan['plan_name']) ?></p>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <span class="text-[10px] text-amber-600">
+                                                    <i class="fas fa-calendar-check mr-1"></i><?= $plan['installments_paid'] ?>/<?= $plan['duration_months'] ?> paid
+                                                </span>
+                                                <span class="text-[10px] text-amber-600">
+                                                    <i class="fas fa-clock mr-1"></i><?= $plan['months_remaining'] ?>m left
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-xs font-semibold text-amber-800">₹<?= number_format($plan['min_amount_per_installment'], 0) ?></p>
+                                            <p class="text-[10px] text-amber-600">per month</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-1">
+                                        <div class="w-full bg-amber-200 rounded-full h-1">
+                                            <div class="bg-amber-500 h-1 rounded-full" style="width: <?= ($plan['installments_paid'] / $plan['duration_months']) * 100 ?>%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </a>
