@@ -290,6 +290,14 @@ if ($hasFeatureAccess) {
     $totalBookingsStmt->execute();
     $totalBookingsResult = $totalBookingsStmt->get_result()->fetch_assoc();
     $totalBookings = $totalBookingsResult['total_bookings'] ?? 0;
+
+    // Add this for active loans
+    $activeLoansQuery = "SELECT COUNT(*) as total_active_loans FROM loans WHERE firm_id = ? AND current_status = 'active'";
+    $activeLoansStmt = $conn->prepare($activeLoansQuery);
+    $activeLoansStmt->bind_param("i", $firm_id);
+    $activeLoansStmt->execute();
+    $activeLoansResult = $activeLoansStmt->get_result()->fetch_assoc();
+    $totalActiveLoans = $activeLoansResult['total_active_loans'] ?? 0;
 }
 
 $rates = [];
@@ -799,6 +807,26 @@ if (empty(trim($marqueeText))) {
                 </div>
                 <?php endif; ?>
 
+                <!-- Gold Loan Module (moved up) -->
+                <div class="menu-card menu-gradient-amber rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
+                     data-module-id="gold_loan" 
+                     onclick="<?php echo $hasFeatureAccess ? 'window.location.href=\'loans.php\'' : 'showFeatureLockedModal()'; ?>"
+                     style="cursor: pointer;">
+                    <?php if (!$hasFeatureAccess): ?>
+                        <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                            <i class="fas fa-lock text-white text-lg"></i>
+                        </div>
+                    <?php endif; ?>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20" onclick="event.stopPropagation();">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-hand-holding-usd text-amber-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Gold Loan</h3>
+                    <p class="text-xs mt-1"><span class="text-amber-600 font-bold"><?php echo $hasFeatureAccess ? $totalActiveLoans : '**'; ?> Active</span></p>
+                </div>
+
                 <!-- Sales Module -->
                 <?php if ($hasFeatureAccess): ?>
                 <a href="sale-entry.php" class="menu-card menu-gradient-green rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
@@ -918,24 +946,6 @@ if (empty(trim($marqueeText))) {
                     </div>
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Repairs</h3>
                     <p class="text-xs mt-1"><span class="text-gray-500 font-bold">Premium Feature</span></p>
-                </div>
-
-                <!-- Gold Loan Module -->
-                <div class="menu-card menu-gradient-amber rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
-                     data-module-id="gold_loan" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
-                    <?php if (!$hasFeatureAccess): ?>
-                        <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
-                            <i class="fas fa-lock text-white text-lg"></i>
-                        </div>
-                    <?php endif; ?>
-                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
-                        <i class="far fa-star text-base"></i>
-                    </button>
-                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
-                        <i class="fas fa-hand-holding-usd text-amber-600 text-xs"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-800 text-xs mt-1">Gold Loan</h3>
-                    <p class="text-xs mt-1"><span class="text-amber-600 font-bold"><?php echo $hasFeatureAccess ? $totalLoanSchemes : '**'; ?> Schemes</span></p>
                 </div>
 
                 <!-- Bookings Module -->

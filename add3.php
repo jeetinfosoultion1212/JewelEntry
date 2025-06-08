@@ -568,52 +568,14 @@ if ($conn->connect_error) {
       </div>
       
       <!-- Material Details Section -->
-      <div class="section-card material-section">
+      <div class="section-card material-section mb-1">
         <div class="section-title text-amber-800">
-          <i class="fas fa-coins y-3"></i> Material Details
+          <i class="fas fa-coins"></i> Material Details
         </div>
-        <div class="field-row">
-          <div class="field-col">
-            <div class="field-label">Material</div>
-            <div class="field-container">
-              <select id="materialType" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-amber-200 rounded-md field-input-icon">
-                <option value="Gold" selected>Gold</option>
-                <option value="Silver">Silver</option>
-                <option value="Platinum">Platinum</option>
-                <option value="White Gold">White Gold</option>
-                <option value="Rose Gold">Rose Gold</option>
-              </select>
-              <i class="fas fa-coins field-icon text-amber-500"></i>
-            </div>
-          </div>
-          <div class="field-col">
-            <div class="field-label">Jewelry Type</div>
-            <div class="field-container relative">
-              <input type="text" id="jewelryType" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-purple-200 rounded-md" placeholder="Type to search..." autocomplete="off" />
-              <i class="fas fa-ring field-icon text-purple-500"></i>
-              <div id="jewelryTypeSuggestions" class="suggestions-container absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto hidden"></div>
-            </div>
-          </div>
-          <div class="field-col">
-            <div class="field-label">Quantity</div>
-            <div class="field-container">
-              <input type="number" id="quantity" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" value="1" min="1" />
-              <i class="fas fa-hashtag field-icon text-blue-500"></i>
-            </div>
-          </div>
-          <div class="field-col">
-            <div class="field-label">Tray No.</div>
-            <div class="field-container">
-              <input type="text" id="trayNumber" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-green-200 rounded-md" placeholder="Enter tray number" />
-              <i class="fas fa-box field-icon text-green-500"></i>
-            </div>
-          </div>
-        </div>
-
-        <div class="field-row">
+        <div class="field-grid grid-cols-3 gap-2">
           <div class="field-col">
             <div class="field-label">Product Name</div>
-            <div class="field-container relative">
+            <div class="field-container">
               <input type="text" id="productName" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-gray-200 rounded-md" placeholder="Type to search...">
               <i class="fas fa-tag field-icon text-blue-500"></i>
               <div id="productNameSuggestions" class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg hidden max-h-48 overflow-y-auto"></div>
@@ -633,6 +595,23 @@ if ($conn->connect_error) {
               <i class="fas fa-certificate field-icon text-amber-500"></i>
             </div>
           </div>
+        </div>
+
+        <div class="field-grid grid-cols-3 gap-2 mt-2">
+          <div class="field-col">
+            <div class="field-label">Quantity</div>
+            <div class="field-container">
+              <input type="number" id="quantity" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" value="1" min="1" />
+              <i class="fas fa-hashtag field-icon text-blue-500"></i>
+            </div>
+          </div>
+          <div class="field-col">
+            <div class="field-label">Tray No.</div>
+            <div class="field-container">
+              <input type="text" id="trayNumber" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-green-200 rounded-md" placeholder="Enter tray number" />
+              <i class="fas fa-box field-icon text-green-500"></i>
+            </div>
+          </div>
           <div class="field-col">
             <div class="field-label">HUID</div>
             <div class="field-container">
@@ -641,42 +620,32 @@ if ($conn->connect_error) {
             </div>
           </div>
         </div>
-
-        <!-- Inventory Update Checkbox -->
-        <div class="field-row mt-2">
-          <div class="field-col">
-            <label class="flex items-center space-x-2 cursor-pointer">
-              <input type="checkbox" id="updateInventory" class="form-checkbox h-4 w-4 text-purple-600 rounded border-purple-300 focus:ring-purple-500" checked />
-              <span class="text-sm text-gray-700">Update Inventory Metal (FIFO Method)</span>
-            </label>
-          </div>
-        </div>
       </div>
 
       <!-- Weight Details Section -->
-      <div class="section-card weight-section">
+      <div class="section-card weight-section mb-1">
         <div class="section-title text-blue-800">
           <i class="fas fa-weight-scale"></i> Weight Details
         </div>
-        <div class="field-row">
+        <div class="field-grid grid-cols-3 gap-2">
           <div class="field-col">
             <div class="field-label">Gross Weight (g)</div>
             <div class="field-container">
-               <input type="number" id="grossWeight" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" placeholder="Gross wt" step="0.01" onchange="calculateNetWeight()" onkeyup="calculateNetWeight()" />
+              <input type="number" id="grossWeight" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" placeholder="Gross wt" step="0.01" value="0" />
               <i class="fas fa-weight-scale field-icon text-blue-500"></i>
             </div>
           </div>
           <div class="field-col">
             <div class="field-label">Less Weight (g)</div>
             <div class="field-container">
-               <input type="number" id="lessWeight" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" placeholder="Less wt" step="0.01" onchange="calculateNetWeight()" onkeyup="calculateNetWeight()" />
+              <input type="number" id="lessWeight" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" placeholder="Less wt" step="0.01" value="0" />
               <i class="fas fa-minus-circle field-icon text-red-500"></i>
             </div>
           </div>
           <div class="field-col">
             <div class="field-label">Net Weight (g)</div>
             <div class="field-container">
-               <input type="number" id="netWeight" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" placeholder="Net wt" step="0.01" readonly />
+              <input type="number" id="netWeight" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" placeholder="Net wt" step="0.01" value="0" readonly />
               <i class="fas fa-balance-scale field-icon text-green-500"></i>
             </div>
           </div>

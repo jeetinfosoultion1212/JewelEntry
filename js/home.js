@@ -567,7 +567,6 @@ function initializeFeatureControls() {
     suppliers: "suppliers.php",
     testing: "testing.php",
     security: "security.php",
-    loans: "loans.php",
     bookings: "bookings.php",
     alerts: "alerts.php",
     settings: "settings.php",
