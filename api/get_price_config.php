@@ -13,7 +13,11 @@ $current_firm_id = $_SESSION['firmID'];
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "jewelentry"; // Use your actual database name
+$dbname = "jewelentryapp"; // Updated database name
+
+// Prevent HTML errors from being displayed
+error_reporting(0);
+ini_set('display_errors', 0);
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 

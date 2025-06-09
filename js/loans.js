@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     const collateralItemsContainer = document.getElementById('collateralItemsContainer');
     const addCollateralItemBtn = document.getElementById('addCollateralItemBtn');
 
+    // Customer Search and Dropdown Functionality
+    let customerSearchTimeout;
+    const customerNameInput = document.getElementById('customerName');
+    const customerDropdown = document.getElementById('customerDropdown');
+    let selectedCustomerId = null;
+
     // Utility Functions
     function dataURLtoBlob(dataurl) {
         try {
@@ -528,6 +534,210 @@ document.addEventListener('DOMContentLoaded', async function() {
             collateralValueElement.value = totalCollateralValue.toFixed(2);
         }
     }
+
+    // Customer Search and Dropdown Functionality
+    function searchCustomers(query) {
+        if (query.length < 2) {
+            customerDropdown.innerHTML = '';
+            customerDropdown.classList.add('hidden');
+            return;
+        }
+
+        fetch(`api/search_customers.php?term=${encodeURIComponent(query)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(customers => {
+                if (customers.length > 0) {
+                    customerDropdown.innerHTML = customers.map(customer => `
+                        <div class="customer-item p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0" 
+                             data-customer-id="${customer.id}">
+                            <div class="font-medium text-sm text-gray-800">${customer.name}</div>
+                            <div class="text-xs text-gray-600">${customer.phone || 'No phone'}</div>
+                            <div class="text-xs text-gray-500">${customer.address || 'No address'}</div>
+                        </div>
+                    `).join('');
+                    customerDropdown.classList.remove('hidden');
+                } else {
+                    customerDropdown.innerHTML = '<div class="p-2 text-sm text-gray-500">No customers found</div>';
+                    customerDropdown.classList.remove('hidden');
+                }
+            })
+            .catch(error => {
+                console.error('Error searching customers:', error);
+                showToast('Error searching customers', 'error');
+                customerDropdown.classList.add('hidden');
+            });
+    }
+
+    function selectCustomer(customerId, customerName, customerPhone, customerAddress) {
+        selectedCustomerId = customerId;
+        customerNameInput.value = customerName;
+        customerDropdown.classList.add('hidden');
+        
+        // Update customer info display
+        document.getElementById('customerNameDisplay').textContent = customerName;
+        document.getElementById('customerPhoneDisplay').textContent = customerPhone || 'N/A';
+        document.getElementById('customerInfoDisplay').classList.remove('hidden');
+    }
+
+    // Event Listeners for Customer Search
+    customerNameInput.addEventListener('input', (e) => {
+        clearTimeout(customerSearchTimeout);
+        customerSearchTimeout = setTimeout(() => {
+            searchCustomers(e.target.value);
+        }, 300);
+    });
+
+    customerDropdown.addEventListener('click', (e) => {
+        const customerItem = e.target.closest('.customer-item');
+        if (customerItem) {
+            const customerId = customerItem.dataset.customerId;
+            const customerName = customerItem.querySelector('.font-medium').textContent;
+            const customerPhone = customerItem.querySelector('.text-gray-600').textContent;
+            const customerAddress = customerItem.querySelector('.text-gray-500').textContent;
+            selectCustomer(customerId, customerName, customerPhone, customerAddress);
+        }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!customerNameInput.contains(e.target) && !customerDropdown.contains(e.target)) {
+            customerDropdown.classList.add('hidden');
+        }
+    });
+
+    // Form Submission Handler
+    document.getElementById('loanForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        // Validate customer selection
+        if (!selectedCustomerId) {
+            showToast('Please select a customer', 'error');
+            return;
+        }
+
+        // Get form data
+        const formData = {
+            customerId: selectedCustomerId,
+            loanAmount: parseFloat(document.getElementById('loanAmount').value),
+            interestRate: parseFloat(document.getElementById('interestRate').value),
+            loanDuration: parseInt(document.getElementById('loanDuration').value),
+            startDate: document.getElementById('startDate').value,
+            collateralItems: []
+        };
+
+        // Validate required fields
+        if (!formData.loanAmount || !formData.interestRate || !formData.loanDuration || !formData.startDate) {
+            showToast('Please fill in all required fields', 'error');
+            return;
+        }
+
+        // Get collateral items
+        const collateralItems = document.querySelectorAll('.collateral-item');
+        if (collateralItems.length === 0) {
+            showToast('Please add at least one collateral item', 'error');
+            return;
+        }
+
+        let hasCollateralItemError = false;
+        // Change to for...of loop to allow early exit
+        for (const item of collateralItems) {
+            console.log('Processing collateral item:', item);
+            console.log('Item HTML:', item.innerHTML);
+            const materialTypeElement = item.querySelector('.material-type');
+            const purityInput = item.querySelector('.purity-input');
+            const weightInput = item.querySelector('.weight-input');
+            const rateDisplay = item.querySelector('.rate-display');
+            const calculatedValueElement = item.querySelector('.calculated-value');
+
+            // Log the elements right before the check
+            console.log('materialTypeElement:', materialTypeElement);
+            console.log('purityInput:', purityInput);
+            console.log('weightInput:', weightInput);
+            console.log('rateDisplay:', rateDisplay);
+            console.log('calculatedValueElement:', calculatedValueElement);
+
+            if (!materialTypeElement || !purityInput || !weightInput || !rateDisplay || !calculatedValueElement) {
+                console.error('Missing expected input field in collateral item. Element details:', {
+                    materialTypeElement: materialTypeElement,
+                    purityInput: purityInput,
+                    weightInput: weightInput,
+                    rateDisplay: rateDisplay,
+                    calculatedValueElement: calculatedValueElement
+                });
+                showToast('A collateral item is missing required fields. Please ensure all fields are filled.', 'error');
+                hasCollateralItemError = true;
+                break; // Exit the loop immediately
+            }
+
+            const materialType = materialTypeElement.value;
+            // Log purityInput before accessing its value
+            console.log('purityInput before value access:', purityInput);
+            const purity = parseFloat(purityInput.value);
+            const weight = parseFloat(weightInput.value);
+            const ratePerGram = parseFloat(rateDisplay.value);
+            const calculatedValue = parseFloat(calculatedValueElement.value);
+            const description = item.querySelector('.description').value;
+            const imagePreviewElement = item.querySelector('.collateral-image-preview');
+            const imagePath = (imagePreviewElement && imagePreviewElement.src) ? imagePreviewElement.src : null;
+
+            // Basic validation for collateral item values
+            if (!materialType || isNaN(purity) || isNaN(weight) || isNaN(ratePerGram) || isNaN(calculatedValue)) {
+                showToast('Please fill in all collateral item details with valid numbers.', 'error');
+                hasCollateralItemError = true;
+                break; // Exit the loop immediately
+            }
+
+            formData.collateralItems.push({
+                materialType,
+                purity,
+                weight,
+                ratePerGram,
+                calculatedValue,
+                description,
+                imagePath
+            });
+        }
+
+        if (hasCollateralItemError) {
+            return; // Stop submission if any collateral item had an error
+        }
+
+        try {
+            const response = await fetch('api/create_loan.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            showToast('Loan created successfully!', 'success');
+            
+            // Reset form
+            this.reset();
+            selectedCustomerId = null;
+            document.getElementById('customerInfoDisplay').classList.add('hidden');
+            document.getElementById('collateralItemsContainer').innerHTML = '';
+            
+            // Add one empty collateral item
+            addCollateralItem();
+
+        } catch (error) {
+            console.error('Error creating loan:', error);
+            showToast(error.message || 'Error creating loan', 'error');
+        }
+    });
 
     // Initialize everything
     async function initialize() {

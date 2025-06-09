@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+@layer components {
+  .header-gradient {
+    @apply bg-gradient-to-r from-blue-600 to-indigo-600;
+  }
+  
+  .enhanced-header {
+    @apply flex justify-between items-center px-4 py-2;
+  }
+  
+  .user-info {
+    @apply flex items-center gap-3;
+  }
+  
+  .user-avatar {
+    @apply w-8 h-8 rounded-full object-cover;
+  }
+  
+  .tab-btn {
+    @apply transition-colors duration-200;
+  }
+  
+  .tab-active {
+    @apply text-blue-600 border-b-2 border-blue-600;
+  }
+  
+  .bottom-nav {
+    @apply bg-white border-t border-gray-200;
+  }
+  
+  .nav-btn {
+    @apply transition-all duration-300;
+  }
+  
+  .nav-btn.active {
+    @apply text-blue-600;
+  }
+  
+  .nav-btn.active .w-8 {
+    @apply bg-blue-100;
+  }
+  
+  .nav-btn.active i {
+    @apply text-blue-600;
+  }
+  
+  .nav-btn.active span {
+    @apply text-blue-600;
+  }
+} 

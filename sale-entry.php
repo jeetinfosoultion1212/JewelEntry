@@ -247,7 +247,7 @@ if (isset($_GET['action'])) {
    if ($action == 'searchCustomers') {
        $search = $_GET['term'];
        $sql = "SELECT c.id, c.FirstName, c.LastName, c.PhoneNumber, c.Email, c.Address 
-               FROM Customer c
+               FROM customer c
                WHERE c.firm_id = ? AND (c.FirstName LIKE ? OR c.LastName LIKE ? OR c.PhoneNumber LIKE ?)
                LIMIT 10";
        
@@ -427,7 +427,7 @@ if (isset($_GET['action'])) {
            $conn->begin_transaction();
            
            // Insert new customer
-           $sql = "INSERT INTO Customer (firm_id, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
+           $sql = "INSERT INTO customer (firm_id, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
            
            $stmt = $conn->prepare($sql);
@@ -1279,10 +1279,10 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
      <!-- Material Details Section -->
      <div class="section-card material-section bg">
        <div class="section-title text-amber-800">
-         <i class="fas fa-coins"></i> Material Details
+         <i class="fas fa-coins y-3"></i> Material Details
        </div>
-       
-       <div class="field-grid grid-cols-3 gap-2">
+      
+       <div class="field-row">
          <div class="field-col">
            <div class="field-label">Product Name</div>
            <div class="field-container">
@@ -1298,7 +1298,17 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
              <i class="fas fa-fingerprint field-icon text-blue-500"></i>
            </div>
          </div>
-
+       </div>
+       
+       <div class="field-row">
+         <div class="field-col">
+           <div class="field-label">24K Rate (₹/g)</div>
+           <div class="field-container">
+             <input type="number" id="rate24k" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-amber-200 rounded-md" placeholder="24K rate" value="9810" step="1" />
+             <i class="fas fa-rupee-sign field-icon text-amber-500"></i>
+           </div>
+         </div>
+         
          <div class="field-col">
            <div class="field-label">Purity</div>
            <div class="field-container">
@@ -1313,29 +1323,11 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
              <i class="fas fa-certificate field-icon text-amber-500"></i>
            </div>
          </div>
-       </div>
-       
-       <div class="field-grid grid-cols-3 gap-2 mt-2">
-         <div class="field-col">
-           <div class="field-label">24K Rate (₹/g)</div>
-           <div class="field-container">
-             <input type="number" id="rate24k" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-amber-200 rounded-md" placeholder="24K rate" value="9810" step="1" />
-             <i class="fas fa-rupee-sign field-icon text-amber-500"></i>
-           </div>
-         </div>
          
          <div class="field-col">
            <div class="field-label">Purity Rate (₹/g)</div>
            <div class="field-container">
              <input type="number" id="purityRate" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-amber-200 rounded-md" placeholder="Calculated rate" value="8986" readonly />
-             <i class="fas fa-rupee-sign field-icon text-amber-500"></i>
-           </div>
-         </div>
-
-         <div class="field-col">
-           <div class="field-label">Making Charges (₹/g)</div>
-           <div class="field-container">
-             <input type="number" id="makingCharges" class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-amber-200 rounded-md" placeholder="Making charges" value="0" step="1" />
              <i class="fas fa-rupee-sign field-icon text-amber-500"></i>
            </div>
          </div>
@@ -1347,7 +1339,7 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
        <div class="section-title text-blue-800">
          <i class="fas fa-weight-scale"></i> Weight Details
        </div>
-       <div class="field-grid grid-cols-3 gap-2">
+       <div class="field-row">
          <div class="field-col">
            <div class="field-label">Gross Weight (g)</div>
            <div class="field-container">
@@ -1369,15 +1361,113 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
              <i class="fas fa-balance-scale field-icon text-green-500"></i>
            </div>
          </div>
+         <div class="field-col">
+           <div class="field-label">Metal Amount (₹)</div>
+           <div class="field-container">
+             <input type="number" id="metalAmount" 
+               class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-blue-200 rounded-md" 
+               placeholder="Metal amount" value="0" readonly />
+             <i class="fas fa-rupee-sign field-icon text-blue-500"></i>
+           </div>
+         </div>
        </div>
      </div>
 
-     <!-- Charges Section -->
-     <div class="section-card charges-section">
-       <div class="section-title text-green-800">
-         <i class="fas fa-calculator"></i> Additional Charges
+     <!-- Stone Details Section -->
+     <div class="section-card stone-section">
+       <div class="section-title text-purple-800">
+         <i class="fas fa-gem"></i> Stone Details
        </div>
-       <div class="field-grid grid-cols-3 gap-2">
+       <div class="field-row">
+         <div class="field-col">
+           <div class="field-label">Stone Type</div>
+           <div class="field-container">
+             <select id="stoneType" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-purple-200 rounded-md">
+               <option value="None">None</option>
+               <option value="Diamond" selected>Diamond</option>
+               <option value="Ruby">Ruby</option>
+               <option value="Emerald">Emerald</option>
+               <option value="Sapphire">Sapphire</option>
+             </select>
+             <i class="fas fa-gem field-icon text-purple-500"></i>
+           </div>
+         </div>
+         
+         <div class="field-col">
+           <div class="field-label">Stone Weight</div>
+           <div class="field-container">
+             <input type="number" 
+               id="stoneWeight" 
+               class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-purple-200 rounded-md" 
+               placeholder="Stone weight" 
+               value="0"
+               step="0.01"
+               min="0" />
+             <i class="fas fa-weight-scale field-icon text-purple-500"></i>
+           </div>
+         </div>
+         
+         <div class="field-col">
+           <div class="field-label">Stone Price (₹)</div>
+           <div class="field-container">
+             <input type="number" 
+               id="stonePrice" 
+               class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-purple-200 rounded-md" 
+               placeholder="Stone price" 
+               value="0"
+               step="100" />
+             <i class="fas fa-rupee-sign field-icon text-purple-500"></i>
+           </div>
+         </div>
+       </div>
+     </div>
+
+     <!-- Making Charges Section -->
+     <div class="section-card making-section">
+       <div class="section-title text-green-800">
+         <i class="fas fa-hammer"></i> Making Charges
+       </div>
+       <div class="field-row">
+         <div class="field-col">
+           <div class="field-label">Making Type</div>
+           <div class="field-container">
+             <select id="makingType" class="input-field text-xs font-bold py-0.5 pl-7 pr-2 h-7 appearance-none bg-white border border-green-200 rounded-md">
+               <option value="per_gram">Per Gram</option>
+               <option value="percentage">Percentage</option>
+               <option value="fixed">Fixed Amount</option>
+             </select>
+             <i class="fas fa-cog field-icon text-green-500"></i>
+           </div>
+         </div>
+         
+         <div class="field-col">
+           <div class="field-label">Making Rate</div>
+           <div class="field-container">
+             <input type="number" 
+               id="makingRate" 
+               class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-green-200 rounded-md" 
+               placeholder="Rate" 
+               value="0"
+               step="1" />
+             <i class="fas fa-rupee-sign field-icon text-green-500"></i>
+           </div>
+         </div>
+         
+         <div class="field-col">
+           <div class="field-label">Making Charges</div>
+           <div class="field-container">
+             <input type="number" 
+               id="makingCharges" 
+               class="input-field text-xs font-bold py-0.5 pl-7 h-7 bg-white border border-green-200 rounded-md" 
+               placeholder="Total" 
+               value="0"
+               readonly />
+             <i class="fas fa-calculator field-icon text-green-500"></i>
+           </div>
+         </div>
+       </div>
+
+       <div class="field-row">
          <div class="field-col">
            <div class="field-label">Hallmark Charges</div>
            <div class="field-container">
