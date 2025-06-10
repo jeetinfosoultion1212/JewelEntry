@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     let currentImageInput = null;
     let currentImagePreview = null;
     let currentImagePreviewContainer = null;
+    let selectedCustomerId = null; // Revert to let, scoped to DOMContentLoaded
 
     // DOM Elements - Camera
     const cameraModal = document.getElementById('cameraModal');
@@ -32,7 +33,19 @@ document.addEventListener('DOMContentLoaded', async function() {
     let customerSearchTimeout;
     const customerNameInput = document.getElementById('customerName');
     const customerDropdown = document.getElementById('customerDropdown');
-    let selectedCustomerId = null;
+
+    // New: Create and append hidden customer ID input
+    const customerIdHiddenInput = document.createElement('input');
+    customerIdHiddenInput.type = 'hidden';
+    customerIdHiddenInput.name = 'customer_id'; // This name must match what the backend expects
+    customerIdHiddenInput.id = 'selectedCustomerIdInput'; // Give it an ID for easy access later
+
+    if (newLoanContent) {
+        newLoanContent.appendChild(customerIdHiddenInput);
+        console.log('Hidden customer_id input appended to newLoanContent.');
+    } else {
+        console.warn('newLoanContent (ID: new-loan) not found. Cannot append hidden customer_id input.');
+    }
 
     // Utility Functions
     function dataURLtoBlob(dataurl) {
@@ -187,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Update button visibility
             if (takePictureBtn) takePictureBtn.classList.add('hidden');
             if (retakePictureBtn) retakePictureBtn.classList.remove('hidden');
-            if (savePictureBtn) savePictureBtn.classList.remove('hidden');
+            if (savePictureBtn) savePictureBtn.classList.add('hidden');
             
             console.log('Picture taken successfully');
         } catch (error) {
@@ -342,7 +355,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     <div class="field-col col-span-2">
                         <div class="field-label">Description</div>
                         <div class="field-container">
-                            <textarea name="collateralItems[${collateralItemIndex}][description]" class="input-field font-xs font-bold py-1 pl-6 pr-1 w-full bg-white border border-green-200 hover:border-green-300 focus:border-green-400 rounded-md" placeholder="e.g., 22k Gold necklace with 5 grams"></textarea>
+                            <textarea name="collateralItems[${collateralItemIndex}][description]" class="input-field font-xs font-bold py-1 pl-6 pr-1 w-full bg-white border border-green-200 hover:border-green-300 focus:border-green-400 rounded-md description" placeholder="e.g., 22k Gold necklace with 5 grams"></textarea>
                             <i class="fas fa-info-circle field-icon text-green-500"></i>
                         </div>
                     </div>
@@ -582,6 +595,23 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('customerNameDisplay').textContent = customerName;
         document.getElementById('customerPhoneDisplay').textContent = customerPhone || 'N/A';
         document.getElementById('customerInfoDisplay').classList.remove('hidden');
+
+        // Update the hidden input field with the selected customer ID
+        const hiddenInput = document.getElementById('selectedCustomerIdInput');
+        if (hiddenInput) {
+            hiddenInput.value = selectedCustomerId;
+            console.log('Hidden customer ID input updated:', hiddenInput.value);
+        } else {
+            console.error('Hidden customer ID input not found (ID: selectedCustomerIdInput). Cannot update its value.');
+        }
+
+        // Add console logging for customer selection
+        console.log('Customer Selected:', {
+            id: customerId,
+            name: customerName,
+            phone: customerPhone,
+            address: customerAddress
+        });
     }
 
     // Event Listeners for Customer Search
@@ -609,135 +639,73 @@ document.addEventListener('DOMContentLoaded', async function() {
             customerDropdown.classList.add('hidden');
         }
     });
-
-    // Form Submission Handler
-    document.getElementById('loanForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        // Validate customer selection
-        if (!selectedCustomerId) {
-            showToast('Please select a customer', 'error');
-            return;
-        }
-
+    document.getElementById('loanForm').addEventListener('submit', function(e) {
+        e.preventDefault(); // Prevent default form submission
+        
         // Get form data
-        const formData = {
-            customerId: selectedCustomerId,
-            loanAmount: parseFloat(document.getElementById('loanAmount').value),
-            interestRate: parseFloat(document.getElementById('interestRate').value),
-            loanDuration: parseInt(document.getElementById('loanDuration').value),
-            startDate: document.getElementById('startDate').value,
-            collateralItems: []
-        };
-
-        // Validate required fields
-        if (!formData.loanAmount || !formData.interestRate || !formData.loanDuration || !formData.startDate) {
-            showToast('Please fill in all required fields', 'error');
-            return;
-        }
-
-        // Get collateral items
-        const collateralItems = document.querySelectorAll('.collateral-item');
-        if (collateralItems.length === 0) {
-            showToast('Please add at least one collateral item', 'error');
-            return;
-        }
-
-        let hasCollateralItemError = false;
-        // Change to for...of loop to allow early exit
-        for (const item of collateralItems) {
-            console.log('Processing collateral item:', item);
-            console.log('Item HTML:', item.innerHTML);
-            const materialTypeElement = item.querySelector('.material-type');
-            const purityInput = item.querySelector('.purity-input');
-            const weightInput = item.querySelector('.weight-input');
-            const rateDisplay = item.querySelector('.rate-display');
-            const calculatedValueElement = item.querySelector('.calculated-value');
-
-            // Log the elements right before the check
-            console.log('materialTypeElement:', materialTypeElement);
-            console.log('purityInput:', purityInput);
-            console.log('weightInput:', weightInput);
-            console.log('rateDisplay:', rateDisplay);
-            console.log('calculatedValueElement:', calculatedValueElement);
-
-            if (!materialTypeElement || !purityInput || !weightInput || !rateDisplay || !calculatedValueElement) {
-                console.error('Missing expected input field in collateral item. Element details:', {
-                    materialTypeElement: materialTypeElement,
-                    purityInput: purityInput,
-                    weightInput: weightInput,
-                    rateDisplay: rateDisplay,
-                    calculatedValueElement: calculatedValueElement
-                });
-                showToast('A collateral item is missing required fields. Please ensure all fields are filled.', 'error');
-                hasCollateralItemError = true;
-                break; // Exit the loop immediately
-            }
-
-            const materialType = materialTypeElement.value;
-            // Log purityInput before accessing its value
-            console.log('purityInput before value access:', purityInput);
-            const purity = parseFloat(purityInput.value);
-            const weight = parseFloat(weightInput.value);
-            const ratePerGram = parseFloat(rateDisplay.value);
-            const calculatedValue = parseFloat(calculatedValueElement.value);
-            const description = item.querySelector('.description').value;
-            const imagePreviewElement = item.querySelector('.collateral-image-preview');
-            const imagePath = (imagePreviewElement && imagePreviewElement.src) ? imagePreviewElement.src : null;
-
-            // Basic validation for collateral item values
-            if (!materialType || isNaN(purity) || isNaN(weight) || isNaN(ratePerGram) || isNaN(calculatedValue)) {
-                showToast('Please fill in all collateral item details with valid numbers.', 'error');
-                hasCollateralItemError = true;
-                break; // Exit the loop immediately
-            }
-
-            formData.collateralItems.push({
-                materialType,
-                purity,
-                weight,
-                ratePerGram,
-                calculatedValue,
-                description,
-                imagePath
-            });
-        }
-
-        if (hasCollateralItemError) {
-            return; // Stop submission if any collateral item had an error
-        }
-
-        try {
-            const response = await fetch('api/create_loan.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-
-            const result = await response.json();
-
-            if (result.error) {
-                throw new Error(result.error);
-            }
-
-            showToast('Loan created successfully!', 'success');
+        const formData = new FormData(this);
+        formData.append('action', 'add_loan');
+        
+        // Show loading state
+        const submitBtn = document.getElementById('createLoanBtn');
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating Loan...';
+        submitBtn.disabled = true;
+        
+        // Send AJAX request
+        fetch('loans.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Reset button state
+            submitBtn.innerHTML = originalBtnText;
+            submitBtn.disabled = false;
             
-            // Reset form
-            this.reset();
-            selectedCustomerId = null;
-            document.getElementById('customerInfoDisplay').classList.add('hidden');
-            document.getElementById('collateralItemsContainer').innerHTML = '';
-            
-            // Add one empty collateral item
-            addCollateralItem();
-
-        } catch (error) {
-            console.error('Error creating loan:', error);
-            showToast(error.message || 'Error creating loan', 'error');
-        }
+            // Show response
+            if (data.success) {
+                // Show success message
+                showToast('success', data.message);
+                // Reset form
+                this.reset();
+                // Clear customer info display
+                document.getElementById('customerInfoDisplay').classList.add('hidden');
+                // Clear collateral items
+                document.getElementById('collateralItemsContainer').innerHTML = '';
+            } else {
+                // Show error message
+                showToast('error', data.message);
+            }
+        })
+        .catch(error => {
+            // Reset button state
+            submitBtn.innerHTML = originalBtnText;
+            submitBtn.disabled = false;
+            // Show error message
+            showToast('error', 'An error occurred while creating the loan');
+            console.error('Error:', error);
+        });
     });
+
+    // Toast notification function
+    function showToast(type, message) {
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+        
+        // Set message and type
+        toastMessage.textContent = message;
+        toast.className = `toast ${type} show`;
+        
+        // Hide after 3 seconds
+        setTimeout(() => {
+            toast.className = 'toast hidden';
+        }, 3000);
+    }
+
+
+
+
 
     // Initialize everything
     async function initialize() {

@@ -547,8 +547,7 @@ if (empty(trim($marqueeText))) {
                             <i class="fas fa-coins text-amber-500 text-[11px]"></i>
                         </div>
                         <?php if ($hasFeatureAccess && $canEditRates): ?>
-                            <button class="rate-edit-btn" onclick="openRateModal('Gold', '99.99', <?php echo isset($rates['Gold']) ? $rates['Gold']['rate'] : '0'; ?>)" 
-                                    class="text-xs text-gray-600 hover:text-gray-800">
+                            <button class="rate-edit-btn" data-metal-type="Gold" data-purity="99.99" data-current-rate="<?php echo isset($rates['Gold']) ? $rates['Gold']['rate'] : '0'; ?>">
                                 <i class="fas fa-edit"></i>
                             </button>
                         <?php else: ?>
@@ -575,8 +574,7 @@ if (empty(trim($marqueeText))) {
                             <i class="fas fa-coins text-slate-500 text-[11px]"></i> 
                         </div>
                         <?php if ($hasFeatureAccess && $canEditRates): ?>
-                            <button class="rate-edit-btn" onclick="openRateModal('Silver', '999.9', <?php echo isset($rates['Silver']) ? $rates['Silver']['rate'] : '0'; ?>)" 
-                                    class="text-xs text-gray-600 hover:text-gray-800">
+                            <button class="rate-edit-btn" data-metal-type="Silver" data-purity="999.9" data-current-rate="<?php echo isset($rates['Silver']) ? $rates['Silver']['rate'] : '0'; ?>">
                                 <i class="fas fa-edit"></i>
                             </button>
                         <?php else: ?>
@@ -810,7 +808,7 @@ if (empty(trim($marqueeText))) {
                 <!-- Gold Loan Module (moved up) -->
                 <div class="menu-card menu-gradient-amber rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
                      data-module-id="gold_loan" 
-                     onclick="<?php echo $hasFeatureAccess ? 'window.location.href=\'loans.php\'' : 'showFeatureLockedModal()'; ?>"
+                     onclick="<?php echo $hasFeatureAccess ? 'window.location.href=\'new_loan_assignment.php\'' : 'showFeatureLockedModal()'; ?>"
                      style="cursor: pointer;">
                     <?php if (!$hasFeatureAccess): ?>
                         <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
@@ -1510,20 +1508,37 @@ if (empty(trim($marqueeText))) {
                     <label class="block text-sm font-medium text-gray-700">Current Rate Source: 
                         <span id="currentRateSourceIndicator" class="font-semibold text-purple-600">Not Set</span>
                     </label>
+                    <p id="mcxLiveRateDisplay" class="text-xs text-gray-500 mt-1 hidden"></p>
                 </div>
                 <div>
-                    <label for="customRateInput" class="block text-sm font-medium text-gray-700">Rate for <span id="customRateModalMetalNamePlaceholder">Metal</span></label>
-                    <input type="number" id="customRateInput" name="rate" class="modal-input" placeholder="Enter rate" step="0.01">
+                    <label for="customRateInput" class="block text-sm font-medium text-gray-700">Enter Rate for <span id="customRateModalMetalNamePlaceholder">Metal</span></label>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" id="customRateInput" name="rate_input_value" class="modal-input flex-grow" placeholder="Enter rate" step="0.01">
+                        <select id="customRateInputUnitSelect" class="modal-input w-28">
+                            <option value="per_10_gram">per 10 Grams</option>
+                            <option value="per_gram">per Gram</option>
+                            <option value="per_kg">per Kg</option>
+                            <option value="per_tola">per Tola</option>
+                            <option value="per_vori">per Vori</option>
+                        </select>
+                    </div>
                 </div>
-                <div>
-                    <label for="customRateUnitSelect" class="block text-sm font-medium text-gray-700">Rate Unit</label>
-                    <select id="customRateUnitSelect" name="unit" class="modal-input">
-                        <option value="gram">per Gram</option>
-                        <option value="10gram">per 10 Grams</option>
-                        <option value="tola">per Tola</option>
-                        <option value="vori">per Vori</option>
-                    </select>
+                <div id="convertedRateDisplay" class="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+                    <h4 class="text-sm font-bold text-gray-800 mb-2">Calculated Rates:</h4>
+                    <div class="grid grid-cols-2 gap-1 text-sm text-gray-700">
+                        <div class="font-medium">Per Gram:</div>
+                        <div class="font-semibold text-right"><span id="calculatedRateValue">0.00</span></div>
+
+                        <div class="font-medium">Per Tola:</div>
+                        <div class="font-semibold text-right"><span id="calculatedRateTolaValue">0.00</span></div>
+
+                        <div class="font-medium">Per Vori:</div>
+                        <div class="font-semibold text-right"><span id="calculatedRateVoriValue">0.00</span></div>
+                    </div>
                 </div>
+                <!-- Hidden input to store the rate in 'gram' for saving -->
+                <input type="hidden" id="modalRateToSave" name="rate" value="">
+                <input type="hidden" name="unit" value="gram"> <!-- Always save as 'gram' -->
                 <div class="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-3">
                     <button type="submit" id="saveCustomRateBtn" class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md shadow-sm transition-colors">
                         <i class="fas fa-save mr-1"></i> Save Custom Rate
@@ -1655,6 +1670,211 @@ if (empty(trim($marqueeText))) {
                 showUpgradeModal();
             }, 2000);
         <?php endif; ?>
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const customRateModal = document.getElementById('customRateModal');
+            const closeCustomRateModalBtn = document.getElementById('closeCustomRateModalBtn');
+            const customRateModalContent = document.getElementById('customRateModalContent');
+            const customRateModalTitle = document.getElementById('customRateModalTitle');
+            const customRateModalMetalNamePlaceholder = document.getElementById('customRateModalMetalNamePlaceholder');
+            const currentRateSourceIndicator = document.getElementById('currentRateSourceIndicator');
+            const customRateInput = document.getElementById('customRateInput');
+            const customRateInputUnitSelect = document.getElementById('customRateInputUnitSelect');
+            const calculatedRateValue = document.getElementById('calculatedRateValue');
+            const modalRateToSave = document.getElementById('modalRateToSave');
+            const clearManualRateBtn = document.getElementById('clearManualRateBtn');
+            const calculatedRateTola = document.getElementById('calculatedRateTolaValue'); // Updated ID
+            const calculatedRateVori = document.getElementById('calculatedRateVoriValue'); // Updated ID
+            const mcxLiveRateDisplay = document.getElementById('mcxLiveRateDisplay'); // New element
+
+            const CONVERSION_RATES = {
+                'per_gram': 1,
+                'per_10_gram': 10,
+                'per_kg': 1000,
+                'per_tola': 11.66,
+                'per_vori': 11.66
+            };
+
+            let currentMetalType = '';
+            let currentPurity = '';
+
+            window.openRateModal = async function(metalType, purity, currentRate) {
+                if (!window.canEditRates) {
+                    showFeatureLockedModal();
+                    return;
+                }
+
+                currentMetalType = metalType;
+                currentPurity = purity;
+
+                customRateModalTitle.textContent = `Set ${metalType} ${purity} Rate`;
+                customRateModalMetalNamePlaceholder.textContent = `${metalType} ${purity}`;
+
+                // Always set input to currentRate (which is in per gram) and convert to per 10 gram for initial display.
+                // If currentRate is 0, leave blank.
+                if (currentRate > 0) {
+                    customRateInput.value = (currentRate * CONVERSION_RATES['per_10_gram']).toFixed(2);
+                    customRateInputUnitSelect.value = 'per_10_gram'; // Set unit to per 10 gram if current rate exists
+                } else {
+                    customRateInput.value = ''; // Clear input if no rate is set
+                    customRateInputUnitSelect.value = 'per_10_gram'; // Default to per 10 gram
+                }
+                
+                // Attempt to fetch MCX rate for Gold 99.99
+                if (metalType === 'Gold' && purity === '99.99') {
+                    currentRateSourceIndicator.textContent = 'Fetching MCX...';
+                    mcxLiveRateDisplay.textContent = ''; // Clear previous MCX rate
+                    mcxLiveRateDisplay.classList.add('hidden');
+                    try {
+                        const response = await fetch('fetch_mcx_rate.php');
+                        const result = await response.json();
+                        if (result.success && result.rate > 0) {
+                            currentRateSourceIndicator.textContent = 'MCX Live';
+                            mcxLiveRateDisplay.innerHTML = `MCX Live: ${result.rate.toFixed(2)} per 10 Grams (<a href="https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/" target="_blank" class="text-blue-500 hover:underline">View Source</a>)`;
+                            mcxLiveRateDisplay.classList.remove('hidden');
+                        } else {
+                            currentRateSourceIndicator.textContent = 'Not Set';
+                            mcxLiveRateDisplay.classList.add('hidden');
+                        }
+                    } catch (error) {
+                        console.error('Error fetching MCX rate:', error);
+                        currentRateSourceIndicator.textContent = 'Not Set';
+                        mcxLiveRateDisplay.classList.add('hidden');
+                    }
+                } else {
+                    // For other metals or if MCX fetch is not applicable
+                    currentRateSourceIndicator.textContent = currentRate > 0 ? 'Manual' : 'Not Set';
+                    mcxLiveRateDisplay.classList.add('hidden'); // Hide MCX rate for other metals
+                }
+                
+                // Update calculated rate display
+                updateCalculatedRate();
+
+                customRateModal.classList.remove('hidden');
+                setTimeout(() => {
+                    customRateModal.classList.add('opacity-100');
+                    customRateModalContent.classList.remove('scale-95', 'opacity-0');
+                    customRateInput.focus();
+                }, 10);
+            };
+
+            function closeCustomRateModal() {
+                customRateModal.classList.add('opacity-0');
+                customRateModalContent.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => {
+                    customRateModal.classList.add('hidden');
+                }, 300);
+            }
+
+            function updateCalculatedRate() {
+                const inputValue = parseFloat(customRateInput.value);
+                const selectedUnit = customRateInputUnitSelect.value;
+                let ratePerGram = 0;
+                let ratePerTola = 0;
+                let ratePerVori = 0;
+
+                if (!isNaN(inputValue) && inputValue > 0) {
+                    const conversionFactor = CONVERSION_RATES[selectedUnit];
+                    ratePerGram = inputValue / conversionFactor;
+                    ratePerTola = ratePerGram * CONVERSION_RATES['per_tola'];
+                    ratePerVori = ratePerGram * CONVERSION_RATES['per_vori'];
+                }
+                calculatedRateValue.textContent = ratePerGram.toFixed(2);
+                calculatedRateTola.textContent = ratePerTola.toFixed(2);
+                calculatedRateVori.textContent = ratePerVori.toFixed(2);
+                modalRateToSave.value = ratePerGram.toFixed(2); // Set hidden input for saving
+            }
+
+            customRateInput.addEventListener('input', updateCalculatedRate);
+            customRateInputUnitSelect.addEventListener('change', updateCalculatedRate);
+            closeCustomRateModalBtn.addEventListener('click', closeCustomRateModal);
+
+            customRateModalContent.addEventListener('submit', async function(event) {
+                event.preventDefault();
+                const rateToSave = parseFloat(modalRateToSave.value);
+                const unitToSave = 'gram'; // Always save as gram
+
+                if (isNaN(rateToSave) || rateToSave <= 0) {
+                    alert('Please enter a valid rate greater than zero.');
+                    return;
+                }
+
+                const formData = {
+                    material_type: currentMetalType,
+                    purity: currentPurity,
+                    unit: unitToSave,
+                    rate: rateToSave,
+                    action: 'save'
+                };
+
+                try {
+                    const response = await fetch('home.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert(result.message);
+                        location.reload(); // Reload page to reflect new rates
+                    } else {
+                        alert('Error: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('Error saving rate:', error);
+                    alert('An error occurred while saving the rate.');
+                }
+            });
+
+            clearManualRateBtn.addEventListener('click', async function() {
+                if (!confirm('Are you sure you want to clear the manual rate for ' + currentMetalType + ' ' + currentPurity + '?')) {
+                    return;
+                }
+
+                const formData = {
+                    material_type: currentMetalType,
+                    purity: currentPurity,
+                    action: 'clear'
+                };
+
+                try {
+                    const response = await fetch('home.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert(result.message);
+                        location.reload(); // Reload page to reflect cleared rates
+                    } else {
+                        alert('Error: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('Error clearing rate:', error);
+                    alert('An error occurred while clearing the rate.');
+                }
+            });
+
+            // Attach event listeners to rate edit buttons
+            document.querySelectorAll('.rate-edit-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const metalType = this.dataset.metalType;
+                    const purity = this.dataset.purity;
+                    const currentRate = parseFloat(this.dataset.currentRate);
+                    openRateModal(metalType, purity, currentRate);
+                });
+            });
+        });
     </script>
 </body>
 </html>

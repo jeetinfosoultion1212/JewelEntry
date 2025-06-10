@@ -294,7 +294,7 @@
             formData.append('password', password);
             
             // Send AJAX request
-            fetch('process_registration.php', {
+            fetch('api/process_registration.php', {
                 method: 'POST',
                 body: formData
             })

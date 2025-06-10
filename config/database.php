@@ -4,7 +4,7 @@ return [
     'db_host' => 'localhost',
     'db_user' => 'root',
     'db_pass' => '',
-    'db_name' => 'jewelentryApp',
+    'db_name' => 'jewelentry',
     
     'pagination' => [
         'items_per_page' => 20

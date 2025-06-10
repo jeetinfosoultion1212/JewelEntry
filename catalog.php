@@ -11,7 +11,7 @@ $user_id = $_SESSION['id']; // Get user ID for fetching user details
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "jewelentryapp";
+$dbname = "jewelentry";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 
@@ -741,6 +741,12 @@ $conn->close();
                                     onclick="event.stopPropagation(); toggleWishlist(this, '${productId}')" aria-label="Toggle Wishlist for ${product.name}" aria-pressed="${isWishlisted}">
                                 <i class="${isWishlisted ? 'fas' : 'far'} fa-heart text-xs"></i>
                             </button>
+
+                            ${product.making_charge > 0 ? `
+                                <div class="absolute bottom-2 right-2 bg-purple-600 text-white text-[10px] px-2 py-1 rounded-full font-semibold shadow-md">
+                                    MC: ${product.making_charge_type === 'percentage' ? `${Math.round(product.making_charge)}%` : `₹${Math.round(product.making_charge).toLocaleString()}`}
+                                </div>
+                            ` : ''}
                         </div>
                         
                         <div class="p-3">
@@ -756,11 +762,7 @@ $conn->close();
                             </div>
                             
                             <div class="space-y-1">
-                                <div class="flex justify-between text-xs">
-                                    <span>Market:</span>
-                                    <span class="gold-gradient font-semibold">₹${Math.round(product.marketPrice).toLocaleString()}</span>
-                                </div>
-                                <div class="flex justify-between text-sm font-bold border-t pt-1">
+                                <div class="flex justify-between text-sm font-bold pt-1">
                                     <span>Total:</span>
                                     <span class="gold-gradient">₹${Math.round(product.totalPrice).toLocaleString()}</span>
                                 </div>

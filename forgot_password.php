@@ -138,54 +138,106 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forgot Password - Jewel Entry</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Poppins', sans-serif;
+            background-color: #fef7cd;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
         }
         
         .forgot-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 100%;
+            max-width: 380px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 1.25rem;
         }
         
         .input-field {
-            transition: all 0.3s ease;
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            font-size: 0.95rem;
             border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            background-color: #f9fafb;
+            transition: all 0.2s ease;
+            color: #374151;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
         }
         
         .input-field:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-            transform: translateY(-1px);
+            outline: none;
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
         }
-        
+
+        .input-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            font-size: 1rem;
+        }
+
         .submit-btn {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%);
+            color: white;
+            padding: 0.875rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
             transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3);
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
         }
         
         .submit-btn:hover {
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 20px rgba(255, 165, 0, 0.4);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(255, 165, 0, 0.2);
+        }
+
+        @media (max-width: 640px) {
+            .forgot-card {
+                padding: 1.5rem;
+            }
         }
     </style>
 </head>
-<body class="flex items-center justify-center p-4">
+<body>
     <div class="w-full max-w-sm">
-        <!-- Forgot Password Card -->
-        <div class="forgot-card rounded-2xl shadow-2xl p-6">
+        <div class="forgot-card">
             <!-- Header -->
-            <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-100 mb-3">
-                    <i class="fas fa-key text-indigo-600 text-xl"></i>
+            <div class="text-center mb-6 mt-4">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-3">
+                    <i class="fas fa-envelope text-yellow-600 text-2xl"></i>
                 </div>
-                <h1 class="text-2xl font-bold text-gray-800 mb-1">Forgot Password</h1>
+                <h1 class="text-3xl font-bold text-yellow-600 mb-2">Forgot Password</h1>
                 <p class="text-gray-500 text-sm">Enter your email to reset your password</p>
             </div>
             
@@ -210,30 +262,26 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <?php endif; ?>
             
             <!-- Forgot Password Form -->
-            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" class="space-y-4">
-                <!-- Email -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <div class="relative">
-                        <i class="fas fa-envelope absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                        <input type="email" name="email" value="<?php echo $email; ?>"
-                            class="input-field w-full pl-10 pr-4 py-2.5 rounded-lg focus:outline-none text-sm"
-                            placeholder="Enter your email address">
-                    </div>
+            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
+                <div class="input-group">
+                    <i class="fas fa-envelope input-icon"></i>
+                    <input type="email" name="email" value="<?php echo $email; ?>"
+                        class="input-field"
+                        placeholder="Enter your email address"
+                        required>
                 </div>
                 
-                <!-- Submit Button -->
-                <button type="submit" class="submit-btn w-full py-2.5 rounded-lg text-white font-medium text-sm">
+                <button type="submit" class="submit-btn mb-5">
                     <span>Send Reset Link</span>
-                    <i class="fas fa-paper-plane ml-2"></i>
+                    <i class="fas fa-paper-plane"></i>
                 </button>
             </form>
             
             <!-- Back to Login -->
-            <div class="text-center mt-4">
-                <p class="text-xs text-gray-600">
+            <div class="text-center">
+                <p class="text-sm text-gray-600">
                     Remember your password? 
-                    <a href="login.php" class="text-indigo-600 hover:text-indigo-500 font-medium">Back to Login</a>
+                    <a href="login.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Back to Login</a>
                 </p>
             </div>
         </div>

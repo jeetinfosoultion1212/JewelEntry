@@ -2,10 +2,7 @@
 // Initialize the session
 session_start();
 
-// Set the default timezone to Indian Standard Time (IST)
-date_default_timezone_set('Asia/Kolkata');
-
-// Check if user came from forgot password
+// Check if email is set in session
 if(!isset($_SESSION['reset_email'])) {
     header("location: forgot_password.php");
     exit;
@@ -29,40 +26,30 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     
     // Validate OTP
     if(empty($otp_err)){
-        // Prepare a select statement
-        $sql = "SELECT id FROM Firm_Users WHERE Email = ? AND reset_token = ? AND token_expiry > (NOW() - INTERVAL 30 SECOND)";
+        $sql = "SELECT id, reset_token, token_expiry FROM Firm_Users WHERE Email = ?";
         
         if($stmt = mysqli_prepare($conn, $sql)){
-            // Bind variables to the prepared statement as parameters
-            mysqli_stmt_bind_param($stmt, "ss", $param_email, $param_otp);
-            
-            // Set parameters
+            mysqli_stmt_bind_param($stmt, "s", $param_email);
             $param_email = $_SESSION['reset_email'];
-            $param_otp = $otp;
             
-            // Attempt to execute the prepared statement
             if(mysqli_stmt_execute($stmt)){
-                // Store result
                 mysqli_stmt_store_result($stmt);
                 
-                // Debug information
-                $debug_sql = "SELECT reset_token, token_expiry FROM Firm_Users WHERE Email = '" . mysqli_real_escape_string($conn, $_SESSION['reset_email']) . "'";
-                $debug_result = mysqli_query($conn, $debug_sql);
-                $debug_row = mysqli_fetch_assoc($debug_result);
-                
-                // Check if OTP is valid
                 if(mysqli_stmt_num_rows($stmt) == 1){
-                    // OTP is valid, redirect to reset password page
-                    $_SESSION['otp_verified'] = true;
-                    header("location: reset_password.php");
-                    exit();
-                } else{
-                    $otp_err = "Invalid or expired OTP. Please check the OTP and try again.";
-                    if($debug_row) {
-                        $otp_err .= " (Debug: Stored OTP: " . $debug_row['reset_token'] . ", Expiry: " . $debug_row['token_expiry'] . ")";
+                    mysqli_stmt_bind_result($stmt, $id, $stored_otp, $expiry);
+                    if(mysqli_stmt_fetch($stmt)){
+                        // Check if OTP matches and hasn't expired
+                        if($otp === $stored_otp && strtotime($expiry) > time()){
+                            // OTP is valid, redirect to reset password page
+                            $_SESSION['reset_user_id'] = $id;
+                            header("location: reset_password.php");
+                            exit();
+                        } else {
+                            $otp_err = "Invalid or expired OTP.";
+                        }
                     }
                 }
-            } else{
+            } else {
                 echo "Oops! Something went wrong. Please try again later.";
             }
             mysqli_stmt_close($stmt);
@@ -79,55 +66,96 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Verify OTP - Jewel Entry</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Poppins', sans-serif;
+            background-color: #fef7cd;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
         }
         
-        .otp-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+        .verify-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 100%;
+            max-width: 380px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 1.25rem;
         }
         
         .input-field {
-            transition: all 0.3s ease;
+            width: 100%;
+            padding: 0.875rem 1rem;
+            font-size: 0.95rem;
             border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            background-color: #f9fafb;
+            transition: all 0.2s ease;
+            color: #374151;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
+            text-align: center;
+            letter-spacing: 0.5em;
         }
         
         .input-field:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-            transform: translateY(-1px);
+            outline: none;
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
         }
-        
-        .submit-btn {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+
+        .verify-btn {
+            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%);
+            color: white;
+            padding: 0.875rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
             transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3);
+            border: none;
+            cursor: pointer;
+            width: 100%;
         }
         
-        .submit-btn:hover {
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        .verify-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 20px rgba(255, 165, 0, 0.4);
+        }
+
+        .verify-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(255, 165, 0, 0.2);
+        }
+
+        @media (max-width: 640px) {
+            .verify-card {
+                padding: 1.5rem;
+            }
         }
     </style>
 </head>
-<body class="flex items-center justify-center p-4">
+<body>
     <div class="w-full max-w-sm">
-        <!-- OTP Verification Card -->
-        <div class="otp-card rounded-2xl shadow-2xl p-6">
+        <div class="verify-card">
             <!-- Header -->
-            <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-100 mb-3">
-                    <i class="fas fa-shield-alt text-indigo-600 text-xl"></i>
+            <div class="text-center mb-6 mt-4">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-3">
+                    <i class="fas fa-shield-alt text-yellow-600 text-2xl"></i>
                 </div>
-                <h1 class="text-2xl font-bold text-gray-800 mb-1">Verify OTP</h1>
-                <p class="text-gray-500 text-sm">Enter the OTP sent to your email</p>
+                <h1 class="text-3xl font-bold text-yellow-600 mb-2">Verify OTP</h1>
+                <p class="text-gray-500 text-sm">Enter the 6-digit code sent to your email</p>
             </div>
             
             <!-- Error Alert -->
@@ -141,33 +169,39 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <?php endif; ?>
             
             <!-- OTP Form -->
-            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" class="space-y-4">
-                <!-- OTP -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
-                    <div class="relative">
-                        <i class="fas fa-key absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                        <input type="text" name="otp" maxlength="6" pattern="\d{6}" 
-                            class="input-field w-full pl-10 pr-4 py-2.5 rounded-lg focus:outline-none text-sm"
-                            placeholder="Enter 6-digit OTP">
-                    </div>
+            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
+                <div class="input-group">
+                    <input type="text" name="otp" maxlength="6" pattern="\d{6}" required
+                        class="input-field"
+                        placeholder="000000"
+                        oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                 </div>
                 
-                <!-- Submit Button -->
-                <button type="submit" class="submit-btn w-full py-2.5 rounded-lg text-white font-medium text-sm">
-                    <span>Verify OTP</span>
-                    <i class="fas fa-arrow-right ml-2"></i>
+                <button type="submit" class="verify-btn mb-5">
+                    Verify OTP
                 </button>
             </form>
             
-            <!-- Back to Login -->
-            <div class="text-center mt-4">
-                <p class="text-xs text-gray-600">
-                    Didn't receive OTP? 
-                    <a href="forgot_password.php" class="text-indigo-600 hover:text-indigo-500 font-medium">Resend OTP</a>
+            <!-- Resend OTP -->
+            <div class="text-center">
+                <p class="text-sm text-gray-600">
+                    Didn't receive the code? 
+                    <a href="forgot_password.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Resend OTP</a>
                 </p>
             </div>
         </div>
     </div>
+
+    <script>
+        // Auto-focus the OTP input
+        document.querySelector('input[name="otp"]').focus();
+        
+        // Auto-advance to next input (if we had multiple inputs)
+        document.querySelector('input[name="otp"]').addEventListener('input', function(e) {
+            if (this.value.length === 6) {
+                this.form.submit();
+            }
+        });
+    </script>
 </body>
 </html> 

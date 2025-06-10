@@ -1,108 +1,73 @@
 <?php
-// Initialize the session
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Start session and include database config
 session_start();
- 
-// Check if the user is already logged in, if yes redirect to dashboard
+require 'config/config.php';
+
+// Check if the user is already logged in, if yes then redirect to home page
 if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
-    // Role-based redirection for already logged in users
-    switch($_SESSION["role"]) {
-        case 'admin':
-            header("location: admin_dashboard.php");
-            break;
-        case 'manager':
-            header("location: manager_dashboard.php");
-            break;
-        case 'employee':
-            header("location: employee_dashboard.php");
-            break;
-        default:
-            header("location: home.php");
-    }
+    header("location: home.php");
     exit;
 }
- 
-// Include database connection
-require_once "config/config.php";
- 
+
 // Define variables and initialize with empty values
 $username = $password = "";
 $username_err = $password_err = $login_err = "";
 
-// Check for remember me cookie
-if(isset($_COOKIE['remember_user'])) {
-    $cookie_data = json_decode($_COOKIE['remember_user'], true);
-    if(isset($cookie_data['username']) && isset($cookie_data['password'])) {
-        $_POST['username'] = $cookie_data['username'];
-        $_POST['password'] = $cookie_data['password'];
-        $_POST['remember'] = 'on';
-    }
-}
-
 // Processing form data when form is submitted
 if($_SERVER["REQUEST_METHOD"] == "POST"){
- 
-    // Check if username/mobile is empty
+
+    // Check if username is empty
     if(empty(trim($_POST["username"]))){
-        $username_err = "Please enter username or mobile number.";
+        $username_err = "Please enter username.";
     } else{
         $username = trim($_POST["username"]);
     }
-    
+
     // Check if password is empty
     if(empty(trim($_POST["password"]))){
         $password_err = "Please enter your password.";
     } else{
         $password = trim($_POST["password"]);
     }
-    
+
     // Validate credentials
     if(empty($username_err) && empty($password_err)){
         // Prepare a select statement
-        $sql = "SELECT id, Username, Password, FirmID, Role, PhoneNumber FROM Firm_Users WHERE Username = ? OR PhoneNumber = ?";
-        
+        $sql = "SELECT id, username, password, role, firmID FROM Firm_Users WHERE username = ?";
+
         if($stmt = mysqli_prepare($conn, $sql)){
             // Bind variables to the prepared statement as parameters
-            mysqli_stmt_bind_param($stmt, "ss", $param_username, $param_username);
-            
+            mysqli_stmt_bind_param($stmt, "s", $param_username);
+
             // Set parameters
             $param_username = $username;
-            
+
             // Attempt to execute the prepared statement
             if(mysqli_stmt_execute($stmt)){
                 // Store result
                 mysqli_stmt_store_result($stmt);
-                
-                // Check if username/mobile exists, if yes then verify password
-                if(mysqli_stmt_num_rows($stmt) == 1){                    
+
+                // Check if username exists, if yes then verify password
+                if(mysqli_stmt_num_rows($stmt) == 1){
                     // Bind result variables
-                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password, $firmID, $role, $phoneNumber);
+                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password, $role, $firmID);
                     if(mysqli_stmt_fetch($stmt)){
                         if(password_verify($password, $hashed_password)){
-                            // Password is correct, start a new session
+                            // Password is correct, so start a new session
                             session_start();
-                            
+
                             // Store data in session variables
                             $_SESSION["loggedin"] = true;
                             $_SESSION["id"] = $id;
                             $_SESSION["username"] = $username;
-                            $_SESSION["firmID"] = $firmID;
                             $_SESSION["role"] = $role;
+                            $_SESSION["firmID"] = $firmID;
 
-                            // Set remember me cookie if checked
-                            if(isset($_POST['remember']) && $_POST['remember'] == 'on') {
-                                $cookie_data = array(
-                                    'username' => $username,
-                                    'password' => $password
-                                );
-                                setcookie('remember_user', json_encode($cookie_data), time() + (86400 * 30), "/"); // 30 days
-                            } else {
-                                // If remember me is not checked, delete the cookie if it exists
-                                if(isset($_COOKIE['remember_user'])) {
-                                    setcookie('remember_user', '', time() - 3600, '/');
-                                }
-                            }
-                            
-                            // Role-based redirection
+                            // Redirect user to appropriate dashboard based on role
                             switch($role) {
                                 case 'admin':
                                     header("location: admin_dashboard.php");
@@ -151,125 +116,191 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Firm Management System</title>
+    <title>Login - Jewel Entry</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Poppins', sans-serif;
+            background-color: #fef7cd; /* Light peach/orange background */
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
         }
         
         .login-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: white;
+            border-radius: 20px; /* More rounded corners */
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); /* Larger shadow */
+            padding: 2rem;
+            width: 100%;
+            max-width: 380px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 1.25rem; /* Increased margin */
         }
         
         .input-field {
-            transition: all 0.3s ease;
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem; /* Increased padding and space for icon */
+            font-size: 0.95rem;
             border: 1px solid #e5e7eb;
+            border-radius: 0.75rem; /* More rounded input fields */
+            background-color: #f9fafb; /* Light gray background for inputs */
+            transition: all 0.2s ease;
+            color: #374151;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.03); /* Subtle inner shadow */
         }
         
+        .input-field::placeholder {
+            color: #9ca3af;
+        }
+
         .input-field:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-            transform: translateY(-1px);
+            outline: none;
+            border-color: #fbbf24; /* Orange focus border */
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2), inset 0 1px 2px rgba(0,0,0,0.03); /* Orange glow */
         }
-        
+
+        .input-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            font-size: 1rem;
+        }
+
         .login-btn {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%); /* Orange gradient */
+            color: white;
+            padding: 0.875rem 1.5rem; /* Slightly more padding */
+            border-radius: 0.75rem; /* Rounded button */
+            font-size: 1rem;
+            font-weight: 600;
             transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3); /* Orange shadow */
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .login-btn:hover {
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 20px rgba(255, 165, 0, 0.4);
         }
-        
+
+        .login-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(255, 165, 0, 0.2);
+        }
+
         .social-btn {
-            transition: all 0.2s ease;
+            background-color: white;
             border: 1px solid #e5e7eb;
+            color: #374151;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
-        
+
         .social-btn:hover {
+            background-color: #f9fafb;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-        
-        .floating-shapes {
+
+        .social-btn i {
+            font-size: 1.1rem;
+            margin-right: 0.75rem;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            color: #6b7280;
+            background-color: #f3f4f6;
+        }
+
+        .tab-btn.active {
+            background-color: white;
+            color: #374151;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .tab-container {
+            display: flex;
+            background-color: #f3f4f6;
+            padding: 0.25rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .language-dropdown {
             position: absolute;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            pointer-events: none;
+            top: 1.5rem;
+            right: 1.5rem;
+            background-color: #f3f4f6;
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            color: #4b5563;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
         }
-        
-        .shape {
-            position: absolute;
-            opacity: 0.1;
-            animation: float 6s ease-in-out infinite;
+
+        .language-dropdown i {
+            font-size: 0.7rem;
         }
-        
-        .shape:nth-child(1) {
-            top: 10%;
-            left: 10%;
-            animation-delay: 0s;
-        }
-        
-        .shape:nth-child(2) {
-            top: 20%;
-            right: 10%;
-            animation-delay: 2s;
-        }
-        
-        .shape:nth-child(3) {
-            bottom: 10%;
-            left: 20%;
-            animation-delay: 4s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(10deg); }
-        }
-        
-        /* Compact mobile styles */
+
+        /* Responsive adjustments */
         @media (max-width: 640px) {
             .login-card {
-                margin: 1rem;
-                padding: 1.5rem !important;
+                padding: 1.5rem;
             }
-            .text-2xl { font-size: 1.5rem !important; }
-            .py-3 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
-            .mb-6 { margin-bottom: 1rem !important; }
-            .mb-4 { margin-bottom: 0.75rem !important; }
-            .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem !important; }
+            .text-2xl { font-size: 1.75rem; } /* Slightly smaller for mobile */
+            .mb-6 { margin-bottom: 1.25rem; }
+            .mb-4 { margin-bottom: 1rem; }
         }
     </style>
 </head>
-<body class="flex items-center justify-center p-4">
-    <!-- Floating Background Shapes -->
-    <div class="floating-shapes">
-        <div class="shape w-32 h-32 bg-white rounded-full"></div>
-        <div class="shape w-24 h-24 bg-yellow-300 rounded-full"></div>
-        <div class="shape w-16 h-16 bg-pink-300 rounded-full"></div>
-    </div>
-
+<body>
     <!-- Main Login Container -->
     <div class="w-full max-w-sm">
         <!-- Login Card -->
-        <div class="login-card rounded-2xl shadow-2xl p-6 relative z-10">
+        <div class="login-card">
+            <!-- Language Dropdown -->
+            <div class="language-dropdown">
+                <span>English</span>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+
             <!-- Header -->
-            <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-100 mb-3">
-                    <i class="fas fa-building text-indigo-600 text-xl"></i>
-                </div>
-                <h1 class="text-2xl font-bold text-gray-800 mb-1">Jewel Entry</h1>
-                <p class="text-gray-500 text-sm">Sign in to continue</p>
+            <div class="text-center mb-6 mt-10">
+                <h1 class="text-3xl font-bold text-yellow-600 mb-2">Welcome Back</h1>
+                <p class="text-gray-500 text-sm">We're happy to see you again. To use your account, you should log in first.</p>
             </div>
             
             <!-- Error Alert -->
@@ -283,85 +314,58 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <?php endif; ?>
             
             <!-- Login Form -->
-            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" class="space-y-4">
+            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                 <!-- Username/Mobile -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Username or Mobile Number</label>
-                    <div class="relative">
-                        <i class="fas fa-user absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                        <input type="text" name="username" value="<?php echo $username; ?>"
-                            class="input-field w-full pl-10 pr-4 py-2.5 rounded-lg focus:outline-none text-sm"
-                            placeholder="Enter username or mobile number">
-                    </div>
+                <div class="input-group">
+                    <i class="fas fa-phone input-icon"></i>
+                    <input type="text" name="username" id="usernameInput" value="<?php echo $username; ?>"
+                        class="input-field"
+                        placeholder="9898562314">
                     <?php if(!empty($username_err)): ?>
                         <p class="text-red-600 text-xs mt-1"><?php echo $username_err; ?></p>
                     <?php endif; ?>
                 </div>
                 
                 <!-- Password -->
-                <div>
-                    <div class="flex justify-between items-center mb-1">
-                        <label class="block text-sm font-medium text-gray-700">Password</label>
-                        <a href="forgot_password.php" class="text-xs text-indigo-600 hover:text-indigo-500">Forgot Password?</a>
-                    </div>
-                    <div class="relative">
-                        <i class="fas fa-lock absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                        <input type="password" name="password" id="password"
-                            class="input-field w-full pl-10 pr-10 py-2.5 rounded-lg focus:outline-none text-sm"
-                            placeholder="Enter password">
-                        <button type="button" id="togglePassword" 
-                            class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                            <i class="fas fa-eye text-sm"></i>
-                        </button>
-                    </div>
+                <div class="input-group">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input type="password" name="password" id="password"
+                        class="input-field pr-10"
+                        placeholder="••••••••••">
+                    <button type="button" id="togglePassword" 
+                        class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">
+                        <i class="fas fa-eye"></i>
+                    </button>
                     <?php if(!empty($password_err)): ?>
                         <p class="text-red-600 text-xs mt-1"><?php echo $password_err; ?></p>
                     <?php endif; ?>
                 </div>
                 
-                <!-- Remember Me -->
-                <div class="flex items-center justify-between">
-                    <label class="flex items-center">
-                        <input type="checkbox" name="remember" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                        <span class="ml-2 text-sm text-gray-600">Remember me</span>
-                    </label>
+                <!-- Forgot Password -->
+                <div class="text-right mb-5">
+                    <a href="forgot_password.php" class="text-sm text-gray-500 hover:text-gray-700 font-medium">Forgot Password?</a>
                 </div>
                 
                 <!-- Login Button -->
-                <button type="submit" class="login-btn w-full py-2.5 rounded-lg text-white font-medium text-sm">
-                    <span>Sign In</span>
-                    <i class="fas fa-arrow-right ml-2"></i>
+                <button type="submit" class="login-btn w-full mb-5">
+                    Login
                 </button>
             </form>
             
             <!-- Divider -->
             <div class="flex items-center my-4">
                 <div class="flex-1 border-t border-gray-200"></div>
-                <span class="px-3 text-xs text-gray-500">OR</span>
+                <span class="px-3 text-xs text-gray-500"></span>
                 <div class="flex-1 border-t border-gray-200"></div>
-            </div>
-            
-            <!-- Social Login -->
-            <div class="grid grid-cols-1 gap-3 mb-4">
-                <button class="social-btn flex items-center justify-center py-2 rounded-lg bg-white hover:bg-gray-50">
-                    <i class="fab fa-whatsapp text-green-500 mr-2 text-sm"></i>
-                    <span class="text-sm text-gray-700">Sales/Supports</span>
-                </button>
-               
             </div>
             
             <!-- Register Link -->
             <div class="text-center">
-                <p class="text-xs text-gray-600">
+                <p class="text-sm text-gray-600">
                     Don't have an account? 
-                    <a href="register.php" class="text-indigo-600 hover:text-indigo-500 font-medium">Register here</a>
+                    <a href="register.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Sign up</a>
                 </p>
             </div>
-        </div>
-        
-        <!-- Footer -->
-        <div class="text-center mt-4">
-            <p class="text-xs text-white opacity-75">© 2025 Firm Management System</p>
         </div>
     </div>
     
@@ -381,19 +385,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 icon.classList.add('fa-eye');
             }
         });
-        
-        // Form validation enhancement
-        document.addEventListener('DOMContentLoaded', function() {
-            const inputs = document.querySelectorAll('.input-field');
-            inputs.forEach(input => {
-                input.addEventListener('focus', function() {
-                    this.parentElement.classList.add('focused');
-                });
-                input.addEventListener('blur', function() {
-                    this.parentElement.classList.remove('focused');
-                });
-            });
-        });
+
     </script>
 </body>
 </html>

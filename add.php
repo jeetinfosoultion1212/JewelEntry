@@ -74,10 +74,10 @@ function generateProductId($conn, $jewelryType) {
 }
 
 // Function to update inventory
-function updateInventory($conn, $materialType, $purity, $weight, $firm_id) {
+function updateInventory($conn, $materialType, $purity, $weight, $firm_id, $reference_type = null, $reference_id = null) {
   try {
       // Check if there's enough inventory
-      $sql = "SELECT inventory_id, remaining_stock FROM inventory_metals 
+      $sql = "SELECT inventory_id, remaining_stock, stock_name FROM inventory_metals 
               WHERE material_type = ? AND purity = ? AND remaining_stock >= ?";
       $stmt = $conn->prepare($sql);
       $stmt->bind_param("ssd", $materialType, $purity, $weight);
@@ -87,7 +87,9 @@ function updateInventory($conn, $materialType, $purity, $weight, $firm_id) {
       if ($result->num_rows > 0) {
           $row = $result->fetch_assoc();
           $inventoryId = $row['inventory_id'];
-          $newStock = $row['remaining_stock'] - $weight;
+          $currentStock = $row['remaining_stock'];
+          $stockName = $row['stock_name'];
+          $newStock = $currentStock - $weight;
           
           // Update the inventory
           $updateSql = "UPDATE inventory_metals SET remaining_stock = ?, last_updated = NOW() 
@@ -97,10 +99,42 @@ function updateInventory($conn, $materialType, $purity, $weight, $firm_id) {
           $success = $updateStmt->execute();
           $updateStmt->close();
           
-          return $success;
-      } else {
-          return false; // Not enough inventory
+          if ($success) {
+              // Add stock log entry
+              $logSql = "INSERT INTO jewellery_stock_log (
+                  firm_id, inventory_id, material_type, stock_name, purity,
+                  transaction_type, quantity_before, quantity_change, quantity_after,
+                  reference_type, reference_id, user_id, notes
+              ) VALUES (?, ?, ?, ?, ?, 'ADJUST', ?, ?, ?, ?, ?, ?, ?)";
+              
+              $logStmt = $conn->prepare($logSql);
+              $userId = $_SESSION['id'] ?? 0;
+              $notes = "Stock adjusted for " . ($reference_type ?? 'jewelry item');
+              
+              $logStmt->bind_param(
+                  "iissddddssis",
+                  $firm_id,
+                  $inventoryId,
+                  $materialType,
+                  $stockName,
+                  $purity,
+                  $currentStock,
+                  $weight,
+                  $newStock,
+                  $reference_type,
+                  $reference_id,
+                  $userId,
+                  $notes
+              );
+              
+              if (!$logStmt->execute()) {
+                  throw new Exception("Failed to create stock log entry: " . $logStmt->error);
+              }
+              
+              return true;
+          }
       }
+      return false; // Not enough inventory or update failed
   } catch (Exception $e) {
       debug_log("Error in updateInventory", $e->getMessage());
       return false;
@@ -441,28 +475,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                       $remainingStock = $checkStockResult->fetch_assoc()['remaining_stock'];
                       
                       if ($remainingStock >= $netWeight) {
-                          // Update inventory
-                          $updateSql = "UPDATE inventory_metals SET 
-                                        remaining_stock = remaining_stock - ?, 
-                                        last_updated = NOW() 
-                                        WHERE inventory_id = ?";
-                          $updateStmt = $conn->prepare($updateSql);
-                          $updateStmt->bind_param("di", $netWeight, $inventoryId);
-                          $success = $updateStmt->execute();
-                          $updateStmt->close();
+                          // Update inventory with reference information
+                          $success = updateInventory(
+                              $conn,
+                              $materialType,
+                              $purity,
+                              $netWeight,
+                              $firm_id,
+                              'Jewelry Item',
+                              $jewelryItemId
+                          );
                           
                           if (!$success) {
                               throw new Exception("Failed to update inventory.");
                           }
-                          
-                          // Add inventory transaction record
-                          $transactionSql = "INSERT INTO inventory_transactions (
-                                            inventory_id, transaction_type, quantity, reference_id, reference_type, 
-                                            transaction_date, created_by, firm_id
-                                          ) VALUES (?, 'Deduction', ?, ?, 'Jewelry Item', NOW(), ?, ?)";
-                          $transactionStmt = $conn->prepare($transactionSql);
-                          $transactionStmt->bind_param("idsii", $inventoryId, $netWeight, $jewelryItemId, $user_id, $firm_id);
-                          $transactionStmt->execute();
                       } else {
                           throw new Exception("Not enough stock available. Required: {$netWeight}g, Available: {$remainingStock}g");
                       }
@@ -1343,12 +1369,13 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
           <!-- Form Grid Layout -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-1">
             <!-- Material Details Section -->
-            <div class="section-card material-section material-theme rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+           
+ <div class="section-card material-section material-theme rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
               <div class="section-title text-amber-800">
                 <i class="fas fa-coins"></i> Material
               </div>
               <!-- Two items per row layout for better space utilization -->
-              <div class="grid grid-cols-3 gap-1">
+              <div class="grid grid-cols-2 gap-1">
                 <!-- Material -->
                 <div>
                   <div class="field-label">Material</div>
@@ -1388,7 +1415,8 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
                            id="jewelryType" 
                            name="jewelryType"
                            class="input-field font-xs font-bold py-1 pl-6 bg-white border border-amber-200 hover:border-amber-300 focus:border-amber-400 rounded-md w-full" 
-                           placeholder="Select...">
+                           placeholder="Select..."
+                           onchange="updateJewelryName(this.value)">
                     <i class="fas fa-ring field-icon text-amber-500"></i>
                     <div id="jewelryTypeSuggestions" 
                          class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg hidden max-h-48 overflow-y-auto custom-scrollbar">
@@ -1403,8 +1431,11 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
                     <input type="text" 
                            id="productName" 
                            name="productName"
-                           class="input-field font-xs font-bold py-1 pl-6 bg-white border border-amber-200 hover:border-amber-300 focus:border-amber-400 rounded-md w-full" 
-                           placeholder="Name...">
+                           class="input-field font-xs font-bold py-1 pl-6 bg-white border border-amber-200 hover:border-amber-300 focus:border-amber-400 rounded-md w-full uppercase-input" 
+                           placeholder="Enter name..."
+                           oninput="this.value = this.value.toUpperCase()"
+                           onblur="this.value = this.value.toUpperCase()"
+                           required>
                     <i class="fas fa-tag field-icon text-amber-500"></i>
                   </div>
                 </div>
@@ -1413,6 +1444,8 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
               <!-- Hidden Product ID field -->
               <input type="hidden" id="productIdDisplay" name="productIdDisplay" value="" />
             </div>
+
+
             
             <!-- Weight Details Section -->
             <div class="section-card weight-theme mb-1">
@@ -1780,10 +1813,6 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
    <span class="nav-text">Stock</span>
  </a>
 
-<a href="order.php" class="nav-item">
-   <i class="nav-icon fa-solid fa-user-tag"></i>
-   <span class="nav-text">Orders</span>
- </a>
 
 <a href="sale-entry.php" class="nav-item">
    <i class="nav-icon fas fa-shopping-cart"></i>
@@ -2064,5 +2093,61 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
 </div>
 
 <script src="js/add.js"></script>
+<script>
+// Add this function to your existing JavaScript
+function updateJewelryName(jewelryType) {
+    if (jewelryType) {
+        const nameInput = document.getElementById('productName');
+        // Only update if the name field is empty or contains the previous auto-generated name
+        if (!nameInput.value || nameInput.value === nameInput.dataset.lastAutoName) {
+            const autoName = jewelryType.toUpperCase();
+            nameInput.value = autoName;
+            nameInput.dataset.lastAutoName = autoName; // Store the auto-generated name
+        }
+    }
+}
+
+// Modify your existing jewelry type suggestion click handler
+document.addEventListener('DOMContentLoaded', function() {
+    const jewelryTypeInput = document.getElementById('jewelryType');
+    const suggestionsDiv = document.getElementById('jewelryTypeSuggestions');
+    
+    // ... your existing suggestion code ...
+    
+    // Add click handler for suggestions
+    suggestionsDiv.addEventListener('click', function(e) {
+        if (e.target.classList.contains('suggestion-item')) {
+            const selectedType = e.target.textContent.trim();
+            jewelryTypeInput.value = selectedType;
+            updateJewelryName(selectedType); // Update name when suggestion is selected
+            suggestionsDiv.classList.add('hidden');
+        }
+    });
+});
+
+// Add form submit handler to ensure uppercase
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('jewelryForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const nameInput = document.getElementById('productName');
+            if (nameInput) {
+                nameInput.value = nameInput.value.toUpperCase();
+            }
+        });
+    }
+
+    // ... rest of your existing DOMContentLoaded code ...
+});
+
+// Add CSS to show uppercase text
+const style = document.createElement('style');
+style.textContent = `
+    .uppercase-input {
+        text-transform: uppercase;
+    }
+`;
+document.head.appendChild(style);
+</script>
 </body>
 </html>
