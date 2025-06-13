@@ -49,6 +49,10 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             $param_password = password_hash($new_password, PASSWORD_DEFAULT);
             $param_id = $_SESSION['reset_user_id'];
             
+            error_log("Resetting password for user ID: " . $param_id);
+            error_log("New password (plain): " . $new_password);
+            error_log("New password (hashed): " . $param_password);
+
             // Attempt to execute the prepared statement
             if(mysqli_stmt_execute($stmt)){
                 // Password updated successfully. Destroy the session, and redirect to login page

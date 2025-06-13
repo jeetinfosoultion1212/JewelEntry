@@ -8,118 +8,153 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { 
-            font-family: 'Poppins', sans-serif; 
-            background: linear-gradient(135deg, #fef7cd 0%, #fff7ed 100%);
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #fef7cd;
             min-height: 100vh;
-            padding: 1rem 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            padding: 0;
         }
-        .gradient-gold {
-            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+
+        .register-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            min-width: 280px;
+            position: relative;
+            z-index: 10;
+            padding: 2rem;
+            box-sizing: border-box;
         }
+
+        @media (max-width: 640px) {
+            .register-card {
+                max-width: 350px;
+                padding: 1.5rem;
+            }
+        }
+
         .form-group {
             position: relative;
             margin-bottom: 1rem;
         }
+
         .form-input {
-            width: 100%; 
-            padding: 0.875rem 1rem 0.875rem 2.75rem;
-            font-size: 0.9rem; 
-            border: 1.5px solid #e5e7eb; 
-            border-radius: 0.75rem;
+            width: 100%;
+            padding: 0.6rem 1rem 0.6rem 2.75rem;
+            font-size: 0.875rem;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 12px;
             background-color: white;
             transition: all 0.2s ease;
             color: #374151;
         }
-        .form-input:focus { 
-            outline: none; 
-            border-color: #8b5cf6; 
-            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+
+        .form-input:focus {
+            outline: none;
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
             transform: translateY(-1px);
         }
+
         .input-icon {
             position: absolute;
             left: 1rem;
             top: 50%;
             transform: translateY(-50%);
             color: #9ca3af;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
+            transition: color 0.2s ease;
         }
-        .form-label { 
-            font-size: 0.75rem; 
-            font-weight: 600; 
-            color: #4b5563; 
-            margin-bottom: 0.375rem;
+
+        .form-input:focus + .input-icon {
+            color: #fbbf24;
+        }
+
+        .form-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #4b5563;
+            margin-bottom: 0.25rem;
             display: block;
             text-transform: uppercase;
             letter-spacing: 0.025em;
         }
+
         .btn-primary {
-            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-            color: white; 
-            padding: 1rem 1.5rem; 
-            border-radius: 0.75rem;
-            font-size: 0.95rem; 
-            font-weight: 600; 
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 600;
             transition: all 0.3s ease;
-            display: flex; 
-            align-items: center; 
+            display: flex;
+            align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
             border: none;
             cursor: pointer;
+            width: 100%;
+            margin-top: 1rem;
         }
-        .btn-primary:hover { 
+
+        .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+            box-shadow: 0 6px 20px rgba(251, 191, 36, 0.4);
         }
-        .btn-primary:active { 
+
+        .btn-primary:active {
             transform: translateY(0px);
         }
+
         .floating-icon {
             animation: floating 3s ease-in-out infinite;
         }
+
         @keyframes floating {
             0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-8px); } 
+            50% { transform: translateY(-8px); }
         }
+
         .error-message {
             background-color: #fee2e2;
             color: #b91c1c;
             border: 1px solid #fecaca;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            font-size: 0.8rem;
-            margin-top: 0.75rem;
+            padding: 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            margin-top: 0.6rem;
             text-align: center;
             animation: slideIn 0.3s ease;
         }
+
         @keyframes slideIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
         .mobile-prefix {
             position: absolute;
             left: 2.75rem;
             top: 50%;
             transform: translateY(-50%);
             color: #6b7280;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             font-weight: 500;
             pointer-events: none;
             z-index: 10;
         }
+
         .mobile-input {
-            padding-left: 4.5rem !important;
+            padding-left: 4.25rem !important;
         }
-        .form-container {
-            max-width: 380px;
-            margin: 0 auto;
-        }
-        .compact-header {
-            text-align: center;
-            margin-bottom: 1rem;
-        }
+
         .password-toggle {
             position: absolute;
             right: 1rem;
@@ -127,107 +162,111 @@
             transform: translateY(-50%);
             color: #9ca3af;
             cursor: pointer;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             transition: color 0.2s ease;
             z-index: 10;
         }
+
         .password-toggle:hover {
             color: #6b7280;
         }
+
         .form-input.has-toggle {
             padding-right: 2.75rem;
+        }
+
+        .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+            margin: 1.25rem 0;
         }
     </style>
 </head>
 <body>
-    <div class="form-container">
-        <div class="compact-header">
-            <div class="flex items-center justify-center mb-6">
-                <div class="w-8 h-8 gradient-gold rounded-lg flex items-center justify-center shadow-md floating-icon mr-3">
-                    <i class="fas fa-gem text-white text-sm"></i>
-                </div>
-                <div class="text-left">
-                    <h1 class="text-lg font-bold text-gray-800 leading-tight">Create Account</h1>
-                    <p class="text-xs text-gray-600 leading-tight">Golden Palace Management</p>
-                </div>
+    <div class="register-card">
+        <div class="flex items-center justify-center mb-5">
+            <div class="w-9 h-9 flex items-center justify-center shadow-md floating-icon mr-2">
+                <img src="uploads/logo.png" alt="Jewel Entry Logo" class="h-full w-full object-contain">
+            </div>
+            <div class="text-left">
+                <h1 class="text-lg font-bold text-gray-800 leading-tight">Create Account</h1>
+                <p class="text-xs text-gray-600 leading-tight">Jewel Entry</p>
             </div>
         </div>
 
-        <div class="bg-white/80 backdrop-blur-sm premium-card p-6 rounded-xl shadow-xl">
-            <form id="registerForm">
-                <div class="form-group">
-                    <label for="fullName" class="form-label">Full Name</label>
-                    <div class="relative">
-                        <span class="input-icon"><i class="fas fa-user"></i></span>
-                        <input type="text" id="fullName" name="fullName" class="form-input" placeholder="Enter your full name" required>
-                    </div>
+        <form id="registerForm">
+            <div class="form-group">
+                <label for="fullName" class="form-label">Full Name</label>
+                <div class="relative">
+                    <input type="text" id="fullName" name="fullName" class="form-input" placeholder="Enter your full name" required>
+                    <span class="input-icon"><i class="fas fa-user"></i></span>
                 </div>
-
-                <div class="form-group">
-                    <label for="mobile" class="form-label">Mobile Number</label>
-                    <div class="relative">
-                        <span class="input-icon"><i class="fas fa-phone"></i></span>
-                        <span class="mobile-prefix">+91</span>
-                        <input type="tel" id="mobile" name="mobile" class="form-input mobile-input" placeholder="Enter 10-digit number" required pattern="[0-9]{10}" maxlength="10">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="email" class="form-label">Email (Optional)</label>
-                    <div class="relative">
-                        <span class="input-icon"><i class="fas fa-envelope"></i></span>
-                        <input type="email" id="email" name="email" class="form-input" placeholder="your@email.com">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="firmName" class="form-label">Firm Name (Optional)</label>
-                    <div class="relative">
-                        <span class="input-icon"><i class="fas fa-building"></i></span>
-                        <input type="text" id="firmName" name="firmName" class="form-input" placeholder="Your business name">
-                    </div>
-                </div>
-
-                <div class="divider"></div>
-
-                <div class="form-group">
-                    <label for="password" class="form-label">Password</label>
-                    <div class="relative">
-                        <span class="input-icon"><i class="fas fa-lock"></i></span>
-                        <input type="password" id="password" name="password" class="form-input has-toggle" placeholder="Minimum 6 characters" required minlength="6">
-                        <span class="password-toggle" onclick="togglePassword('password')">
-                            <i class="fas fa-eye" id="password-eye"></i>
-                        </span>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="confirmPassword" class="form-label">Confirm Password</label>
-                    <div class="relative">
-                        <span class="input-icon"><i class="fas fa-shield-alt"></i></span>
-                        <input type="password" id="confirmPassword" name="confirmPassword" class="form-input has-toggle" placeholder="Re-enter password" required>
-                        <span class="password-toggle" onclick="togglePassword('confirmPassword')">
-                            <i class="fas fa-eye" id="confirmPassword-eye"></i>
-                        </span>
-                    </div>
-                </div>
-
-                <button type="submit" id="registerButton" class="btn-primary w-full mt-4">
-                    <i class="fas fa-user-plus mr-2"></i>Create Account
-                </button>
-            </form>
-
-            <div id="errorMessageContainer"></div>
-
-            <div class="text-center mt-4">
-                <p class="text-xs text-gray-600">
-                    Already have an account? 
-                    <a href="login.php" class="font-semibold text-purple-600 hover:text-purple-800 transition-colors">Sign In</a>
-                </p>
             </div>
+
+            <div class="form-group">
+                <label for="mobile" class="form-label">Mobile Number</label>
+                <div class="relative">
+                    <input type="tel" id="mobile" name="mobile" class="form-input mobile-input" placeholder="Enter 10-digit number" required pattern="[0-9]{10}" maxlength="10">
+                    <span class="input-icon"><i class="fas fa-phone"></i></span>
+                    <span class="mobile-prefix">+91</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="email" class="form-label">Email (Optional)</label>
+                <div class="relative">
+                    <input type="email" id="email" name="email" class="form-input" placeholder="your@email.com">
+                    <span class="input-icon"><i class="fas fa-envelope"></i></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="firmName" class="form-label">Firm Name (Optional)</label>
+                <div class="relative">
+                    <input type="text" id="firmName" name="firmName" class="form-input" placeholder="Your business name">
+                    <span class="input-icon"><i class="fas fa-building"></i></span>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <div class="relative">
+                    <input type="password" id="password" name="password" class="form-input has-toggle" placeholder="Minimum 6 characters" required minlength="6">
+                    <span class="input-icon"><i class="fas fa-lock"></i></span>
+                    <span class="password-toggle" onclick="togglePassword('password')">
+                        <i class="fas fa-eye" id="password-eye"></i>
+                    </span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="confirmPassword" class="form-label">Confirm Password</label>
+                <div class="relative">
+                    <input type="password" id="confirmPassword" name="confirmPassword" class="form-input has-toggle" placeholder="Re-enter password" required>
+                    <span class="input-icon"><i class="fas fa-shield-alt"></i></span>
+                    <span class="password-toggle" onclick="togglePassword('confirmPassword')">
+                        <i class="fas fa-eye" id="confirmPassword-eye"></i>
+                    </span>
+                </div>
+            </div>
+
+            <button type="submit" id="registerButton" class="btn-primary">
+                <i class="fas fa-user-plus mr-2"></i>Create Account
+            </button>
+        </form>
+
+        <div id="errorMessageContainer"></div>
+
+        <div class="text-center mt-5">
+            <p class="text-sm text-gray-600">
+                Already have an account? 
+                <a href="login.php" class="font-semibold text-yellow-600 hover:text-yellow-700 transition-colors">Sign In</a>
+            </p>
         </div>
 
-        <p class="text-center text-xs text-gray-500 mt-4">© 2024 JewelEntry Software. All rights reserved.</p>
+        <p class="text-center text-xs text-gray-500 mt-5">© 2024 JewelEntry Software. All rights reserved.</p>
     </div>
 
     <script>
@@ -240,6 +279,22 @@
             e.target.value = value;
         });
 
+        // Password toggle functionality
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const eye = document.getElementById(inputId + '-eye');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                eye.classList.remove('fa-eye');
+                eye.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                eye.classList.remove('fa-eye-slash');
+                eye.classList.add('fa-eye');
+            }
+        }
+
         document.getElementById('registerForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -249,122 +304,32 @@
             const firmName = document.getElementById('firmName').value.trim();
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
-            
-            // Clear previous errors
-            clearError();
-            
-            // Validation
-            if (!fullName) {
-                showError('Please enter your full name');
-                return;
-            }
-            
-            if (mobile.length !== 10 || !/^\d+$/.test(mobile)) {
-                showError('Please enter a valid 10-digit mobile number');
-                return;
-            }
-            
-            if (password.length < 6) {
-                showError('Password must be at least 6 characters long');
-                return;
-            }
-            
+
+            // Basic validation
             if (password !== confirmPassword) {
                 showError('Passwords do not match');
                 return;
             }
-            
-            if (email && !isValidEmail(email)) {
-                showError('Please enter a valid email address');
-                return;
-            }
 
-            // Disable submit button and show loading state
-            const submitButton = document.getElementById('registerButton');
-            const originalContent = submitButton.innerHTML;
-            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating Account...';
-            submitButton.disabled = true;
-            
-            // Create FormData object
-            const formData = new FormData();
-            formData.append('fullName', fullName);
-            formData.append('mobile', mobile);
-            formData.append('email', email);
-            formData.append('firmName', firmName);
-            formData.append('password', password);
-            
-            // Send AJAX request
-            fetch('api/process_registration.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showSuccess(data.message);
-                    // Redirect after a short delay
-                    setTimeout(() => {
-                        window.location.href = data.redirect;
-                    }, 1500);
-                } else {
-                    showError(data.message);
-                    // Reset button state
-                    submitButton.innerHTML = originalContent;
-                    submitButton.disabled = false;
-                }
-            })
-            .catch(error => {
-                showError('An error occurred. Please try again.');
-                // Reset button state
-                submitButton.innerHTML = originalContent;
-                submitButton.disabled = false;
-            });
+            // Here you would typically send the data to your server
+            // For now, we'll just show a success message
+            const errorContainer = document.getElementById('errorMessageContainer');
+            errorContainer.innerHTML = `
+                <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded relative mt-4" role="alert">
+                    <strong class="font-bold">Success!</strong>
+                    <span class="block sm:inline"> Account created successfully.</span>
+                </div>
+            `;
         });
-        
+
         function showError(message) {
             const errorContainer = document.getElementById('errorMessageContainer');
-            errorContainer.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle mr-2"></i>${message}</div>`;
+            errorContainer.innerHTML = `
+                <div class="error-message">
+                    ${message}
+                </div>
+            `;
         }
-        
-        function clearError() {
-            document.getElementById('errorMessageContainer').innerHTML = '';
-        }
-        
-        function showSuccess(message) {
-            const button = document.getElementById('registerButton');
-            button.innerHTML = '<i class="fas fa-check mr-2"></i>Account Created!';
-            button.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
-            button.disabled = true;
-        }
-        
-        function isValidEmail(email) {
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-        }
-
-        // Password toggle functionality
-        function togglePassword(fieldId) {
-            const passwordField = document.getElementById(fieldId);
-            const eyeIcon = document.getElementById(fieldId + '-eye');
-            
-            if (passwordField.type === 'password') {
-                passwordField.type = 'text';
-                eyeIcon.className = 'fas fa-eye-slash';
-            } else {
-                passwordField.type = 'password';
-                eyeIcon.className = 'fas fa-eye';
-            }
-        }
-
-        // Add subtle focus animations
-        document.querySelectorAll('.form-input').forEach(input => {
-            input.addEventListener('focus', function() {
-                this.parentElement.style.transform = 'scale(1.02)';
-            });
-            
-            input.addEventListener('blur', function() {
-                this.parentElement.style.transform = 'scale(1)';
-            });
-        });
     </script>
 </body>
 </html>

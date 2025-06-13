@@ -11,7 +11,7 @@ $user_id = $_SESSION['id']; // Get user ID for fetching user details
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "jewelentry";
+$dbname = "jewelentrypro";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 

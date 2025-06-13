@@ -144,8 +144,7 @@ if ($subscription) {
 $hasFeatureAccess = ($isPremiumUser && !$isExpired) || ($isTrialUser && !$isExpired);
 
 // Fetch user and firm details
-$userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName, f.City
-             FROM Firm_Users u
+$userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName, f.City, f.Logo FROM Firm_Users u
              JOIN Firm f ON f.id = u.FirmID
              WHERE u.id = ?";
 $userStmt = $conn->prepare($userQuery);
@@ -432,7 +431,11 @@ if (empty(trim($marqueeText))) {
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2">
                     <div class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating">
-                        <i class="fas fa-gem text-white text-sm"></i>
+                        <?php if (!empty($userInfo['Logo'])): ?>
+                            <img src="<?php echo htmlspecialchars($userInfo['Logo']); ?>" alt="Firm Logo" class="w-full h-full object-cover rounded-xl">
+                        <?php else: ?>
+                            <i class="fas fa-gem text-white text-sm"></i>
+                        <?php endif; ?>
                     </div>
                     <div>
                         <h1 class="text-sm font-bold text-gray-800"><?php echo $userInfo['FirmName']; ?></h1>
@@ -441,7 +444,7 @@ if (empty(trim($marqueeText))) {
                 </div>
                 <div class="flex items-center space-x-2">
                     <div class="text-right">
-                        <p id="headerUserName" class="text-sm font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
+                        <p id="headerUserName" class="text-xs font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
                         <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
                     </div>
                     <?php if ($hasFeatureAccess): ?>

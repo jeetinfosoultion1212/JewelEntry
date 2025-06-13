@@ -95,10 +95,10 @@ if (isset($_GET['action'])) {
     }
     
     if ($action == 'getGoldRate') {
-       // Get the latest 24K gold rate from jewellery_price_config
+       // Get the latest gold rate from jewellery_price_config
        $sql = "SELECT rate FROM jewellery_price_config 
-               WHERE firm_id = ? AND material_type = 'Gold' AND purity = '24K' 
-               ";
+               WHERE firm_id = ? AND material_type = 'Gold' AND purity = '99.99' 
+               ORDER BY effective_date DESC LIMIT 1";
        
        $stmt = $conn->prepare($sql);
        $stmt->bind_param("i", $firm_id);
@@ -109,7 +109,7 @@ if (isset($_GET['action'])) {
            $row = $result->fetch_assoc();
            $rate = $row['rate'];
        } else {
-           $rate = 9810; // Default rate if not found
+           $rate = 7500; // Default rate if not found
        }
        
        header('Content-Type: application/json');
@@ -969,9 +969,9 @@ if ($action == 'addKarigar') {
 
     <!-- Metal Details Section -->
     <div class="section-card material-section">
-  <div class="section-title text-amber-800">
-    <i class="fas fa-coins"></i> Metal Details
-  </div>
+      <div class="section-title text-amber-800">
+        <i class="fas fa-coins"></i> <span id="materialDetailsTitle">Material Details</span>
+      </div>
  
   <div class="field-row">
     <!-- 24K Gold Rate (₹) -->

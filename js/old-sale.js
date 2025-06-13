@@ -109,15 +109,15 @@
     
         // Get response text first to debug
         const responseText = await response.text()
-        console.log("Raw response:", responseText)
+        // console.log("Raw response:", responseText) // Commented out to reduce log spam unless needed
     
         // Try to parse JSON
         let data
         try {
           data = JSON.parse(responseText)
         } catch (parseError) {
-          console.error("JSON parse error:", parseError)
-          console.error("Response text:", responseText)
+          console.error("JSON parse error in fetchFirmConfiguration:", parseError)
+          console.error("Response text causing parse error:", responseText)
           throw new Error("Invalid JSON response from server")
         }
     
@@ -506,43 +506,70 @@
     
     // Select a customer
     function selectCustomer(customer) {
-      selectedCustomer = customer
-      if (customerNameInput) customerNameInput.value = `${customer.FirstName} ${customer.LastName}`
-    
-      if (selectionDetails) {
-        let detailsHTML = `
-                <div class="detail-badge">
-                    <i class="fas fa-id-card"></i>
-                    <span>#${customer.id}</span>
-                </div>
-                <div class="detail-badge">
-                    <i class="fas fa-user"></i>
-                    <span>${customer.FirstName} ${customer.LastName}</span>
-                </div>
-                <div class="detail-badge">
-                    <i class="fas fa-phone"></i>
-                    <span>${customer.PhoneNumber}</span>
-                </div>
-            `
-    
-        if (customer.due_amount > 0) {
-          detailsHTML += `
-                    <div class="due-badge">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <span> ₹${Number.parseFloat(customer.due_amount).toFixed(2)}</span>
-                    </div>
-                `
-        }
-    
-        selectionDetails.innerHTML = detailsHTML
-        selectionDetails.classList.remove("hidden")
+      selectedCustomer = customer;
+      customerNameInput.value = `${customer.FirstName} ${customer.LastName || ""}`.trim();
+      customerDropdown.innerHTML = "";
+      customerDropdown.classList.add("hidden");
+
+      console.log("Selected customer data:", customer);
+      console.log("Firm configuration couponCodeApplyEnabled:", firmConfiguration.couponCodeApplyEnabled);
+
+      let detailsHtml = `
+          <div class="flex items-center space-x-3 mb-2 px-2 py-1 bg-blue-50 rounded-lg">
+              <i class="fas fa-id-card text-blue-600"></i>
+              <span class="text-xs font-semibold text-blue-800">#${customer.id}</span>
+              <i class="fas fa-user-circle text-blue-600 ml-3"></i>
+              <span class="text-xs font-semibold text-blue-800">${customer.FirstName} ${customer.LastName || ""}</span>
+              <i class="fas fa-phone text-blue-600 ml-3"></i>
+              <span class="text-xs font-semibold text-blue-800">${customer.PhoneNumber}</span>
+          </div>
+      `;
+
+      if (customer.due_amount > 0) {
+        detailsHtml += `
+          <div class="flex items-center space-x-3 mb-2 px-2 py-1 bg-red-50 rounded-lg text-red-800">
+              <i class="fas fa-exclamation-triangle text-red-600"></i>
+              <span class="text-xs font-semibold">Due Amount: ₹${formatCurrency(customer.due_amount)}</span>
+          </div>
+        `;
       }
-    
-      if (addToCartBtn && (selectedProduct || isNewProductMode)) {
-        addToCartBtn.disabled = false
+
+      // NEW: Display available coupons
+      if (firmConfiguration.couponCodeApplyEnabled && customer.availableCoupons && customer.availableCoupons.length > 0) {
+       console.log("Displaying available coupons:", customer.availableCoupons);
+       let couponBadgesHtml = '';
+       customer.availableCoupons.forEach(coupon => {
+           couponBadgesHtml += `
+               <span class="coupon-badge" title="${coupon.description}">
+                   ${coupon.code} 
+                   <span class="text-[10px] opacity-80">(${coupon.usageLeft} uses left)</span>
+               </span>
+           `;
+       });
+       detailsHtml += `
+          <div class="mt-2 p-2 bg-purple-50 rounded-lg border border-purple-200">
+              <h4 class="text-xs font-semibold text-purple-800 mb-1"><i class="fas fa-gift text-purple-600 mr-1"></i> Available Coupons</h4>
+              <div class="flex flex-wrap gap-1">
+                  ${couponBadgesHtml}
+              </div>
+          </div>
+      `;
+      } else {
+          console.log("Coupons not displayed. Reasons:", {
+              couponCodeApplyEnabled: firmConfiguration.couponCodeApplyEnabled,
+              hasAvailableCouponsArray: !!customer.availableCoupons,
+              availableCouponsLength: customer.availableCoupons ? customer.availableCoupons.length : 0
+          });
       }
-    
-      console.log("Customer selected:", customer)
+
+      selectionDetails.innerHTML = detailsHtml;
+      selectionDetails.classList.remove("hidden");
+
+      // Automatically fetch and display advance payments if the customer has any
+      fetchCustomerAdvancePayments(customer.id);
+
+      // Fetch and display active schemes for the customer
+      fetchAndDisplayActiveSchemes(customer.id, customer.totalAmountPaid);
     }
     
     // Search products
@@ -679,17 +706,19 @@
     
     // Calculate purity rate
     function calculatePurityRate() {
-      const rate24k = Number.parseFloat(rate24kInput?.value) || 0
-      const purity = Number.parseFloat(purityInput?.value) || 0
-    
-      if (purity > 0) {
-        const purityRate = (rate24k * purity) / 100
-        if (purityRateInput) purityRateInput.value = purityRate.toFixed(2)
-      } else {
-        if (purityRateInput) purityRateInput.value = 0
+      const rate24k = parseFloat(document.getElementById('rate24k').value) || 0;
+      const purity = parseFloat(document.getElementById('purity').value) || 0;
+      const materialType = document.getElementById('materialType').value;
+      
+      let finePurityStandard = materialType === 'Gold' ? 99.99 : 
+                             materialType === 'Silver' ? 999.90 : 
+                             materialType === 'Platinum' ? 99.95 : 0;
+      
+      if (finePurityStandard > 0 && rate24k > 0) {
+          const purityRate = rate24k * (purity / finePurityStandard);
+          document.getElementById('purityRate').value = Math.round(purityRate);
+          calculateMetalAmount();
       }
-    
-      calculateMetalAmount()
     }
     
     // Calculate net weight
@@ -705,13 +734,9 @@
     
     // Calculate metal amount
     function calculateMetalAmount() {
-      const netWeight = Number.parseFloat(netWeightInput?.value) || 0
-      const purityRate = Number.parseFloat(purityRateInput?.value) || 0
-    
-      const metalAmount = netWeight * purityRate
-      if (metalAmountInput) metalAmountInput.value = metalAmount.toFixed(2)
-    
-      calculateTotal()
+      const netWeight = parseFloat(document.getElementById('netWeight').value) || 0;
+      const purityRate = parseFloat(document.getElementById('purityRate').value) || 0;
+      document.getElementById('metalAmount').value = Math.round(netWeight * purityRate);
     }
     
     // Calculate making charges
@@ -796,56 +821,53 @@
     
     // Enhanced save customer with welcome coupon messaging
     function saveCustomer() {
-      const firstName = newCustomerFirstNameInput?.value.trim()
-      const lastName = newCustomerLastNameInput?.value.trim()
-      const phone = newCustomerPhoneInput?.value.trim()
-    
+      const firstName = newCustomerFirstNameInput.value.trim();
+      const lastName = newCustomerLastNameInput.value.trim();
+      const phone = newCustomerPhoneInput.value.trim();
+      const email = newCustomerEmailInput.value.trim();
+      const address = newCustomerAddressInput.value.trim();
+      const city = newCustomerCityInput.value.trim();
+      const state = newCustomerStateInput.value.trim();
+      const postalCode = newCustomerPostalCodeInput.value.trim();
+      const gst = newCustomerGstInput.value.trim();
+
       if (!firstName || !phone) {
-        showToast("First name and phone number are required", "error")
-        return
+        showToast("First Name and Phone Number are required.", "error");
+        return;
       }
-    
-      const customerData = new FormData()
-      customerData.append("firstName", firstName)
-      customerData.append("lastName", lastName)
-      customerData.append("phone", phone)
-      customerData.append("email", newCustomerEmailInput?.value.trim())
-      customerData.append("address", newCustomerAddressInput?.value.trim())
-      customerData.append("city", newCustomerCityInput?.value.trim())
-      customerData.append("state", newCustomerStateInput?.value.trim())
-      customerData.append("postalCode", newCustomerPostalCodeInput?.value.trim())
-      customerData.append("gst", newCustomerGstInput?.value.trim())
-    
-      console.log("Saving customer data:", Object.fromEntries(customerData))
-    
+
+      const formData = new FormData();
+      formData.append("firstName", firstName);
+      formData.append("lastName", lastName);
+      formData.append("phone", phone);
+      formData.append("email", email);
+      formData.append("address", address);
+      formData.append("city", city);
+      formData.append("state", state);
+      formData.append("postalCode", postalCode);
+      formData.append("gst", gst);
+
       fetch("sale-entry.php?action=addCustomer", {
         method: "POST",
-        body: customerData,
+        body: formData,
       })
-        .then((response) => {
-          console.log("Add customer response status:", response.status)
-          return response.json()
-        })
+        .then((response) => response.json())
         .then((data) => {
-          console.log("Add customer response:", data)
           if (data.success) {
-            // NEW: Check for welcome coupon message from backend
-            let successMessage = "Customer added successfully"
+            showToast("Customer added successfully!", "success");
             if (data.welcomeCouponMessage) {
-              successMessage = data.welcomeCouponMessage
+                showToast(data.welcomeCouponMessage, "info"); // Display welcome coupon message
             }
-    
-            showToast(successMessage)
-            closeCustomerModal()
-            selectCustomer(data.customer)
+            closeCustomerModal();
+            selectCustomer(data.customer); // Select the newly added customer
           } else {
-            showToast(data.message, "error")
+            showToast(`Failed to add customer: ${data.message || "Unknown error"}`, "error");
           }
         })
         .catch((error) => {
-          console.error("Error adding customer:", error)
-          showToast("Failed to add customer", "error")
-        })
+          console.error("Error adding customer:", error);
+          showToast("Error adding customer.", "error");
+        });
     }
     
     // Save new jewelry item
@@ -1047,15 +1069,15 @@
     // Enhanced showCart function with product table, discounts, URD and improved UI
     function showCart() {
       console.log("showCart called, cart items:", cartItems.length)
-    
+
       if (cartItems.length === 0) {
         showToast("Your cart is empty", "error")
         return
       }
-    
+
       const entryForm = document.getElementById("entry-form")
       if (entryForm) entryForm.style.display = "none"
-    
+
       let cartViewContainer = document.getElementById("cart-view-container")
       if (!cartViewContainer) {
         cartViewContainer = document.createElement("div")
@@ -1104,10 +1126,8 @@
                         <div class="grid grid-cols-2 gap-2 mb-2">
                             <div class="relative">
                                 <input type="text" id="couponCode" placeholder="Coupon Code" 
-                                    class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" 
-                                    ${!firmConfiguration.couponCodeApplyEnabled ? "disabled" : ""}>
-                                <button id="applyCoupon" class="absolute right-1 top-1/2 transform -translate-y-1/2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs"
-                                    ${!firmConfiguration.couponCodeApplyEnabled ? "disabled" : ""}>
+                                    class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg">
+                                <button id="applyCoupon" class="absolute right-1 top-1/2 transform -translate-y-1/2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
                                     Apply
                                 </button>
                             </div>
@@ -1129,7 +1149,7 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <input type="checkbox" id="loyaltyDiscountCheck" class="h-3 w-3 text-blue-600">
-                                <label for="loyaltyDiscountCheck" class="text-xs text-gray-700">Loyalty (${(firmConfiguration.loyaltyDiscountPercentage * 100).toFixed(0)}%)</label>
+                                <label for="loyaltyDiscountCheck" class="text-xs text-gray-700">Loyalty Discount</label>
                                 <span id="loyaltyDiscountAmountDisplay" class="text-xs font-medium text-green-600 ml-auto">₹0.00</span>
                             </div>
                             <div class="relative">
@@ -1148,18 +1168,31 @@
                 </div>
                 <div id="cartViewSummary" class="bg-white p-2 rounded-lg shadow-sm border border-blue-100"></div>
             `
-    
+
         if (entryForm) entryForm.insertAdjacentElement("afterend", cartViewContainer)
-    
+
+        // Ensure adjustments content is visible on cart open
+        const adjustmentsContent = document.getElementById("adjustmentsContent");
+        if (adjustmentsContent) {
+            adjustmentsContent.classList.remove("hidden");
+            const toggleBtn = document.getElementById("toggleAdjustments");
+            if(toggleBtn) {
+                toggleBtn.querySelector("span").textContent = "Hide";
+                toggleBtn.querySelector("i").classList.remove("fa-chevron-down");
+                toggleBtn.querySelector("i").classList.add("fa-chevron-up");
+            }
+        }
+
         document.getElementById("backToEntryForm")?.addEventListener("click", () => {
           hideCart()
           if (entryForm) entryForm.style.display = "block"
           const cvc = document.getElementById("cart-view-container")
           if (cvc) cvc.style.display = "none"
         })
-    
+
+        // Re-setup discount listeners after HTML is rendered
         setupDiscountListeners()
-    
+
         document.getElementById("toggleAdjustments")?.addEventListener("click", function () {
           const content = document.getElementById("adjustmentsContent")
           if (!content) return
@@ -1174,23 +1207,9 @@
         if (itemCountEl) itemCountEl.textContent = cartItems.length + " items"
         cartViewContainer.style.display = "block"
       }
-    
+
       updateCartViewItems()
       updateCartViewSummary()
-    
-      if (cartBottomSheet) cartBottomSheet.style.transform = "translateY(0)"
-      isCartVisible = true
-    
-      // Fetch and display customer coupons if a customer is selected
-      if (selectedCustomer) {
-        fetchAndDisplayCustomerCoupons(selectedCustomer.id);
-      } else {
-        // Hide coupons section if no customer is selected
-        const availableCouponsContainer = document.getElementById('availableCouponsContainer');
-        if (availableCouponsContainer) {
-          availableCouponsContainer.classList.add('hidden');
-        }
-      }
     }
     
     // NEW: Function to fetch and display customer coupons
@@ -1252,42 +1271,36 @@
     // NEW: Enhanced function to set up listeners for discount and URD functionality with coupon validation
     function setupDiscountListeners() {
       document.getElementById("applyCoupon")?.addEventListener("click", () => {
-        if (!firmConfiguration.couponCodeApplyEnabled) {
-          showToast("Coupon functionality is disabled for this firm", "error")
-          return
-        }
-    
         const couponCodeInput = document.getElementById("couponCode")
         if (!couponCodeInput) return
         const couponCode = couponCodeInput.value.trim().toUpperCase()
-    
+
         if (!couponCode) {
           showToast("Please enter a coupon code", "error")
           return
         }
-    
+
         if (!selectedCustomer) {
           showToast("Please select a customer first", "error")
           return
         }
-    
-        // NEW: Call backend to validate coupon
+
         applyCouponCode(couponCode, selectedCustomer.id, cart.gstEnabled)
       })
-    
+
       document.getElementById("addDiscount")?.addEventListener("click", () => {
         const discountAmountInput = document.getElementById("discountAmountInput")
         const discountTypeSelect = document.getElementById("discountType")
         if (!discountAmountInput || !discountTypeSelect) return
-    
+
         const discountAmount = Number.parseFloat(discountAmountInput.value)
         const discountType = discountTypeSelect.value
-    
+
         if (isNaN(discountAmount) || discountAmount <= 0) {
           showToast("Please enter a valid discount amount", "error")
           return
         }
-    
+
         cart.manualDiscount = { type: discountType, value: discountAmount }
         const description = discountType === "percentage" ? `${discountAmount}% off` : `₹${discountAmount.toFixed(2)} off`
         showAppliedDiscount("manual", "Manual Discount", description)
@@ -1295,7 +1308,19 @@
         showToast(`Manual discount applied: ${description}`, "success")
         discountAmountInput.value = ""
       })
-    
+
+      document.getElementById("loyaltyDiscountCheck")?.addEventListener("change", function () {
+        cart.loyaltyDiscount = this.checked
+        updateCartViewSummary()
+
+        if (this.checked) {
+          showToast("Loyalty discount applied", "success")
+        } else {
+          removeDiscount("loyalty")
+          showToast("Loyalty discount removed", "info")
+        }
+      })
+
       const urdAmountInputDisplay = document.getElementById("urdAmountInputDisplay")
       if (urdAmountInputDisplay) {
         urdAmountInputDisplay.addEventListener("focus", function (e) {
@@ -1312,20 +1337,8 @@
           { passive: false },
         )
       }
-    
+
       document.getElementById("addURD")?.addEventListener("click", showUrdModal)
-    
-      document.getElementById("loyaltyDiscountCheck")?.addEventListener("change", function () {
-        cart.loyaltyDiscount = this.checked
-        updateCartViewSummary()
-    
-        if (this.checked) {
-          showToast("Loyalty discount applied", "success")
-        } else {
-          removeDiscount("loyalty")
-          showToast("Loyalty discount removed", "info")
-        }
-      })
     }
     // NEW: Function to apply coupon code with backend validation
     function applyCouponCode(couponCode, customerId, isGst) {

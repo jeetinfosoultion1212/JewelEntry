@@ -2,6 +2,9 @@
 // Initialize the session
 session_start();
 
+// Set the default timezone to Indian Standard Time (IST)
+date_default_timezone_set('Asia/Kolkata');
+
 // Check if email is set in session
 if(!isset($_SESSION['reset_email'])) {
     header("location: forgot_password.php");
@@ -198,9 +201,9 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         
         // Auto-advance to next input (if we had multiple inputs)
         document.querySelector('input[name="otp"]').addEventListener('input', function(e) {
-            if (this.value.length === 6) {
-                this.form.submit();
-            }
+            // if (this.value.length === 6) {
+            //     this.form.submit();
+            // }
         });
     </script>
 </body>

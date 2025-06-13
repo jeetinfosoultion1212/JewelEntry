@@ -703,14 +703,30 @@ function getCurrentRate($materialType) {
     }
     $firmId = $_SESSION['firmID'];
     
+    // Set purity based on material type
+    $purity = '';
+    switch($materialType) {
+        case 'Gold':
+            $purity = '99.99';
+            break;
+        case 'Silver':
+            $purity = '999.90';
+            break;
+        case 'Platinum':
+            $purity = '99.95';
+            break;
+        default:
+            $purity = '99.99'; // Default to gold standard
+    }
+    
     $sql = "SELECT rate 
             FROM jewellery_price_config 
-            WHERE firm_id = ? AND material_type = ? AND purity='24K' 
+            WHERE firm_id = ? AND material_type = ? AND purity = ? 
             ORDER BY effective_date DESC 
             LIMIT 1";
             
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("is", $firmId, $materialType);
+    $stmt->bind_param("iss", $firmId, $materialType, $purity);
     $stmt->execute();
     $result = $stmt->get_result();
     

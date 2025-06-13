@@ -7,6 +7,11 @@ error_reporting(E_ALL);
 session_start();
 require 'config/config.php';
 
+// Function to generate a secure remember me token
+function generateRememberMeToken() {
+    return bin2hex(random_bytes(32)); // 64 character hex string
+}
+
 // Check if the user is already logged in, if yes then redirect to home page
 if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
     header("location: home.php");
@@ -14,17 +19,17 @@ if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
 }
 
 // Define variables and initialize with empty values
-$username = $password = "";
-$username_err = $password_err = $login_err = "";
+$login_identifier = $password = "";
+$login_identifier_err = $password_err = $login_err = "";
 
 // Processing form data when form is submitted
 if($_SERVER["REQUEST_METHOD"] == "POST"){
 
-    // Check if username is empty
-    if(empty(trim($_POST["username"]))){
-        $username_err = "Please enter username.";
+    // Check if login identifier is empty
+    if(empty(trim($_POST["login_identifier"]))){
+        $login_identifier_err = "Please enter your username, email or phone number.";
     } else{
-        $username = trim($_POST["username"]);
+        $login_identifier = trim($_POST["login_identifier"]);
     }
 
     // Check if password is empty
@@ -35,26 +40,26 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     }
 
     // Validate credentials
-    if(empty($username_err) && empty($password_err)){
+    if(empty($login_identifier_err) && empty($password_err)){
         // Prepare a select statement
-        $sql = "SELECT id, username, password, role, firmID FROM Firm_Users WHERE username = ?";
+        $sql = "SELECT id, username, password, role, firmID, email, PhoneNumber FROM Firm_Users WHERE username = ? OR email = ? OR PhoneNumber = ?";
 
         if($stmt = mysqli_prepare($conn, $sql)){
             // Bind variables to the prepared statement as parameters
-            mysqli_stmt_bind_param($stmt, "s", $param_username);
+            mysqli_stmt_bind_param($stmt, "sss", $param_identifier, $param_identifier, $param_identifier);
 
             // Set parameters
-            $param_username = $username;
+            $param_identifier = $login_identifier;
 
             // Attempt to execute the prepared statement
             if(mysqli_stmt_execute($stmt)){
                 // Store result
                 mysqli_stmt_store_result($stmt);
 
-                // Check if username exists, if yes then verify password
+                // Check if user exists, if yes then verify password
                 if(mysqli_stmt_num_rows($stmt) == 1){
                     // Bind result variables
-                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password, $role, $firmID);
+                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password, $role, $firmID, $email, $PhoneNumber);
                     if(mysqli_stmt_fetch($stmt)){
                         if(password_verify($password, $hashed_password)){
                             // Password is correct, so start a new session
@@ -66,6 +71,28 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                             $_SESSION["username"] = $username;
                             $_SESSION["role"] = $role;
                             $_SESSION["firmID"] = $firmID;
+
+                            // Handle "Remember Me" functionality
+                            if (isset($_POST['remember_me']) && $_POST['remember_me'] == 'on') {
+                                $remember_token = generateRememberMeToken();
+                                $token_expiration = date('Y-m-d H:i:s', strtotime('+30 days')); // Token valid for 30 days
+
+                                // Store token in database
+                                $update_sql = "UPDATE Firm_Users SET remember_token = ?, token_expiration = ? WHERE id = ?";
+                                if ($update_stmt = mysqli_prepare($conn, $update_sql)) {
+                                    mysqli_stmt_bind_param($update_stmt, "ssi", $remember_token, $token_expiration, $id);
+                                    mysqli_stmt_execute($update_stmt);
+                                    mysqli_stmt_close($update_stmt);
+                                }
+
+                                // Set cookie
+                                setcookie("remember_me", $remember_token, [
+                                    'expires' => strtotime('+30 days'),
+                                    'path' => '/',
+                                    'httponly' => true, // HttpOnly for security
+                                    'samesite' => 'Lax' // CSRF protection
+                                ]);
+                            }
 
                             // Redirect user to appropriate dashboard based on role
                             switch($role) {
@@ -90,6 +117,10 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                             exit;
                         } else{
                             // Password is not valid
+                            error_log("Login failed for username: " . $login_identifier);
+                            error_log("Submitted password: " . $password);
+                            error_log("Stored hashed password: " . $hashed_password);
+                            error_log("password_verify result: " . (password_verify($password, $hashed_password) ? 'true' : 'false'));
                             $login_err = "Invalid username or password.";
                         }
                     }
@@ -123,40 +154,124 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #fef7cd; /* Light peach/orange background */
+            background-color: #fef7cd;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1rem;
-        }
-        
-        .login-card {
-            background: white;
-            border-radius: 20px; /* More rounded corners */
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); /* Larger shadow */
-            padding: 2rem;
-            width: 100%;
-            max-width: 380px;
-            position: relative;
-            z-index: 10;
+            overflow-x: hidden;
+            padding: 0;
         }
 
+        .view-selector {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            width: 90px;
+            height: 30px;
+            background-color: #f3f4f6;
+            border-radius: 15px;
+            padding: 2px;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            position: absolute;
+            overflow: hidden;
+            z-index: 20;
+            box-sizing: border-box;
+        }
+
+        .view-selector::before {
+            content: '';
+            position: absolute;
+            width: calc(50% - 2px);
+            height: calc(100% - 4px);
+            background-color: #fbbf24;
+            border-radius: 13px;
+            transition: transform 0.3s ease-in-out;
+            z-index: 1;
+            top: 2px;
+            left: 2px;
+        }
+
+        .view-selector.mobile-active::before {
+            transform: translateX(0);
+        }
+
+        .view-selector.pc-active::before {
+            transform: translateX(100%);
+        }
+
+        .view-selector button {
+            padding: 0;
+            border-radius: 13px;
+            border: none;
+            background-color: transparent;
+            color: #6b7280;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            position: relative;
+            z-index: 2;
+            flex: 1;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .view-selector button i {
+            font-size: 1rem;
+        }
+
+        .view-selector button.active {
+            color: white;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 480px;
+            min-width: 280px;
+            position: relative;
+            z-index: 10;
+            padding: 2.5rem;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 640px) {
+            .login-card {
+                max-width: 350px;
+                padding: 2rem;
+            }
+        }
+        
+        @media (max-width: 400px) {
+            .login-card {
+                max-width: 300px;
+                padding: 1.5rem;
+            }
+        }
+        
         .input-group {
             position: relative;
-            margin-bottom: 1.25rem; /* Increased margin */
+            margin-bottom: 1.25rem;
         }
         
         .input-field {
             width: 100%;
-            padding: 0.875rem 1rem 0.875rem 3rem; /* Increased padding and space for icon */
+            padding: 0.875rem 1rem 0.875rem 3rem;
             font-size: 0.95rem;
             border: 1px solid #e5e7eb;
-            border-radius: 0.75rem; /* More rounded input fields */
-            background-color: #f9fafb; /* Light gray background for inputs */
+            border-radius: 0.75rem;
+            background-color: #f9fafb;
             transition: all 0.2s ease;
             color: #374151;
-            box-shadow: inset 0 1px 2px rgba(0,0,0,0.03); /* Subtle inner shadow */
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
         }
         
         .input-field::placeholder {
@@ -165,8 +280,8 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
 
         .input-field:focus {
             outline: none;
-            border-color: #fbbf24; /* Orange focus border */
-            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2), inset 0 1px 2px rgba(0,0,0,0.03); /* Orange glow */
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2), inset 0 1px 2px rgba(0,0,0,0.03);
         }
 
         .input-icon {
@@ -175,6 +290,16 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             top: 50%;
             transform: translateY(-50%);
             color: #9ca3af;
+            font-size: 1rem;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            cursor: pointer;
             font-size: 1rem;
         }
 
@@ -278,27 +403,36 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         /* Responsive adjustments */
         @media (max-width: 640px) {
             .login-card {
+                max-width: 380px; /* Adjust for smaller screens like mobile */
                 padding: 1.5rem;
             }
             .text-2xl { font-size: 1.75rem; } /* Slightly smaller for mobile */
             .mb-6 { margin-bottom: 1.25rem; }
             .mb-4 { margin-bottom: 1rem; }
         }
+
+        /* Ensure main container also centers content without extra space */
+        .w-full.flex.justify-center {
+            width: 100vw; /* Ensure it takes full viewport width */
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem; /* Add padding here to avoid cutting off edges */
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
-    <!-- Main Login Container -->
-    <div class="w-full max-w-sm">
-        <!-- Login Card -->
+    <div class="w-full flex justify-center">
         <div class="login-card">
-            <!-- Language Dropdown -->
-            <div class="language-dropdown">
-                <span>English</span>
-                <i class="fas fa-chevron-down"></i>
+            <div class="view-selector pc-active"> <!-- Default to PC active -->
+                <button id="mobileViewBtn"><i class="fas fa-mobile-alt"></i></button>
+                <button id="pcViewBtn"><i class="fas fa-desktop"></i></button>
             </div>
-
             <!-- Header -->
-            <div class="text-center mb-6 mt-10">
+            <div class="text-center mb-6 mt-4">
+                <img src="uploads/logo.png" alt="Jewel Entry Logo" class="mx-auto h-20 w-auto mb-3">
                 <h1 class="text-3xl font-bold text-yellow-600 mb-2">Welcome Back</h1>
                 <p class="text-gray-500 text-sm">We're happy to see you again. To use your account, you should log in first.</p>
             </div>
@@ -315,41 +449,48 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             
             <!-- Login Form -->
             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
-                <!-- Username/Mobile -->
                 <div class="input-group">
-                    <i class="fas fa-phone input-icon"></i>
-                    <input type="text" name="username" id="usernameInput" value="<?php echo $username; ?>"
-                        class="input-field"
-                        placeholder="9898562314">
-                    <?php if(!empty($username_err)): ?>
-                        <p class="text-red-600 text-xs mt-1"><?php echo $username_err; ?></p>
-                    <?php endif; ?>
+                    <i class="fas fa-user input-icon"></i>
+                    <input type="text" name="login_identifier" class="input-field"
+                        value="<?php echo $login_identifier; ?>" placeholder="Enter username, email or phone number" required>
                 </div>
-                
-                <!-- Password -->
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input type="password" name="password" id="password"
-                        class="input-field pr-10"
-                        placeholder="••••••••••">
-                    <button type="button" id="togglePassword" 
-                        class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">
+                    <input type="password" name="password" id="passwordInput" class="input-field pr-10"
+                        placeholder="Enter your password" required>
+                    <span class="password-toggle" id="togglePassword">
                         <i class="fas fa-eye"></i>
-                    </button>
-                    <?php if(!empty($password_err)): ?>
-                        <p class="text-red-600 text-xs mt-1"><?php echo $password_err; ?></p>
-                    <?php endif; ?>
+                    </span>
+                </div>
+
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center">
+                        <input id="remember_me" name="remember_me" type="checkbox"
+                            class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded">
+                        <label for="remember_me" class="ml-2 block text-sm text-gray-900">Remember me</label>
+                    </div>
+                    <a href="forgot_password.php" class="font-medium text-sm text-yellow-600 hover:text-yellow-700">Forgot password?</a>
                 </div>
                 
-                <!-- Forgot Password -->
-                <div class="text-right mb-5">
-                    <a href="forgot_password.php" class="text-sm text-gray-500 hover:text-gray-700 font-medium">Forgot Password?</a>
-                </div>
-                
-                <!-- Login Button -->
-                <button type="submit" class="login-btn w-full mb-5">
-                    Login
+                <button type="submit" class="login-btn w-full py-3 mb-5">
+                    <span>Login</span>
+                    <i class="fas fa-sign-in-alt ml-2"></i>
                 </button>
+
+                <!-- Contact Support via WhatsApp (as footer note) -->
+                <div class="text-center mt-6 text-sm text-gray-600">
+                    Need help? Contact 
+                    <a href="https://wa.me/919876543210" target="_blank" class="text-green-600 hover:text-green-700 font-semibold inline-flex items-center">
+                        <i class="fab fa-whatsapp mr-1"></i> Support Team
+                    </a>
+                </div>
+
+                <div class="text-center mt-2">
+                    <p class="text-sm text-gray-600">
+                        Don't have an account? 
+                        <a href="register.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Register here</a>
+                    </p>
+                </div>
             </form>
             
             <!-- Divider -->
@@ -358,34 +499,74 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 <span class="px-3 text-xs text-gray-500"></span>
                 <div class="flex-1 border-t border-gray-200"></div>
             </div>
-            
-            <!-- Register Link -->
-            <div class="text-center">
-                <p class="text-sm text-gray-600">
-                    Don't have an account? 
-                    <a href="register.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Sign up</a>
-                </p>
-            </div>
         </div>
     </div>
     
     <script>
-        // Password toggle functionality
-        document.getElementById('togglePassword').addEventListener('click', function() {
-            const passwordInput = document.getElementById('password');
-            const icon = this.querySelector('i');
-            
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
+        document.addEventListener('DOMContentLoaded', function() {
+            const mobileViewBtn = document.getElementById('mobileViewBtn');
+            const pcViewBtn = document.getElementById('pcViewBtn');
+            const body = document.body;
+            const viewSelector = document.querySelector('.view-selector');
+
+            // Load preference from localStorage
+            const savedView = localStorage.getItem('appView');
+            if (savedView) {
+                body.classList.add(savedView);
+                if (savedView === 'mobile-view') {
+                    viewSelector.classList.add('mobile-active');
+                    viewSelector.classList.remove('pc-active');
+                    mobileViewBtn.classList.add('active');
+                    pcViewBtn.classList.remove('active');
+                } else {
+                    viewSelector.classList.add('pc-active');
+                    viewSelector.classList.remove('mobile-active');
+                    pcViewBtn.classList.add('active');
+                    mobileViewBtn.classList.remove('active');
+                }
             } else {
-                passwordInput.type = 'password';
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
+                // Default to PC view if no preference saved
+                body.classList.add('pc-view');
+                viewSelector.classList.add('pc-active');
+                pcViewBtn.classList.add('active');
+            }
+
+            mobileViewBtn.addEventListener('click', function() {
+                body.classList.remove('pc-view');
+                body.classList.add('mobile-view');
+                viewSelector.classList.remove('pc-active');
+                viewSelector.classList.add('mobile-active');
+                mobileViewBtn.classList.add('active');
+                pcViewBtn.classList.remove('active');
+                localStorage.setItem('appView', 'mobile-view');
+            });
+
+            pcViewBtn.addEventListener('click', function() {
+                body.classList.remove('mobile-view');
+                body.classList.add('pc-view');
+                viewSelector.classList.remove('mobile-active');
+                viewSelector.classList.add('pc-active');
+                pcViewBtn.classList.add('active');
+                mobileViewBtn.classList.remove('active');
+                localStorage.setItem('appView', 'pc-view');
+            });
+
+            // Password toggle functionality
+            const togglePassword = document.getElementById('togglePassword');
+            const passwordInput = document.getElementById('passwordInput');
+
+            if (togglePassword && passwordInput) {
+                togglePassword.addEventListener('click', function() {
+                    // Toggle the type attribute
+                    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                    passwordInput.setAttribute('type', type);
+                    
+                    // Toggle the eye icon
+                    this.querySelector('i').classList.toggle('fa-eye');
+                    this.querySelector('i').classList.toggle('fa-eye-slash');
+                });
             }
         });
-
     </script>
 </body>
 </html>

@@ -382,7 +382,7 @@ if (isset($_GET['action'])) {
    if ($action == 'getGoldRate') {
        // Get the latest 24K gold rate from jewellery_price_config
        $sql = "SELECT rate FROM jewellery_price_config 
-               WHERE firm_id = ? AND material_type = 'Gold' AND purity = '24K' 
+               WHERE firm_id = ? AND material_type = 'Gold' AND purity = '99.99' 
                ";
        
        $stmt = $conn->prepare($sql);
