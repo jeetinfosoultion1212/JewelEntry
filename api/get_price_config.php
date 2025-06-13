@@ -13,7 +13,7 @@ $current_firm_id = $_SESSION['firmID'];
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "jewelentry"; // Updated database name
+$dbname = "jewelentrypro"; // Updated database name
 
 // Prevent HTML errors from being displayed
 error_reporting(0);

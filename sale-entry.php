@@ -380,13 +380,16 @@ if (isset($_GET['action'])) {
    
    // Get gold rate from jewellery_price_config
    if ($action == 'getGoldRate') {
-       // Get the latest 24K gold rate from jewellery_price_config
+       $material_type = $_GET['material_type'] ?? 'Gold';
+       $purity = ($material_type === 'Silver') ? '999.90' : '99.99';
+       
+       // Get the latest rate from jewellery_price_config
        $sql = "SELECT rate FROM jewellery_price_config 
-               WHERE firm_id = ? AND material_type = 'Gold' AND purity = '99.99' 
-               ";
+               WHERE firm_id = ? AND material_type = ? AND purity = ? 
+               ORDER BY effective_date DESC LIMIT 1";
        
        $stmt = $conn->prepare($sql);
-       $stmt->bind_param("i", $firm_id);
+       $stmt->bind_param("iss", $firm_id, $material_type, $purity);
        $stmt->execute();
        $result = $stmt->get_result();
        
@@ -394,7 +397,8 @@ if (isset($_GET['action'])) {
            $row = $result->fetch_assoc();
            $rate = $row['rate'];
        } else {
-           $rate = 9810; // Default rate if not found
+           // Default rates if not found
+           $rate = ($material_type === 'Silver') ? 95 : 9810;
        }
        
        header('Content-Type: application/json');
@@ -1279,7 +1283,7 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
      <!-- Material Details Section -->
      <div class="section-card material-section bg">
        <div class="section-title text-amber-800">
-         <i class="fas fa-coins y-3"></i> Material Details
+         <i class="fas fa-coins y-3"></i> Material Details (<span id="materialDetailsTitle"></span>)
        </div>
       
        <div class="field-row">

@@ -38,6 +38,15 @@
     const jewelryTypeSelect = document.getElementById("jewelryType")
     const materialTypeSelect = document.getElementById("materialType")
     
+    // Function to update material details title based on selected material type
+    function updateMaterialDetailsTitle() {
+        const materialType = materialTypeSelect?.value || "Gold"; // Default to Gold if no material selected
+        const materialDetailsTitle = document.getElementById('materialDetailsTitle');
+        if (materialDetailsTitle) {
+            materialDetailsTitle.textContent = materialType;
+        }
+    }
+    
     // Product form elements
     const productNameInput = document.getElementById("productName")
     const huidCodeInput = document.getElementById("huidCode")
@@ -188,6 +197,9 @@
       // Set up modal tabs
       setupModalTabs()
     
+      // Set initial material details title
+      updateMaterialDetailsTitle();
+    
       console.log("Jewelry Billing System initialized with firm configuration")
     })
     
@@ -306,18 +318,38 @@
         }
       })
     
+      // Material type change
+      if (materialTypeSelect) {
+        materialTypeSelect.addEventListener('change', () => {
+          console.log("Material type changed to: ", materialTypeSelect.value);
+          updateMaterialDetailsTitle();
+          fetchRateForMaterialType(materialTypeSelect.value);
+          calculatePurityRate();
+        });
+      }
+    
       console.log("Event listeners set up")
     }
     
     // Toggle new product mode
     function toggleNewProductMode() {
       isNewProductMode = !isNewProductMode
-    
+
+      console.log("toggleNewProductMode called. isNewProductMode: ", isNewProductMode);
+
       if (isNewProductMode) {
         if (newProductIndicator) newProductIndicator.classList.remove("hidden")
         if (productSearchInput) productSearchInput.placeholder = "Enter new product name..."
         if (productSearchInput) productSearchInput.value = ""
         resetForm()
+        
+        // Default material type for new product entry
+        if (materialTypeSelect) {
+            materialTypeSelect.value = "Gold"; 
+            console.log("Setting materialTypeSelect to Gold in new product mode. Current value: ", materialTypeSelect.value);
+            updateMaterialDetailsTitle(); // Update the displayed title immediately
+        }
+        fetchRateForMaterialType(materialTypeSelect?.value || "Gold");
     
         if (selectedCustomer && addToCartBtn) {
           addToCartBtn.disabled = false
@@ -625,6 +657,8 @@
         return
       }
     
+      console.log("selectProduct called with product:", product);
+    
       selectedProduct = product
       if (productSearchInput) productSearchInput.value = product.product_name
     
@@ -647,48 +681,70 @@
       }
       if (makingRateInput) makingRateInput.value = product.making_charge || 0
     
-      calculatePurityRate()
-      calculateNetWeight()
-      calculateMetalAmount()
-      calculateMakingCharges()
-      calculateTotalCharges()
-      calculateTotal()
+      if (materialTypeSelect) {
+        materialTypeSelect.value = product.material_type || ""; // Set the select dropdown value
+        console.log("Material type select value after setting:", materialTypeSelect.value);
+        updateMaterialDetailsTitle();
+      }
+    
+      // Fetch appropriate rate based on material type
+      fetchRateForMaterialType(product.material_type);
     
       if (selectedCustomer && addToCartBtn) {
         addToCartBtn.disabled = false
       }
     }
     
-    // Fetch gold rate
-    function fetchGoldRate() {
-      fetch("sale-entry.php?action=getGoldRate")
+    // Fetch rate for a given material type
+    function fetchRateForMaterialType(materialType) {
+      const url = `sale-entry.php?action=getGoldRate&material_type=${encodeURIComponent(materialType)}`;
+      fetch(url)
         .then((response) => {
-          console.log("Gold rate response status:", response.status)
-          return response.json()
+          console.log(`${materialType} rate response status:`, response.status);
+          return response.json();
         })
         .then((data) => {
-          console.log("Gold rate data:", data)
-          if (rate24kInput) rate24kInput.value = data.rate
-          calculatePurityRate()
+          console.log(`${materialType} rate data:`, data);
+          if (rate24kInput) rate24kInput.value = data.rate;
+          // Only set purity for Silver if it's not already set by product data
+          if (materialType === "Silver" && (purityInput.value === "0" || purityInput.value === "")) {
+            purityInput.value = 999.90;
+          }
+          calculatePurityRate();
         })
         .catch((error) => {
-          console.error("Error fetching gold rate:", error)
-          showToast("Failed to fetch gold rate. Using default value.", "error")
-        })
+          console.error(`Error fetching ${materialType} rate:`, error);
+          showToast(`Failed to fetch ${materialType} rate. Using default value.`, "error");
+        });
+    }
+    
+    // Fetch gold rate (now uses the generic function)
+    function fetchGoldRate() {
+      fetchRateForMaterialType("Gold");
     }
     
     // Calculate purity rate
     function calculatePurityRate() {
       const rate24k = Number.parseFloat(rate24kInput?.value) || 0
       const purity = Number.parseFloat(purityInput?.value) || 0
-    
+      const materialType = materialTypeSelect?.value; // Get the selected material type
+
+      console.log("calculatePurityRate called. materialType:", materialType, "purity:", purity, "rate24k:", rate24k);
+
       if (purity > 0) {
-        const purityRate = (rate24k * purity) / 100
+        let purityFactor;
+        if (materialType === "Silver") {
+          purityFactor = purity / 1000; // For Silver, purity is typically out of 1000 (e.g., 999.9)
+        } else {
+          purityFactor = purity / 100; // For Gold and others, purity is typically out of 100 (percentage)
+        }
+        const purityRate = (rate24k * purityFactor)
+        console.log("Purity Factor:", purityFactor, "Calculated purityRate:", purityRate);
         if (purityRateInput) purityRateInput.value = purityRate.toFixed(2)
       } else {
         if (purityRateInput) purityRateInput.value = 0
       }
-    
+
       calculateMetalAmount()
     }
     
@@ -707,11 +763,17 @@
     function calculateMetalAmount() {
       const netWeight = Number.parseFloat(netWeightInput?.value) || 0
       const purityRate = Number.parseFloat(purityRateInput?.value) || 0
-    
+
+      console.log("calculateMetalAmount called. netWeight:", netWeight, "purityRate:", purityRate);
+
       const metalAmount = netWeight * purityRate
+      console.log("Calculated metalAmount:", metalAmount);
       if (metalAmountInput) metalAmountInput.value = metalAmount.toFixed(2)
-    
-      calculateTotal()
+
+      // Chain subsequent calculations here to ensure they use the updated metalAmount
+      calculateMakingCharges();
+      calculateTotalCharges();
+      calculateTotal();
     }
     
     // Calculate making charges
@@ -719,10 +781,12 @@
       const makingType = makingTypeSelect?.value
       const makingRate = Number.parseFloat(makingRateInput?.value) || 0
       const netWeight = Number.parseFloat(netWeightInput?.value) || 0
-      const metalAmount = Number.parseFloat(metalAmountInput?.value) || 0
-    
+      const metalAmount = Number.parseFloat(metalAmountInput?.value) || 0; // Read from input
+
+      console.log("calculateMakingCharges called. makingType:", makingType, "makingRate:", makingRate, "netWeight:", netWeight, "metalAmount from input:", metalAmount);
+
       let makingCharges = 0
-    
+
       if (makingType === "per_gram") {
         makingCharges = netWeight * makingRate
       } else if (makingType === "percentage") {
@@ -730,7 +794,9 @@
       } else if (makingType === "fixed") {
         makingCharges = makingRate
       }
-    
+
+      console.log("Calculated makingCharges:", makingCharges);
+
       if (makingChargesInput) makingChargesInput.value = makingCharges.toFixed(2)
       calculateTotalCharges()
     }
