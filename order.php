@@ -8,6 +8,9 @@ session_start();
 require 'config/config.php';
 date_default_timezone_set('Asia/Kolkata');
 
+// Initialize action variable
+$action = $_GET['action'] ?? '';
+
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
    header("Location: login.php");
@@ -149,8 +152,11 @@ if (isset($_GET['action'])) {
 
         $order = $orderResult->fetch_assoc();
 
-        // Fetch order items
-        $itemsQuery = "SELECT * FROM jewellery_order_items WHERE order_id = ?";
+        // Fetch order items with karigar details
+        $itemsQuery = "SELECT oi.*, k.name as karigar_name, k.phone_number as karigar_phone 
+                      FROM jewellery_order_items oi
+                      LEFT JOIN karigars k ON oi.karigar_id = k.id 
+                      WHERE oi.order_id = ?";
         $itemsStmt = $conn->prepare($itemsQuery);
         $itemsStmt->bind_param("i", $orderId);
         $itemsStmt->execute();
@@ -158,6 +164,22 @@ if (isset($_GET['action'])) {
 
         $items = [];
         while ($item = $itemsResult->fetch_assoc()) {
+            // Fetch images for this order item
+            $imagesQuery = "SELECT image_path FROM order_images WHERE order_item_id = ?";
+            $imagesStmt = $conn->prepare($imagesQuery);
+            if ($imagesStmt) {
+                $imagesStmt->bind_param("i", $item['id']);
+                $imagesStmt->execute();
+                $imagesResult = $imagesStmt->get_result();
+                $item['images'] = [];
+                while ($img = $imagesResult->fetch_assoc()) {
+                    $item['images'][] = $img['image_path'];
+                }
+                $imagesStmt->close();
+            } else {
+                error_log("Failed to prepare images query: " . $conn->error);
+                $item['images'] = []; // Ensure it's an empty array if query fails
+            }
             $items[] = $item;
         }
 
@@ -173,34 +195,26 @@ if (isset($_GET['action'])) {
   
 
 if ($action == 'updateOrder') {
-    // Log incoming request
-    error_log("Received updateOrder request");
+    header('Content-Type: application/json');
     
-    // Get JSON data
-    $json_data = file_get_contents('php://input');
-    error_log("updateOrder - Raw data: " . $json_data);
-    
-    // Decode JSON
-    $orderData = json_decode($json_data, true);
-    
-    if (!$orderData) {
-        error_log("updateOrder - JSON decode error: " . json_last_error_msg());
-        echo json_encode(['success' => false, 'message' => 'Invalid data received']);
-        exit;
-    }
-
-    error_log("updateOrder - Decoded data: " . print_r($orderData, true));
-
-    // Start transaction
-    $conn->begin_transaction();
-
     try {
-        // Update main order
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!$input) {
+            throw new Exception('Invalid input data');
+        }
+
+        $orderId = $input['id'] ?? 0;
+        if (!$orderId) {
+            throw new Exception('Order ID is required');
+        }
+
+        $conn->begin_transaction();
+
+        // First update the main order
         $updateOrderSql = "UPDATE jewellery_customer_order 
                           SET order_status = ?, 
                               priority = ?,
                               advance_amount = ?,
-                              remaining_amount = grand_total - ?,
                               updated_at = NOW()
                           WHERE id = ? AND FirmID = ?";
         
@@ -209,19 +223,14 @@ if ($action == 'updateOrder') {
             throw new Exception("Order update prepare failed: " . $conn->error);
         }
 
-        $orderStatus = $orderData['order_status'];
-        $priority = $orderData['priority'];
-        $advanceAmount = $orderData['advance_amount'];
-        $orderId = $orderData['id'];
+        $orderStatus = $input['order_status'] ?? 'pending';
+        $priority = $input['priority'] ?? 'normal';
+        $advanceAmount = $input['advance_amount'] ?? 0;
 
-        error_log("updateOrder - Main Order SQL: " . $updateOrderSql);
-        error_log("updateOrder - Main Order Params: Status=" . $orderStatus . ", Priority=" . $priority . ", Advance=" . $advanceAmount . ", OrderID=" . $orderId . ", FirmID=" . $firm_id);
-
-        $stmt->bind_param("ssddii", 
+        $stmt->bind_param("ssdii", 
             $orderStatus,
             $priority,
             $advanceAmount,
-            $advanceAmount, // Remaining amount is grand_total - advance_amount
             $orderId,
             $firm_id
         );
@@ -229,10 +238,10 @@ if ($action == 'updateOrder') {
         if (!$stmt->execute()) {
             throw new Exception("Order update execute failed: " . $stmt->error);
         }
-        error_log("updateOrder - Main Order updated rows: " . $stmt->affected_rows);
 
-        // Update each item
-        foreach ($orderData['items'] as $item) {
+        // Update each item and collect karigar IDs
+        $karigarIds = [];
+        foreach ($input['items'] as $item) {
             $updateItemSql = "UPDATE jewellery_order_items 
                              SET karigar_id = ?, 
                                  item_status = ?, 
@@ -248,8 +257,9 @@ if ($action == 'updateOrder') {
             $itemStatus = $item['status'] ?? null;
             $itemId = $item['id'];
 
-            error_log("updateOrder - Item SQL: " . $updateItemSql);
-            error_log("updateOrder - Item Params: KarigarID=" . ($karigarId ?? 'NULL') . ", ItemStatus=" . ($itemStatus ?? 'NULL') . ", ItemID=" . $itemId . ", FirmID=" . $firm_id);
+            if ($karigarId) {
+                $karigarIds[] = $karigarId;
+            }
 
             $stmt->bind_param("isii",
                 $karigarId,
@@ -261,15 +271,91 @@ if ($action == 'updateOrder') {
             if (!$stmt->execute()) {
                 throw new Exception("Item update execute failed: " . $stmt->error);
             }
-            error_log("updateOrder - Item updated rows: " . $stmt->affected_rows);
+
+            // Handle metal issuance if provided
+            if (isset($item['issued_metal_data']) && is_array($item['issued_metal_data'])) {
+                $issuedMetal = $item['issued_metal_data'];
+                $issuedMetalType = $issuedMetal['metal_type'] ?? '';
+                $issuedPurity = $issuedMetal['purity'] ?? 0;
+                $issuedWeight = $issuedMetal['weight'] ?? 0;
+
+                // Validate issued metal data
+                if (empty($itemKarigarId)) {
+                    throw new Exception("Cannot issue metal: Karigar not assigned to item '" . ($item['item_name'] ?? '') . "'.");
+                }
+                if (empty($issuedMetalType) || $issuedPurity <= 0 || $issuedWeight <= 0) {
+                    throw new Exception("Invalid metal issuance data for item '" . ($item['item_name'] ?? '') . "'.");
+                }
+
+                // 1. Check inventory
+                $checkInventorySql = "SELECT quantity FROM inventory_metals WHERE firm_id = ? AND metal_type = ? AND purity = ? FOR UPDATE";
+                $checkStmt = $conn->prepare($checkInventorySql);
+                if (!$checkStmt) {
+                    throw new Exception("Inventory check prepare failed: " . $conn->error);
+                }
+                $checkStmt->bind_param("isd", $firm_id, $issuedMetalType, $issuedPurity);
+                $checkStmt->execute();
+                $inventoryResult = $checkStmt->get_result();
+                $currentInventory = $inventoryResult->fetch_assoc();
+
+                if (!$currentInventory || $currentInventory['quantity'] < $issuedWeight) {
+                    throw new Exception("Insufficient stock for " . $issuedMetalType . " " . $issuedPurity . "K. Available: " . ($currentInventory['quantity'] ?? 0) . "g.");
+                }
+
+                // 2. Deduct from inventory
+                $deductInventorySql = "UPDATE inventory_metals SET quantity = quantity - ?, updated_at = NOW() WHERE firm_id = ? AND metal_type = ? AND purity = ?";
+                $deductStmt = $conn->prepare($deductInventorySql);
+                if (!$deductStmt) {
+                    throw new Exception("Inventory deduction prepare failed: " . $conn->error);
+                }
+                $deductStmt->bind_param("disd", $issuedWeight, $firm_id, $issuedMetalType, $issuedPurity);
+                if (!$deductStmt->execute()) {
+                    throw new Exception("Inventory deduction execute failed: " . $deductStmt->error);
+                }
+
+                // 3. Record in karigar_ledger
+                $recordLedgerSql = "INSERT INTO karigar_ledger (karigar_id, order_item_id, metal_type, purity, weight, transaction_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $ledgerStmt = $conn->prepare($recordLedgerSql);
+                if (!$ledgerStmt) {
+                    throw new Exception("Ledger record prepare failed: " . $conn->error);
+                }
+                $notes = "Issued for order item " . $itemId . ".";
+                $transactionType = 'issue';
+                $ledgerStmt->bind_param("iisdds", $itemKarigarId, $itemId, $issuedMetalType, $issuedPurity, $issuedWeight, $transactionType, $notes);
+                if (!$ledgerStmt->execute()) {
+                    throw new Exception("Ledger record execute failed: " . $ledgerStmt->error);
+                }
+
+                // 4. Update jewellery_order_items with issued metal data
+                $updateOrderItemIssuedMetalSql = "UPDATE jewellery_order_items 
+                                                  SET issued_metal_type = ?, 
+                                                      issued_purity = ?, 
+                                                      issued_weight = ? 
+                                                  WHERE id = ? AND firm_id = ?";
+                $updateIssuedStmt = $conn->prepare($updateOrderItemIssuedMetalSql);
+                if (!$updateIssuedStmt) {
+                    throw new Exception("Update order item issued metal prepare failed: " . $conn->error);
+                }
+                $updateIssuedStmt->bind_param("sddii", 
+                    $issuedMetalType,
+                    $issuedPurity,
+                    $issuedWeight,
+                    $itemId,
+                    $firm_id
+                );
+                if (!$updateIssuedStmt->execute()) {
+                    throw new Exception("Update order item issued metal execute failed: " . $updateIssuedStmt->error);
+                }
+            }
         }
 
         $conn->commit();
-        echo json_encode(['success' => true, 'message' => 'Order updated successfully']);
+        echo json_encode(['success' => true, 'message' => 'Order updated successfully!']);
+
     } catch (Exception $e) {
         $conn->rollback();
-        error_log("updateOrder - Error: " . $e->getMessage());
-        echo json_encode(['success' => false, 'message' => 'Error updating order: ' . $e->getMessage()]);
+        error_log("Order update failed: " . $e->getMessage());
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     }
     exit;
 }
@@ -820,6 +906,131 @@ if ($action == 'addKarigar') {
    
    
 }
+
+// Add print order action
+if ($action == 'printOrder') {
+    // Prevent any output before PDF generation
+    ob_start();
+    
+    error_log("Print order request received - ID: " . ($_GET['id'] ?? 'not set') . ", Type: " . ($_GET['type'] ?? 'not set'));
+    
+    $orderId = $_GET['id'] ?? 0;
+    $printType = $_GET['type'] ?? 'customer'; // 'customer' or 'karigar'
+    
+    if (!$orderId) {
+        ob_clean();
+        die('Order ID is required');
+    }
+
+    // Fetch order details with all necessary information
+    $orderQuery = "SELECT o.*, 
+                          c.FirstName, c.LastName, c.PhoneNumber, c.Email, c.Address,
+                          k.name as karigar_name, k.phone_number as karigar_phone,
+                          f.FirmName as firm_name, f.Address as firm_address, f.PhoneNumber as firm_phone,
+                          f.Email as firm_email, f.GSTNumber as firm_gst, f.PANNumber as firm_pan,
+                          f.BankAccountNumber, f.BankName, f.IFSCCode, f.AccountType
+                  FROM jewellery_customer_order o 
+                  LEFT JOIN Customer c ON o.customer_id = c.id 
+                  LEFT JOIN karigars k ON o.karigar_id = k.id
+                  LEFT JOIN firm f ON o.FirmID = f.id
+                  WHERE o.id = ? AND o.FirmID = ?";
+    
+    $orderStmt = $conn->prepare($orderQuery);
+    if (!$orderStmt) {
+        ob_clean();
+        die('Database error occurred');
+    }
+    
+    $orderStmt->bind_param("ii", $orderId, $firm_id);
+    if (!$orderStmt->execute()) {
+        ob_clean();
+        die('Database error occurred');
+    }
+    
+    $orderResult = $orderStmt->get_result();
+    
+    if ($orderResult->num_rows === 0) {
+        ob_clean();
+        die('Order not found');
+    }
+
+    $order = $orderResult->fetch_assoc();
+
+    // Fetch order items with karigar details
+    $itemsQuery = "SELECT oi.*, k.name as karigar_name, k.phone_number as karigar_phone 
+                  FROM jewellery_order_items oi
+                  LEFT JOIN karigars k ON oi.karigar_id = k.id 
+                  WHERE oi.order_id = ?";
+    $itemsStmt = $conn->prepare($itemsQuery);
+    if (!$itemsStmt) {
+        ob_clean();
+        die('Database error occurred');
+    }
+    
+    $itemsStmt->bind_param("i", $orderId);
+    if (!$itemsStmt->execute()) {
+        ob_clean();
+        die('Database error occurred');
+    }
+    
+    $itemsResult = $itemsStmt->get_result();
+
+    $items = [];
+    while ($item = $itemsResult->fetch_assoc()) {
+        // Fetch images for this order item
+        $imagesQuery = "SELECT image_path FROM order_images WHERE order_item_id = ?";
+        $imagesStmt = $conn->prepare($imagesQuery);
+        if ($imagesStmt) {
+            $imagesStmt->bind_param("i", $item['id']);
+            $imagesStmt->execute();
+            $imagesResult = $imagesStmt->get_result();
+            $item['images'] = [];
+            while ($img = $imagesResult->fetch_assoc()) {
+                $item['images'][] = $img['image_path'];
+            }
+            $imagesStmt->close();
+        } else {
+            error_log("Failed to prepare images query: " . $conn->error);
+            $item['images'] = []; // Ensure it's an empty array if query fails
+        }
+        $items[] = $item;
+    }
+
+    $order['items'] = $items;
+
+    // Include the PDF generation file
+    if (!file_exists('includes/generate_order_pdf.php')) {
+        ob_clean();
+        die('PDF generation file not found');
+    }
+    
+    require_once 'includes/generate_order_pdf.php';
+    try {
+        generateOrderPDF($order, $printType);
+    } catch (Exception $e) {
+        error_log("Print order failed - PDF generation error: " . $e->getMessage());
+        die('Error generating PDF: ' . $e->getMessage());
+    }
+    exit;
+}
+
+    // New action to get inventory metals
+    if ($action == 'getInventoryMetals') {
+        $sql = "SELECT DISTINCT metal_type, purity FROM inventory_metals WHERE firm_id = ? ORDER BY metal_type, purity ASC";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $firm_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $metals = [];
+        while ($row = $result->fetch_assoc()) {
+            $metals[] = $row;
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'metals' => $metals]);
+        exit;
+    }
 
 ?>
 
@@ -1542,54 +1753,51 @@ if ($action == 'addKarigar') {
     </div>
   </div>
 </div>
-<div id="orderDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl w-full max-w-md max-h-screen overflow-hidden shadow-2xl">
-            <!-- Modal Header -->
-            <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 text-white relative">
-                <h3 class="text-lg font-semibold">Order Details</h3>
-                <button onclick="closeOrderModal()" class="absolute right-4 top-4 text-white/80 hover:text-white">
-                    <i class="fas fa-times text-xl"></i>
+
+<!-- Order Details Modal -->
+<div id="orderDetailsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header flex justify-between items-center">
+            <h2 class="text-lg font-semibold">Order Details</h2>
+            <div class="flex space-x-2">
+                <button onclick="printOrder(currentOrderId, 'customer')" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    <i class="fas fa-print mr-2"></i>Print for Customer
                 </button>
-            </div>
-            
-            <!-- Modal Content - Scrollable -->
-            <div class="overflow-y-auto max-h-[calc(100vh-120px)]">
-                <div id="orderDetailsContent" class="p-6">
-                    <!-- Loading state -->
-                    <div id="orderLoading" class="text-center py-8">
-                        <i class="fas fa-spinner fa-spin text-2xl text-blue-600 mb-2"></i>
-                        <p class="text-gray-600">Loading order details...</p>
-                    </div>
-                    
-                    <!-- Error state -->
-                    <div id="orderError" class="text-center py-8 hidden">
-                        <i class="fas fa-exclamation-triangle text-2xl text-red-500 mb-2"></i>
-                        <p class="text-red-600">Failed to load order details</p>
-                    </div>
-                    
-                    <!-- Order details content will be populated here -->
-                    <div id="orderDetails" class="hidden">
-                        <!-- Content populated by JavaScript -->
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Modal Footer -->
-            <div class="border-t bg-gray-50 px-6 py-4 flex gap-2">
-                <button onclick="printOrder()" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium text-sm hover:bg-blue-700 flex items-center justify-center gap-2">
-                    <i class="fas fa-print"></i>
-                    Print
+                <button onclick="printOrder(currentOrderId, 'karigar')" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                    <i class="fas fa-print mr-2"></i>Print for Karigar
                 </button>
-                <button onclick="showShareModal(currentOrderData)" class="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium text-sm hover:bg-green-700 flex items-center justify-center gap-2">
-                    <i class="fas fa-share-alt"></i>
-                    Share
-                </button>
-                <button onclick="closeOrderModal()" class="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium text-sm hover:bg-gray-300">
-                    Close
+                <button onclick="closeOrderDetailsModal()" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+                    <i class="fas fa-times"></i>
                 </button>
             </div>
         </div>
+        <div id="orderLoading" class="p-4 text-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p class="mt-2 text-gray-600">Loading order details...</p>
+        </div>
+        <div id="orderError" class="hidden p-4 text-center text-red-600">
+            <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+            <p>Failed to load order details. Please try again.</p>
+        </div>
+        <div id="orderDetails" class="hidden p-4">
+            <!-- Order details will be populated here -->
+        </div>
     </div>
+</div>
+
+<script>
+// Add this variable to store the current order ID
+let currentOrderId = null;
+
+// Update the viewOrderDetails function to set currentOrderId
+function viewOrderDetails(orderId) {
+    currentOrderId = orderId;
+    // ... rest of the existing viewOrderDetails code ...
+}
+
+// ... rest of the existing code ...
+</script>
+
 <div id="customerModal" class="modal">
     <div class="modal-content p-0 overflow-hidden max-w-lg w-11/12">
         <!-- Gradient Header -->

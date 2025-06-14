@@ -4,9 +4,29 @@ let referenceImages = [];
 let stream = null;
 let selectedCustomerId = null; // Variable to store the selected customer ID
 let editingItemIndex = null; // New variable to store the index of the item being edited
- let currentOrderData = null;
+let currentOrderData = null;
 
+// New global array to store fetched inventory metals
+let inventoryMetals = []; 
 
+// Function to fetch inventory metals from the backend
+async function fetchInventoryMetals() {
+    console.log('Fetching inventory metals...');
+    try {
+        const response = await fetch('order.php?action=getInventoryMetals');
+        const data = await response.json();
+        if (data.success) {
+            inventoryMetals = data.metals;
+            console.log('Inventory metals fetched:', inventoryMetals);
+        } else {
+            console.error('Failed to fetch inventory metals:', data.message);
+            showToast(data.message || 'Failed to load inventory metals', 'error');
+        }
+    } catch (error) {
+        console.error('Error fetching inventory metals:', error);
+        showToast('Error loading inventory metals', 'error');
+    }
+}
 
 // --- ORDER SUBMISSION (ADD/EDIT) ---
 function submitOrder(isEdit = false) {
@@ -1988,17 +2008,17 @@ function loadOrders() {
 
 // Function to render orders
 function renderOrders(orders) {
-    console.log('renderOrders function called'); // Added log
-    console.log('Orders data received for rendering:', orders); // Added log - crucial for debugging
+    console.log('renderOrders function called');
+    console.log('Orders data received for rendering:', orders);
     const ordersList = document.getElementById('ordersList');
     
      if (!ordersList) {
-         console.error('ordersList element not found during rendering!'); // Log error if element is missing
+         console.error('ordersList element not found during rendering!');
          return;
      }
 
     if (!orders || orders.length === 0) {
-        console.log('No orders to render, displaying empty state.'); // Added log
+        console.log('No orders to render, displaying empty state.');
         ordersList.innerHTML = `
             <div class="text-center py-6">
                 <div class="w-14 h-14 mx-auto mb-3 text-gray-400">
@@ -2011,13 +2031,15 @@ function renderOrders(orders) {
         return;
     }
     
-    console.log(`Rendering ${orders.length} orders.`); // Added log
+    console.log(`Rendering ${orders.length} orders.`);
     let html = '';
    orders.forEach(order => {
     const statusClass = getStatusClass(order.order_status);
     const customerName = `${order.FirstName} ${order.LastName}`.trim();
     const progress = calculateProgress(order);
     const totalItems = order.items ? order.items.length : 0;
+
+    console.log(`Rendering order ID: ${order.id}`);
 
     html += `
     <div class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 text-xs">
@@ -2049,7 +2071,7 @@ function renderOrders(orders) {
 
                         ${item.stone_type ? `
                         <div class="text-[10px] text-gray-600 mt-0.5">
-                            💎 ${item.stone_type} ${item.stone_size || ''}, Qty: ${item.stone_quantity || '-'}, ${item.stone_weight || '-'}${item.stone_unit || ''}
+                            💎 ${item.stone_type} ${item.stone_size || ''}, Qty: ${item.stone_quantity || '-'}, ${item.stone_weight || ''}${item.stone_unit || ''}
                         </div>
                         ` : ''}
                         
@@ -2084,9 +2106,15 @@ function renderOrders(orders) {
                     ${order.karigar_name || 'Not Assigned'}
                 </div>
                 <div class="flex gap-1">
-                    <a href="view_order.php?id=${order.id}" class="btn-icon text-blue-600 hover:bg-blue-50"><i class="fas fa-eye"></i> View</a>
-                    <button onclick="editOrder(${order.id})" class="btn-icon text-indigo-600 hover:bg-indigo-50"><i class="fas fa-edit"></i> Edit</button>
-                    <button onclick="printOrder(${order.id})" class="btn-icon text-green-600 hover:bg-green-50"><i class="fas fa-print"></i> Print</button>
+                    <button onclick="viewOrderDetails(${order.id})" class="btn-icon text-blue-600 hover:bg-blue-50">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                    <button onclick="editOrder(${order.id})" class="btn-icon text-indigo-600 hover:bg-indigo-50">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button onclick="printOrder(${order.id}, 'customer')" class="btn-icon text-green-600 hover:bg-green-50">
+                        <i class="fas fa-print"></i> Print
+                    </button>
                 </div>
             </div>
         </div>
@@ -2094,7 +2122,7 @@ function renderOrders(orders) {
 });
     
     ordersList.innerHTML = html;
-     console.log('Finished rendering orders.'); // Added log
+     console.log('Finished rendering orders.');
 }
 
 // Helper function to get status class
@@ -2257,8 +2285,18 @@ document.addEventListener('DOMContentLoaded', function() {
 // --- Order Action Functions ---
 // Function to view order details
 async function viewOrderDetails(orderId) {
+    console.log('Viewing order details for ID:', orderId);
+    
+    // Set the current order ID
+    currentOrderId = orderId;
+    
     // Show modal
-    document.getElementById('orderDetailsModal').classList.remove('hidden');
+    const modal = document.getElementById('orderDetailsModal');
+    if (!modal) {
+        console.error('Order details modal not found');
+        return;
+    }
+    modal.classList.remove('hidden');
     
     // Show loading state
     document.getElementById('orderLoading').classList.remove('hidden');
@@ -2267,12 +2305,19 @@ async function viewOrderDetails(orderId) {
     
     try {
         // Fetch order details from PHP backend
-        const response = await fetch(`?action=getOrderDetails&id=${orderId}`);
+        const response = await fetch(`order.php?action=getOrderDetails&id=${orderId}`);
         const data = await response.json();
         
         if (data.success) {
             currentOrderData = data.order;
             displayOrderDetails(data.order);
+            
+            // Update print buttons with current order ID
+            const printButtons = document.querySelectorAll('#orderDetailsModal button[onclick^="printOrder"]');
+            printButtons.forEach(button => {
+                const type = button.textContent.includes('Customer') ? 'customer' : 'karigar';
+                button.setAttribute('onclick', `printOrder(${orderId}, '${type}')`);
+            });
         } else {
             throw new Error(data.message || 'Failed to fetch order details');
         }
@@ -2288,6 +2333,13 @@ function displayOrderDetails(order) {
     document.getElementById('orderLoading').classList.add('hidden');
     document.getElementById('orderError').classList.add('hidden');
     document.getElementById('orderDetails').classList.remove('hidden');
+    
+    // Update the print buttons with the current order ID
+    const printButtons = document.querySelectorAll('#orderDetailsModal button[onclick^="printOrder"]');
+    printButtons.forEach(button => {
+        const type = button.textContent.includes('Customer') ? 'customer' : 'karigar';
+        button.setAttribute('onclick', `printOrder(${order.id}, '${type}')`);
+    });
     
     // Format date
     const orderDate = new Date(order.created_at).toLocaleDateString('en-IN', {
@@ -2502,91 +2554,41 @@ function closeOrderModal() {
     currentOrderData = null;
 }
 
-// Function to print order
-function printOrder() {
-    if (!currentOrderData) {
-        alert('No order data available to print');
+// Function to print order - Placeholder
+function printOrder(orderId, type = 'customer') {
+    if (!orderId) {
+        console.error('No order ID provided for printing');
+        showToast('Error: No order selected for printing', 'error');
         return;
     }
+
+    console.log(`Printing order ID ${orderId} (${type} view)`);
     
-    // Create a print window with order details
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Order ${currentOrderData.order_number}</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-                .header { text-align: center; margin-bottom: 20px; }
-                .section { margin-bottom: 15px; }
-                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-                .items { border-collapse: collapse; width: 100%; font-size: 11px; }
-                .items th, .items td { border: 1px solid #ddd; padding: 6px; text-align: left; }
-                .items th { background-color: #f2f2f2; }
-                .summary { background-color: #f9f9f9; padding: 10px; }
-                .total { font-weight: bold; }
-                @media print { body { margin: 10px; } }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h2>Order Details</h2>
-                <h3>${currentOrderData.order_number}</h3>
-                <p>Date: ${new Date(currentOrderData.created_at).toLocaleDateString()}</p>
+    // Open the print URL in a new window/tab
+    window.open(`order.php?action=printOrder&id=${orderId}&type=${type}`, '_blank');
+}
+
+// Update the order details modal to include print buttons
+function displayOrderDetails(order) {
+    // ... existing displayOrderDetails code ...
+
+    // Add print buttons to the modal header
+    const modalHeader = document.querySelector('#orderDetailsModal .modal-header');
+    if (modalHeader) {
+        const printButtons = `
+            <div class="flex space-x-2">
+                <button onclick="printOrder(${order.id}, 'customer')" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    <i class="fas fa-print mr-2"></i>Print for Customer
+                </button>
+                <button onclick="printOrder(${order.id}, 'karigar')" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                    <i class="fas fa-print mr-2"></i>Print for Karigar
+                </button>
             </div>
-            
-            <div class="grid">
-                <div class="section">
-                    <h4>Customer Information</h4>
-                    <p><strong>Name:</strong> ${currentOrderData.customer_name}</p>
-                    <p><strong>Phone:</strong> ${currentOrderData.PhoneNumber}</p>
-                </div>
-                
-                <div class="section">
-                    <h4>Payment Summary</h4>
-                    <p><strong>Total:</strong> ₹${currentOrderData.grand_total}</p>
-                    <p><strong>Paid:</strong> ₹${currentOrderData.advance_amount || 0}</p>
-                    <p><strong>Balance:</strong> ₹${currentOrderData.remaining_amount || 0}</p>
-                    <p><strong>Status:</strong> ${currentOrderData.payment_status.toUpperCase()}</p>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h4>Order Items</h4>
-                <table class="items">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Metal</th>
-                            <th>Weight</th>
-                            <th>Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${currentOrderData.items.map(item => `
-                            <tr>
-                                <td>${item.name}</td>
-                                <td>${item.metal_type || 'N/A'}</td>
-                                <td>${item.net_weight || 'N/A'}g</td>
-                                <td>₹${item.price || item.total_estimate}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="summary">
-                <h4>Order Summary</h4>
-                <p><strong>Order Status:</strong> ${currentOrderData.order_status.toUpperCase()}</p>
-                <p><strong>Payment Status:</strong> ${currentOrderData.payment_status.toUpperCase()}</p>
-                <p class="total"><strong>Grand Total: ₹${currentOrderData.grand_total}</strong></p>
-            </div>
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+        `;
+        modalHeader.insertAdjacentHTML('beforeend', printButtons);
+    }
+
+    // ... rest of the existing displayOrderDetails code ...
 }
 
 // Close modal when clicking outside
@@ -2696,6 +2698,32 @@ function toggleItemEdit(index) {
                               rows="2">${item.design_customization || ''}</textarea>
                 </div>
 
+                <!-- Metal Issuance Section (Optional) -->
+                <div class="mt-4 p-3 bg-white rounded-lg border border-gray-200">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="issueMetalCheckbox_${index}" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label for="issueMetalCheckbox_${index}" class="ml-2 block text-sm font-medium text-gray-700">Issue Metal to Karigar</label>
+                    </div>
+                    <div id="metalIssuanceFields_${index}" class="grid grid-cols-2 gap-4 hidden">
+                        <div>
+                            <label class="text-xs text-gray-600">Metal Type</label>
+                            <select id="issueMetalType_${index}" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                                <!-- Options will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Purity</label>
+                            <select id="issuePurity_${index}" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                                <!-- Options will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="text-xs text-gray-600">Weight (g)</label>
+                            <input type="number" id="issueWeight_${index}" step="0.001" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm" value="0">
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Save Button -->
                 <div class="mt-3 flex justify-end">
                     <button onclick="saveItemEdit(${index})" 
@@ -2706,8 +2734,11 @@ function toggleItemEdit(index) {
             </div>
         `;
 
-        // Load and populate karigars
-        loadKarigars().then(karigars => {
+        // Load and populate karigars and inventory metals
+        Promise.all([
+            loadKarigars(),
+            fetchInventoryMetals() // Fetch metals
+        ]).then(([karigars]) => { // Only need karigars from the promise.all result here
             const karigarSelect = document.getElementById(`editKarigar_${index}`);
             if (karigarSelect) {
                 karigars.forEach(karigar => {
@@ -2715,6 +2746,62 @@ function toggleItemEdit(index) {
                     karigarSelect.add(option);
                 });
                 karigarSelect.value = item.karigar_id || '';
+            }
+
+            // Populate metal type dropdown and add change listener
+            const issueMetalTypeSelect = document.getElementById(`issueMetalType_${index}`);
+            const issuePuritySelect = document.getElementById(`issuePurity_${index}`);
+            const metalIssuanceFields = document.getElementById(`metalIssuanceFields_${index}`);
+            const issueMetalCheckbox = document.getElementById(`issueMetalCheckbox_${index}`);
+
+            if (issueMetalTypeSelect && issuePuritySelect && metalIssuanceFields && issueMetalCheckbox) {
+                // Populate metal types
+                const uniqueMetalTypes = [...new Set(inventoryMetals.map(m => m.metal_type))];
+                issueMetalTypeSelect.innerHTML = '<option value="">Select Metal Type</option>';
+                uniqueMetalTypes.forEach(metalType => {
+                    const option = new Option(metalType, metalType);
+                    issueMetalTypeSelect.add(option);
+                });
+
+                // Function to populate purities based on selected metal type
+                const populatePurities = (selectedMetalType) => {
+                    issuePuritySelect.innerHTML = '<option value="">Select Purity</option>';
+                    const puritiesForType = inventoryMetals.filter(m => m.metal_type === selectedMetalType);
+                    const uniquePurities = [...new Set(puritiesForType.map(m => m.purity))].sort((a, b) => a - b);
+                    uniquePurities.forEach(purity => {
+                        const option = new Option(purity, purity);
+                        issuePuritySelect.add(option);
+                    });
+                };
+
+                // Add event listener for metal type change
+                issueMetalTypeSelect.addEventListener('change', (e) => {
+                    populatePurities(e.target.value);
+                });
+
+                // Checkbox listener to show/hide fields
+                issueMetalCheckbox.addEventListener('change', () => {
+                    if (issueMetalCheckbox.checked) {
+                        metalIssuanceFields.classList.remove('hidden');
+                    } else {
+                        metalIssuanceFields.classList.add('hidden');
+                        // Clear fields if checkbox is unchecked
+                        issueMetalTypeSelect.value = '';
+                        issuePuritySelect.innerHTML = '<option value="">Select Purity</option>'; // Clear purities
+                        document.getElementById(`issueWeight_${index}`).value = '0';
+                    }
+                });
+
+                // If there's existing issued metal data for this item, populate the fields
+                if (item.issued_metal_type && item.issued_purity && item.issued_weight) {
+                    issueMetalCheckbox.checked = true;
+                    metalIssuanceFields.classList.remove('hidden');
+                    
+                    issueMetalTypeSelect.value = item.issued_metal_type;
+                    populatePurities(item.issued_metal_type); // Populate purities first
+                    issuePuritySelect.value = item.issued_purity;
+                    document.getElementById(`issueWeight_${index}`).value = item.issued_weight;
+                }
             }
         });
 
@@ -2742,6 +2829,28 @@ function saveItemEdit(index) {
     const makingCharges = parseFloat(document.getElementById(`editMakingCharges_${index}`).value) || 0;
     const notes = document.getElementById(`editNotes_${index}`).value;
 
+    // Get metal issuance details
+    const issueMetalCheckbox = document.getElementById(`issueMetalCheckbox_${index}`);
+    let issuedMetalData = null;
+    if (issueMetalCheckbox && issueMetalCheckbox.checked) {
+        const issuedMetalType = document.getElementById(`issueMetalType_${index}`).value;
+        const issuedPurity = parseFloat(document.getElementById(`issuePurity_${index}`).value) || 0;
+        const issuedWeight = parseFloat(document.getElementById(`issueWeight_${index}`).value) || 0;
+
+        // Basic validation for issued metal
+        if (issuedMetalType && issuedPurity > 0 && issuedWeight > 0) {
+            issuedMetalData = {
+                metal_type: issuedMetalType,
+                purity: issuedPurity,
+                weight: issuedWeight
+            };
+        } else if (issueMetalType || issuedPurity > 0 || issuedWeight > 0) {
+            // If some fields are filled but not all, show warning
+            showToast('Please complete all metal issuance fields (Type, Purity, Weight) or uncheck the option.', 'warning');
+            return; // Prevent saving if incomplete
+        }
+    }
+
     // Update the item in editingOrder
     editingOrder.items[index] = {
         ...item,
@@ -2750,7 +2859,8 @@ function saveItemEdit(index) {
         status: status,
         net_weight: weight,
         making_charges: makingCharges,
-        design_customization: notes
+        design_customization: notes,
+        issued_metal_data: issuedMetalData // Add issued metal data to the item
     };
 
     // Exit edit mode and refresh display
@@ -2803,7 +2913,8 @@ function populateEditForm(order) {
                 <!-- Karigar Selection -->
                 <div class="field-container">
                     <label class="text-xs text-gray-600">Assigned Karigar</label>
-                    <select id="editKarigar_${index}" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                    <select id="editKarigar_${index}" 
+                                class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
                         <option value="">Select Karigar</option>
                         <!-- Karigars will be populated via JavaScript -->
                     </select>
@@ -2812,7 +2923,8 @@ function populateEditForm(order) {
                 <!-- Item Details -->
                 <div class="field-container">
                     <label class="text-xs text-gray-600">Status</label>
-                    <select id="editItemStatus_${index}" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                    <select id="editItemStatus_${index}" 
+                                class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
                         <option value="pending" ${item.status === 'pending' ? 'selected' : ''}>Pending</option>
                         <option value="in-progress" ${item.status === 'in progress' ? 'selected' : ''}>In Progress</option>
                         <option value="completed" ${item.status === 'completed' ? 'selected' : ''}>Completed</option>
@@ -2834,6 +2946,28 @@ function populateEditForm(order) {
                     <span class="font-medium">₹${item.total_estimate}</span>
                 </div>
             </div>
+
+            <!-- Metal Issuance Section (Display only) -->
+            ${item.issued_metal_type ? `
+            <div class="mt-4 p-3 bg-white rounded-lg border border-gray-200">
+                <h6 class="text-sm font-semibold text-gray-700 mb-2">Issued Metal:</h6>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <span class="text-gray-600">Type:</span>
+                        <span class="font-medium">${item.issued_metal_type}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Purity:</span>
+                        <span class="font-medium">${item.issued_purity}K</span>
+                    </div>
+                    <div class="col-span-2">
+                        <span class="text-gray-600">Weight:</span>
+                        <span class="font-medium">${item.issued_weight}g</span>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
         </div>
     `).join('');
 
