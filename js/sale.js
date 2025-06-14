@@ -26,6 +26,8 @@
       loyaltyDiscountPercentage: 0.02,
       welcomeCouponEnabled: true,
       welcomeCouponCode: "WELCOME10",
+      // NEW: Post-purchase coupon configuration
+      postPurchaseCouponEnabled: false,
     }
     
     // DOM elements
@@ -141,6 +143,8 @@
             loyaltyDiscountPercentage: Number.parseFloat(data.loyalty_discount_percentage) || 0.02,
             welcomeCouponEnabled: data.welcome_coupon_enabled || false,
             welcomeCouponCode: data.welcome_coupon_code || "WELCOME10",
+            // NEW: Post-purchase coupon configuration
+            postPurchaseCouponEnabled: data.post_purchase_coupon_enabled || false,
           }
     
           console.log("Firm configuration loaded:", firmConfiguration)
@@ -568,6 +572,38 @@
     
         selectionDetails.innerHTML = detailsHTML
         selectionDetails.classList.remove("hidden")
+    
+        // NEW: Fetch and display available coupons after customer details are rendered
+        if (firmConfiguration.couponCodeApplyEnabled) {
+          console.log("Coupon functionality enabled. Attempting to fetch coupons for customer:", customer.id);
+          fetchAndDisplayCustomerCoupons(customer.id).then(coupons => {
+            console.log("fetchAndDisplayCustomerCoupons resolved with coupons:", coupons);
+            if (coupons && coupons.length > 0) {
+              let couponBadgesHtml = '';
+              coupons.forEach(coupon => {
+                couponBadgesHtml += `
+                  <span class="coupon-badge text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800" title="${coupon.description}">
+                    ${coupon.code} (${coupon.usageLeft} uses)
+                  </span>
+                `;
+              });
+
+              const couponSection = document.createElement('div');
+              couponSection.className = 'mt-2 p-2 bg-yellow-50 rounded-lg border border-yellow-200';
+              couponSection.innerHTML = `
+                <h4 class="text-xs font-semibold text-yellow-800 mb-1"><i class="fas fa-gift text-yellow-600 mr-1"></i> Available Coupons</h4>
+                <div class="flex flex-wrap gap-1">
+                  ${couponBadgesHtml}
+                </div>
+              `;
+              selectionDetails.appendChild(couponSection);
+            } else {
+                console.log("No coupons returned for customer:", customer.id);
+            }
+          }).catch(error => {
+              console.error("Error in fetchAndDisplayCustomerCoupons in selectCustomer:", error);
+          });
+        }
       }
     
       if (addToCartBtn && (selectedProduct || isNewProductMode)) {
@@ -575,8 +611,41 @@
       }
     
       console.log("Customer selected:", customer)
+    
+      // Fetch and display customer advance payments
+      fetchCustomerAdvancePayments(customer.id);
     }
     
+    // NEW: Function to fetch and display customer coupons (refactored to only fetch and return)
+    async function fetchAndDisplayCustomerCoupons(customerId) {
+      // These elements are for the cart view, not the customer selection details
+      // const availableCouponsContainer = document.getElementById('availableCouponsContainer');
+      // const availableCouponsList = document.getElementById('availableCouponsList');
+
+      // if (!availableCouponsContainer || !availableCouponsList) return;
+
+      // availableCouponsList.innerHTML = ''; // Clear previous list
+      // availableCouponsContainer.classList.add('hidden'); // Hide by default
+
+      try {
+        const response = await fetch(`sale-entry.php?action=getCustomerCoupons&customerId=${customerId}`);
+        const data = await response.json();
+
+        console.log("Fetch customer coupons API response:", data);
+
+        if (data.success && data.coupons) { // Removed check for coupons.length > 0 here, it will be handled by the caller
+          return data.coupons; // Return coupons for selectCustomer to use
+        } else {
+          console.log('No coupons available for this customer or API call unsuccessful.', data);
+          return [];
+        }
+      } catch (error) {
+        console.error('Error fetching customer coupons in fetchAndDisplayCustomerCoupons:', error);
+        showToast("Error fetching customer coupons.", "error");
+        return [];
+      }
+    }
+
     // Search products
     function searchProducts() {
       if (isNewProductMode || !productSearchInput || !productDropdown) {
@@ -1249,7 +1318,18 @@
     
       // Fetch and display customer coupons if a customer is selected
       if (selectedCustomer) {
-        fetchAndDisplayCustomerCoupons(selectedCustomer.id);
+        fetchAndDisplayCustomerCoupons(selectedCustomer.id).then(coupons => {
+            // Automatically apply the first available coupon if none is applied and coupon functionality is enabled
+            if (firmConfiguration.couponCodeApplyEnabled && !cart.appliedCoupon && coupons && coupons.length > 0) {
+                const couponCodeInput = document.getElementById("couponCode");
+                const applyCouponBtn = document.getElementById("applyCoupon");
+
+                if (couponCodeInput && applyCouponBtn) {
+                    couponCodeInput.value = coupons[0].code; // Set the first coupon code
+                    applyCouponCode(coupons[0].code, selectedCustomer.id, cart.gstEnabled); // Programmatically apply
+                }
+            }
+        });
       } else {
         // Hide coupons section if no customer is selected
         const availableCouponsContainer = document.getElementById('availableCouponsContainer');
@@ -1257,51 +1337,32 @@
           availableCouponsContainer.classList.add('hidden');
         }
       }
-    }
-    
-    // NEW: Function to fetch and display customer coupons
-    async function fetchAndDisplayCustomerCoupons(customerId) {
-      const availableCouponsContainer = document.getElementById('availableCouponsContainer');
-      const availableCouponsList = document.getElementById('availableCouponsList');
-
-      if (!availableCouponsContainer || !availableCouponsList) return;
-
-      availableCouponsList.innerHTML = ''; // Clear previous list
-      availableCouponsContainer.classList.add('hidden'); // Hide by default
-
-      try {
-        const response = await fetch(`sale-entry.php?action=getCustomerCoupons&customerId=${customerId}`);
-        const data = await response.json();
-
-        console.log("Fetch customer coupons response:", data);
-
-        if (data.success && data.coupons && data.coupons.length > 0) {
-          data.coupons.forEach(coupon => {
-            const couponElement = document.createElement('div');
-            couponElement.className = 'border border-yellow-200 rounded-md p-2 bg-yellow-50 text-yellow-800 flex justify-between items-center';
-            couponElement.innerHTML = `
-              <div>
-                <div class="font-semibold text-xs">${coupon.code}</div>
-                <div class="text-[10px]">${coupon.description}</div>
-                <div class="text-[10px] text-yellow-600">Usage left: ${coupon.usageLeft}</div>
-              </div>
-              <button class="apply-coupon-btn px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-[10px] font-medium hover:bg-yellow-300 transition-colors" data-coupon-code="${coupon.code}">
-                Apply
-              </button>
-            `;
-            availableCouponsList.appendChild(couponElement);
-          });
-          availableCouponsContainer.classList.remove('hidden');
-        } else {
-          // Optionally display a message if no coupons are available
-          // console.log('No coupons available for this customer.');
+      // NEW: If a coupon is already applied, display it in the input and disable it.
+      if (cart.appliedCoupon) {
+        const couponCodeInput = document.getElementById("couponCode");
+        const applyCouponBtn = document.getElementById("applyCoupon");
+        if (couponCodeInput) {
+          couponCodeInput.value = cart.appliedCoupon.code;
+          couponCodeInput.disabled = true;
         }
-      } catch (error) {
-        console.error('Error fetching customer coupons:', error);
-        // Optionally show a toast or message about the error
+        if (applyCouponBtn) {
+          applyCouponBtn.disabled = true;
+          applyCouponBtn.textContent = "Applied";
+        }
+        // Ensure adjustments content is visible if a coupon is applied
+        const adjustmentsContent = document.getElementById("adjustmentsContent");
+        const toggleAdjustmentsBtn = document.getElementById("toggleAdjustments");
+        if (adjustmentsContent && adjustmentsContent.classList.contains("hidden")) {
+          adjustmentsContent.classList.remove("hidden");
+          if (toggleAdjustmentsBtn) {
+            toggleAdjustmentsBtn.querySelector("span").textContent = "Hide";
+            toggleAdjustmentsBtn.querySelector("i").classList.remove("fa-chevron-down");
+            toggleAdjustmentsBtn.querySelector("i").classList.add("fa-chevron-up");
+          }
+        }
       }
     }
-
+    
     // Add event listener for applying coupons using event delegation
     document.getElementById('availableCouponsList')?.addEventListener('click', function(event) {
       const target = event.target;
@@ -1396,11 +1457,13 @@
     // NEW: Function to apply coupon code with backend validation
     function applyCouponCode(couponCode, customerId, isGst) {
       const applyCouponBtn = document.getElementById("applyCoupon")
+      const couponCodeInput = document.getElementById("couponCode")
+
       if (applyCouponBtn) {
         applyCouponBtn.disabled = true
         applyCouponBtn.textContent = "Checking..."
       }
-    
+
       // Fix: Update the parameter names to match PHP endpoint
       fetch(
         `sale-entry.php?action=validateCustomerCoupon&coupon_code=${encodeURIComponent(couponCode)}&customerId=${customerId}&isGst=${isGst ? 1 : 0}`
@@ -1413,12 +1476,19 @@
               code: coupon.code,
               type: coupon.type,
               value: Number.parseFloat(coupon.value),
-              description: coupon.description || `${coupon.type === "percentage" ? coupon.value + "%" : "₹" + coupon.value} off`,
+              description: `${coupon.description ? coupon.description + " (" : ""}${
+                coupon.type === "percentage" ? coupon.value + "%" : "₹" + coupon.value
+              } off${coupon.description ? ")" : ""}`,
             }
             showAppliedDiscount("coupon", coupon.code, cart.appliedCoupon.description)
             updateCartViewSummary()
             showToast(`Coupon "${coupon.code}" applied successfully!`, "success")
-            document.getElementById("couponCode").value = ""
+            // document.getElementById("couponCode").value = "" // OLD: Clear input
+            if (couponCodeInput) {
+              couponCodeInput.value = coupon.code // NEW: Set input value to applied coupon code
+              couponCodeInput.disabled = true // NEW: Disable input
+            }
+            if (applyCouponBtn) applyCouponBtn.disabled = true // NEW: Disable apply button
           } else {
             showToast(data.message || "Invalid or expired coupon", "error")
           }
@@ -1429,8 +1499,12 @@
         })
         .finally(() => {
           if (applyCouponBtn) {
-            applyCouponBtn.disabled = false
-            applyCouponBtn.textContent = "Apply"
+            if (cart.appliedCoupon) { // If a coupon is applied, set text to 'Applied'
+              applyCouponBtn.textContent = "Applied";
+            } else { // Otherwise, re-enable and set to 'Apply'
+              applyCouponBtn.disabled = false;
+              applyCouponBtn.textContent = "Apply";
+            }
           }
         })
     }
@@ -1473,8 +1547,19 @@
     
     // Function to remove an applied discount
     function removeDiscount(type) {
-      if (type === "coupon") cart.appliedCoupon = null
-      else if (type === "manual") cart.manualDiscount = null
+      if (type === "coupon") {
+        cart.appliedCoupon = null
+        const couponCodeInput = document.getElementById("couponCode")
+        const applyCouponBtn = document.getElementById("applyCoupon")
+        if (couponCodeInput) {
+          couponCodeInput.value = ""
+          couponCodeInput.disabled = false
+        }
+        if (applyCouponBtn) {
+          applyCouponBtn.disabled = false
+          applyCouponBtn.textContent = "Apply"
+        }
+      } else if (type === "manual") cart.manualDiscount = null
       else if (type === "urd") {
         cart.urdAmount = 0
         cart.urdDetails = null
@@ -1592,8 +1677,8 @@
         showAppliedDiscount("manual", "Manual Discount", desc)
       }
       if (cart.loyaltyDiscount) {
-        const loyaltyAmountValue = subtotalBeforeDiscounts * firmConfiguration.loyaltyDiscountPercentage
-        document.getElementById("loyaltyDiscountAmountDisplay").textContent = formatCurrency(loyaltyAmountValue)
+        const loyaltyAmountValue = totalMakingCharges * firmConfiguration.loyaltyDiscountPercentage;
+        document.getElementById("loyaltyDiscountAmountDisplay").textContent = formatCurrency(loyaltyAmountValue);
         showAppliedDiscount(
           "loyalty",
           "Loyalty Discount",
@@ -2095,10 +2180,10 @@
     
       const totalAmountBeforeDiscounts = totalMetalAmount + totalStoneAmount + totalMakingCharges + totalOtherCharges;
     
-      // Calculate discount based on total making charges
-      cart.discount = calculateTotalDiscount(totalMakingCharges);
+      // Calculate total discount based on the full amount before any discounts
+      cart.discount = calculateTotalDiscount(totalAmountBeforeDiscounts, totalMakingCharges);
     
-      // Calculate subtotal: sum of components - discount (applied to making charges)
+      // Calculate subtotal: sum of components - discount
       cart.subtotal = totalAmountBeforeDiscounts - cart.discount;
       // Ensure subtotal is not negative
       cart.subtotal = Math.max(0, cart.subtotal);
@@ -2189,24 +2274,31 @@
     }
     
     // NEW: Enhanced function to calculate total discount using firm configuration
-    function calculateTotalDiscount(totalAmount) {
-      let currentTotalDiscount = 0
-    
+    function calculateTotalDiscount(totalAmountBeforeDiscounts, totalMakingCharges) {
+      let currentTotalDiscount = 0;
+
       if (cart.appliedCoupon) {
-        const coupon = cart.appliedCoupon
-        currentTotalDiscount +=
-          coupon.type === "percentage" ? totalAmount * (coupon.value / 100) : Math.min(coupon.value, totalAmount)
+        const coupon = cart.appliedCoupon;
+        if (coupon.type === "percentage") {
+          currentTotalDiscount += totalMakingCharges * (coupon.value / 100);
+        } else {
+          currentTotalDiscount += Math.min(coupon.value, totalAmountBeforeDiscounts);
+        }
       }
+
       if (cart.manualDiscount) {
-        const discount = cart.manualDiscount
-        currentTotalDiscount +=
-          discount.type === "percentage" ? totalAmount * (discount.value / 100) : Math.min(discount.value, totalAmount)
+        const discount = cart.manualDiscount;
+        if (discount.type === "percentage") {
+          currentTotalDiscount += totalAmountBeforeDiscounts * (discount.value / 100);
+        } else {
+          currentTotalDiscount += Math.min(discount.value, totalAmountBeforeDiscounts);
+        }
       }
+
       if (cart.loyaltyDiscount) {
-        // NEW: Use firm configuration loyalty discount percentage
-        currentTotalDiscount += totalAmount * firmConfiguration.loyaltyDiscountPercentage
+        currentTotalDiscount += totalMakingCharges * firmConfiguration.loyaltyDiscountPercentage;
       }
-      return Number.parseFloat(currentTotalDiscount.toFixed(2))
+      return Number.parseFloat(currentTotalDiscount.toFixed(2));
     }
     
     // Function to clear cart
@@ -2321,31 +2413,34 @@
         .filter((p) => p.type === "advance_adjustment")
         .reduce((sum, payment) => sum + Number.parseFloat(payment.amount || 0), 0)
     
-      const totalAmountForDiscountBase = cartItems.reduce((sum, item) => sum + item.total, 0)
-      let calculatedCouponDiscount = 0
+      const totalAmountBeforeDiscounts = cartItems.reduce((sum, item) => sum + item.total, 0);
+      const totalMakingChargesFromItems = cartItems.reduce((sum, item) => sum + item.makingCharges, 0);
+
+      let calculatedCouponDiscount = 0;
       if (cart.appliedCoupon) {
-        const coupon = cart.appliedCoupon
-        calculatedCouponDiscount =
-          coupon.type === "percentage"
-            ? totalAmountForDiscountBase * (coupon.value / 100)
-            : Math.min(coupon.value, totalAmountForDiscountBase)
+        const coupon = cart.appliedCoupon;
+        if (coupon.type === "percentage") {
+          calculatedCouponDiscount = totalMakingChargesFromItems * (coupon.value / 100);
+        } else {
+          calculatedCouponDiscount = Math.min(coupon.value, totalAmountBeforeDiscounts);
+        }
       }
-    
-      let calculatedLoyaltyDiscount = 0
+
+      let calculatedLoyaltyDiscount = 0;
       if (cart.loyaltyDiscount) {
-        // NEW: Use firm configuration loyalty discount percentage
-        calculatedLoyaltyDiscount = totalAmountForDiscountBase * firmConfiguration.loyaltyDiscountPercentage
+        calculatedLoyaltyDiscount = totalMakingChargesFromItems * firmConfiguration.loyaltyDiscountPercentage;
       }
-    
-      let calculatedManualDiscountAmount = 0
+
+      let calculatedManualDiscountAmount = 0;
       if (cart.manualDiscount) {
-        const md = cart.manualDiscount
-        calculatedManualDiscountAmount =
-          md.type === "percentage"
-            ? totalAmountForDiscountBase * (md.value / 100)
-            : Math.min(md.value, totalAmountForDiscountBase)
+        const md = cart.manualDiscount;
+        if (md.type === "percentage") {
+          calculatedManualDiscountAmount = totalAmountBeforeDiscounts * (md.value / 100);
+        } else {
+          calculatedManualDiscountAmount = Math.min(md.value, totalAmountBeforeDiscounts);
+        }
       }
-    
+
       const actualTotalDiscountForSaleData = Number.parseFloat(
         (calculatedCouponDiscount + calculatedLoyaltyDiscount + calculatedManualDiscountAmount).toFixed(2),
       )
@@ -2445,9 +2540,11 @@
             // NEW: Store necessary data before clearing cart
             const modalData = {
               ...data,
-              customerName: selectedCustomer ? selectedCustomer.name : '',
+              customerName: selectedCustomer ? `${selectedCustomer.FirstName} ${selectedCustomer.LastName}` : '',
               grandTotal: cart.grandTotal,
-              isGstEnabled: cart.gstEnabled
+              isGstEnabled: cart.gstEnabled,
+              appliedCoupon: cart.appliedCoupon || null, // Pass applied coupon details
+              schemeEntries: data.schemeEntries || [],   // Pass scheme entries
             }
             
             // Clear form data
@@ -2528,6 +2625,25 @@
               ${saleData.customerName ? `<p><strong>Customer:</strong> ${saleData.customerName}</p>` : ''}
               <p><strong>Total Amount:</strong> ₹${(saleData.grandTotal || 0).toFixed(2)}</p>
               ${(saleData.advanceAmount || 0) > 0 ? `<p><strong>Advance Used:</strong> ₹${(saleData.advanceAmount || 0).toFixed(2)}</p>` : ''}
+              
+              ${saleData.appliedCoupon ? `
+                <p class="text-green-600"><strong>Coupon Applied:</strong> ${saleData.appliedCoupon.code} (${saleData.appliedCoupon.description})</p>
+              ` : ''}
+              
+              ${saleData.newlyAssignedCoupon ? `
+                <p class="text-purple-600 mt-2"><strong>New Coupon Assigned:</strong> ${saleData.newlyAssignedCoupon.message}</p>
+              ` : ''}
+
+              ${saleData.schemeEntries && saleData.schemeEntries.length > 0 ? `
+                <div class="mt-3 pt-3 border-t border-gray-200">
+                  <p class="font-semibold text-blue-700 mb-1">Scheme Entries:</p>
+                  <ul class="list-disc list-inside ml-2">
+                    ${saleData.schemeEntries.map(entry => `
+                      <li>${entry.scheme_title}</li>
+                    `).join('')}
+                  </ul>
+                </div>
+              ` : ''}
             </div>
             
             <div class="flex space-x-3 justify-center">

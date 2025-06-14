@@ -108,7 +108,8 @@ if (isset($_GET['action'])) {
                'gst_rate' => (float)$config['gst_rate'],
                'loyalty_discount_percentage' => (float)$config['loyalty_discount_percentage'],
                'welcome_coupon_enabled' => (bool)$config['welcome_coupon_enabled'],
-               'welcome_coupon_code' => $config['welcome_coupon_code']
+               'welcome_coupon_code' => $config['welcome_coupon_code'],
+               'post_purchase_coupon_enabled' => (bool)$config['post_purchase_coupon_enabled']
            ]);
        } else {
            // Return default configuration
@@ -122,7 +123,8 @@ if (isset($_GET['action'])) {
                'gst_rate' => 0.03,
                'loyalty_discount_percentage' => 0.02,
                'welcome_coupon_enabled' => true,
-               'welcome_coupon_code' => 'WELCOME10'
+               'welcome_coupon_code' => 'WELCOME10',
+               'post_purchase_coupon_enabled' => false // Default to false
            ]);
        }
        exit;
@@ -158,7 +160,7 @@ if (isset($_GET['action'])) {
         // Make sure $firm_id is properly defined - add this if missing
         if (!isset($firm_id) || $firm_id <= 0) {
             // Get firm_id from session or another source
-            $firm_id = $_SESSION['firm_id'] ?? 1; // Adjust based on your session management
+            $firm_id = $_SESSION['firmID'] ?? 1; // Adjust based on your session management
         }
         
         // Check if coupon exists and is active
@@ -685,7 +687,7 @@ if (isset($_GET['action'])) {
        
        try {
            // Get session variables or set defaults
-           $firm_id = $_SESSION['firm_id'] ?? 1;
+           $firm_id = $_SESSION['firmID'] ?? 1;
            $user_id = $_SESSION['user_id'] ?? 1;
            
            // Start transaction
@@ -974,18 +976,46 @@ if (isset($_GET['action'])) {
            
            // Mark coupon as used if applied
            if (!empty($couponCode) && $couponDiscount > 0) {
-               $updateCouponQuery = "UPDATE customer_assigned_coupons 
-                                    SET times_used = times_used + 1,   last_used_date = NOW()
-                                    WHERE customer_id = ? AND coupon_id = (
-                                        SELECT id FROM coupons WHERE coupon_code  = ? AND firm_id = ?
-                                    )";
-               $updateCouponStmt = $conn->prepare($updateCouponQuery);
-               $updateCouponStmt->bind_param("isi", $data['customerId'], $couponCode, $firm_id);
-               $updateCouponStmt->execute();
+               // Fetch coupon details to get usage_limit_customer
+               $couponDetailsQuery = "SELECT id, usage_limit_customer FROM coupons WHERE coupon_code = ? AND firm_id = ?";
+               $couponDetailsStmt = $conn->prepare($couponDetailsQuery);
+               $couponDetailsStmt->bind_param("si", $couponCode, $firm_id);
+               $couponDetailsStmt->execute();
+               $couponDetailsResult = $couponDetailsStmt->get_result();
+               $couponDetails = $couponDetailsResult->fetch_assoc();
+
+               if ($couponDetails) {
+                   $updateCouponQuery = "UPDATE customer_assigned_coupons 
+                                        SET times_used = times_used + 1, 
+                                            last_used_date = NOW(), 
+                                            related_sale_id = ?";
+                   
+                   // If it's a one-time use coupon, set status to 'used'
+                   if ($couponDetails['usage_limit_customer'] == 1) {
+                       $updateCouponQuery .= ", status = 'used'";
+                   }
+                   
+                   $updateCouponQuery .= " WHERE customer_id = ? AND coupon_id = ?";
+                                        
+                   $updateCouponStmt = $conn->prepare($updateCouponQuery);
+                   
+                   if ($couponDetails['usage_limit_customer'] == 1) {
+                       $updateCouponStmt->bind_param("iii", $saleId, $data['customerId'], $couponDetails['id']);
+                   } else {
+                       $updateCouponStmt->bind_param("iii", $saleId, $data['customerId'], $couponDetails['id']);
+                   }
+                   
+                   if (!$updateCouponStmt->execute()) {
+                       error_log("Failed to update customer_assigned_coupons: " . $updateCouponStmt->error);
+                   }
+               }
            }
            
            // Check for scheme participation based on purchase amount
            $schemeEntries = checkSchemeParticipationOnPurchase($conn, $data['customerId'], $firm_id, $data['grandTotal'], $saleId);
+
+           // NEW: Assign post-purchase coupon
+           $newlyAssignedCoupon = assignPostPurchaseCoupon($conn, $data['customerId'], $firm_id, $saleId);
                
            // Commit transaction
            $conn->commit();
@@ -998,7 +1028,8 @@ if (isset($_GET['action'])) {
                'saleId' => $saleId,
                'advanceAmount' => $advancePaymentAmount,
                'regularPayment' => $regularPayments,
-               'schemeEntries' => $schemeEntries
+               'schemeEntries' => $schemeEntries,
+               'newlyAssignedCoupon' => $newlyAssignedCoupon // Include newly assigned coupon
            ]);
            
        } catch (Exception $e) {
@@ -1028,7 +1059,7 @@ if (isset($_GET['action'])) {
        
        if (!$customerId) {
            echo json_encode(['success' => false, 'message' => 'Invalid customer ID']);
-           exit;
+           exit();
        }
 
        try {
@@ -1044,31 +1075,31 @@ if (isset($_GET['action'])) {
                 AND c.expiry_date >= NOW()
                 AND cac.times_used < c.usage_limit_customer";
         
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $customerId);
-        $stmt->execute();
-        $result = $stmt->get_result();
+           $stmt = $conn->prepare($sql);
+           $stmt->bind_param("i", $customerId);
+           $stmt->execute();
+           $result = $stmt->get_result();
         
-        $coupons = [];
-        while ($row = $result->fetch_assoc()) {
-            $coupons[] = [
-                'code' => $row['code'],
-                'description' => $row['description'] ?: 
-                    ($row['discount_type'] === 'percentage' ? 
-                        $row['discount_value'] . '% off' : 
-                        '₹' . $row['discount_value'] . ' off'),
-                'type' => $row['discount_type'],
-                'value' => $row['discount_value'],
-                'usageLeft' => $row['usage_limit_customer'] - $row['times_used']
-            ];
-        }
+           $coupons = [];
+           while ($row = $result->fetch_assoc()) {
+               $coupons[] = [
+                   'code' => $row['code'],
+                   'description' => $row['description'] ?: 
+                       ($row['discount_type'] === 'percentage' ? 
+                           $row['discount_value'] . '% off' : 
+                           '₹' . $row['discount_value'] . ' off'),
+                   'type' => $row['discount_type'],
+                   'value' => $row['discount_value'],
+                   'usageLeft' => $row['usage_limit_customer'] - $row['times_used']
+               ];
+           }
 
-        echo json_encode(['success' => true, 'coupons' => $coupons]);
+           echo json_encode(['success' => true, 'coupons' => $coupons]);
         
        } catch (Exception $e) {
            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
        }
-       exit;
+       exit();
    }
 }
 
@@ -1127,6 +1158,69 @@ function checkSchemeParticipationOnPurchase($conn, $customerId, $firmId, $purcha
         error_log("ERROR: Exception in scheme participation: " . $e->getMessage());
         return [];
     }
+}
+
+function assignPostPurchaseCoupon($conn, $customerId, $firmId, $saleId) {
+    $newlyAssignedCoupon = null;
+    try {
+        // Fetch firm configuration for post-purchase coupon settings
+        $configQuery = "SELECT post_purchase_coupon_enabled FROM firm_configurations WHERE firm_id = ?";
+        $configStmt = $conn->prepare($configQuery);
+        $configStmt->bind_param("i", $firmId);
+        $configStmt->execute();
+        $configResult = $configStmt->get_result();
+        $config = $configResult->fetch_assoc();
+
+        if ($config && $config['post_purchase_coupon_enabled']) {
+            // Find an active post-purchase reward coupon that the customer does not already have assigned and available
+            $couponQuery = "SELECT c.id, c.coupon_code, c.description, c.discount_type, c.discount_value 
+                           FROM coupons c
+                           WHERE c.firm_id = ? AND c.coupon_purpose = 'post_purchase_reward' AND c.is_active = 1
+                           AND c.start_date <= NOW() AND c.expiry_date >= NOW()
+                           AND NOT EXISTS (
+                               SELECT 1 FROM customer_assigned_coupons cac 
+                               WHERE cac.customer_id = ? AND cac.coupon_id = c.id 
+                               AND cac.status = 'available'
+                           )
+                           ORDER BY c.id ASC LIMIT 1"; // Order by ID to pick a consistent one if multiple exist
+            $couponStmt = $conn->prepare($couponQuery);
+            $couponStmt->bind_param("ii", $firmId, $customerId);
+            $couponStmt->execute();
+            $couponResult = $couponStmt->get_result();
+
+            if ($couponResult->num_rows > 0) {
+                $coupon = $couponResult->fetch_assoc();
+                
+                // Assign new coupon to customer
+                $assignQuery = "INSERT INTO customer_assigned_coupons 
+                               (customer_id, coupon_id, assigned_date, status, times_used, firm_id, related_sale_id) 
+                               VALUES (?, ?, NOW(), 'available', 0, ?, ?)";
+                $assignStmt = $conn->prepare($assignQuery);
+                $assignStmt->bind_param("iiii", $customerId, $coupon['id'], $firmId, $saleId);
+
+                if ($assignStmt->execute()) {
+                    $newlyAssignedCoupon = [
+                        'code' => $coupon['coupon_code'],
+                        'description' => $coupon['description'] ?: 
+                            ($coupon['discount_type'] === 'percentage' ? 
+                                $coupon['discount_value'] . '% off' : 
+                                '₹' . $coupon['discount_value'] . ' off'),
+                        'message' => "Congratulations! You've earned a new coupon: '{$coupon['coupon_code']}' for your next purchase!"
+                    ];
+                    error_log("DEBUG: Post-purchase coupon assigned: " . json_encode($newlyAssignedCoupon));
+                } else {
+                    error_log("ERROR: Failed to assign post-purchase coupon: " . $assignStmt->error);
+                }
+            } else {
+                error_log("DEBUG: No eligible post-purchase reward coupon found to assign for customer {$customerId}.");
+            }
+        } else {
+            error_log("DEBUG: Post-purchase coupon feature is disabled or firm configuration not found.");
+        }
+    } catch (Exception $e) {
+        error_log("ERROR: Exception in assignPostPurchaseCoupon: " . $e->getMessage());
+    }
+    return $newlyAssignedCoupon;
 }
 ?>
 
