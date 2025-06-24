@@ -29,7 +29,10 @@ $_SESSION = array();
 // Destroy the session.
 session_destroy();
  
-// Redirect to login page
-header("location: login.php");
+// Get redirect URL from query parameter, default to login.php
+$redirect = isset($_GET['redirect']) ? $_GET['redirect'] : 'login.php';
+
+// Redirect to specified page
+header("location: " . $redirect);
 exit;
 ?> 

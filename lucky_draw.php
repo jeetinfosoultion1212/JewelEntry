@@ -1,4 +1,6 @@
 <?php
+header('Location: gold_plan.php');
+exit();
 // Basic structure for Lucky Draw page
 
 session_start();

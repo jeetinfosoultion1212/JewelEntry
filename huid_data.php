@@ -393,6 +393,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $response['message'] = 'Username and password are required.';
             }
         }
+        
+        // 🆕 Auto-pair by total weight
+        elseif ($_POST['action'] === 'auto_pair_by_weight') {
+            $request_no = $_POST['request_no'] ?? '';
+            $item_name = $_POST['item_name'] ?? '';
+            $target_weight = isset($_POST['target_weight']) ? floatval($_POST['target_weight']) : 0;
+
+            if (!empty($request_no) && !empty($item_name) && $target_weight > 0) {
+                // Get all unpaired items with the specified item name
+                $stmt = $conn2->prepare("
+                    SELECT h.id, h.huid_code, h.weight FROM huid_data h 
+                    LEFT JOIN job_cards j ON h.job_no = j.job_no 
+                    WHERE h.request_no = ? AND j.item = ? AND (h.pair_id IS NULL OR h.pair_id = '') 
+                    ORDER BY h.weight
+                ");
+                $stmt->bind_param('ss', $request_no, $item_name);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $items = $result->fetch_all(MYSQLI_ASSOC);
+                $stmt->close();
+
+                $pairs_created = 0;
+                $errors = 0;
+
+                // Use a map to find pairs efficiently
+                $weights_map = [];
+                foreach ($items as $item) {
+                    $weight_key = (string)round(floatval($item['weight']), 3); // Use rounded string key
+                    if (!isset($weights_map[$weight_key])) {
+                        $weights_map[$weight_key] = [];
+                    }
+                    $weights_map[$weight_key][] = $item;
+                }
+
+                $used_ids = [];
+
+                foreach ($items as $item) {
+                    $item_id = $item['id'];
+                    if (in_array($item_id, $used_ids)) {
+                        continue; // Skip if already paired
+                    }
+
+                    $current_weight = round(floatval($item['weight']), 3);
+                    $required_weight = round($target_weight - $current_weight, 3);
+                    $required_weight_key = (string)$required_weight;
+
+                    if (isset($weights_map[$required_weight_key]) && !empty($weights_map[$required_weight_key])) {
+                        // Find a partner
+                        $partner = null;
+                        foreach ($weights_map[$required_weight_key] as $key => $potential_partner) {
+                            if ($potential_partner['id'] !== $item_id && !in_array($potential_partner['id'], $used_ids)) {
+                                $partner = $potential_partner;
+                                // Remove partner from map to avoid reusing
+                                array_splice($weights_map[$required_weight_key], $key, 1);
+                                break;
+                            }
+                        }
+
+                        if ($partner) {
+                            // We found a pair
+                            $item1 = $item;
+                            $item2 = $partner;
+
+                            // Add IDs to used list
+                            $used_ids[] = $item1['id'];
+                            $used_ids[] = $item2['id'];
+                            
+                            // Also remove the current item from its list in the map
+                            $current_weight_key = (string)$current_weight;
+                            if(isset($weights_map[$current_weight_key])) {
+                                foreach ($weights_map[$current_weight_key] as $key => $self) {
+                                    if ($self['id'] === $item_id) {
+                                        array_splice($weights_map[$current_weight_key], $key, 1);
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Generate pair ID
+                            $item_initial = strtoupper(substr(trim($item_name), 0, 2));
+                            $huid_suffix = substr($item1['huid_code'], -6);
+                            $pair_id = "{$item_initial}-{$huid_suffix}";
+
+                            // Update pair_id for the two items
+                            $update_stmt = $conn2->prepare("UPDATE huid_data SET pair_id = ? WHERE id IN (?, ?)");
+                            $update_stmt->bind_param('sii', $pair_id, $item1['id'], $item2['id']);
+                            
+                            if ($update_stmt->execute()) {
+                                $pairs_created++;
+                            } else {
+                                $errors++;
+                            }
+                            $update_stmt->close();
+                        }
+                    }
+                }
+
+                if ($pairs_created > 0) {
+                    $response = [
+                        'status' => 'success', 
+                        'message' => "Successfully created $pairs_created pairs for '$item_name' with total weight $target_weight." . ($errors > 0 ? " with $errors errors." : "")
+                    ];
+                } else {
+                    $response['message'] = "No new pairs were created. Not enough unpaired items found for '$item_name' to make a total weight of $target_weight.";
+                }
+
+            } else {
+                $response['message'] = 'Request number, item name, and a valid target weight are required.';
+            }
+        }
     }
 
     header('Content-Type: application/json');
@@ -492,6 +602,11 @@ if ($request_no !== '') {
         }
     }
 }
+
+// Get unique item names for auto-pairing dropdown
+$unique_item_names = array_unique(array_column($data, 'item_name'));
+sort($unique_item_names);
+
 
 // Check if user is logged in - but don't require it for viewing
 $is_logged_in = isset($_SESSION['firm_user_id']);
@@ -788,6 +903,31 @@ $user_name = $_SESSION['user_name'] ?? 'Guest';
                             <p class="font-bold text-gray-800"><?= number_format($total_weight, 3) ?> <span class="text-xs font-normal text-gray-500">g</span></p>
                         </div>
                     </div>
+                </div>
+                
+                 <!-- Filter and Auto Pair Bar -->
+                <div class="bg-white p-2 rounded-md border border-gray-200 mb-3 flex flex-wrap gap-2 items-center text-xs">
+                    <div class="flex-grow min-w-[150px]">
+                        <label for="pairFinderItemName" class="sr-only">Select Item Name</label>
+                        <select id="pairFinderItemName" class="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary text-xs">
+                            <option value="">-- Select an item to find pairs --</option>
+                            <?php foreach ($unique_item_names as $name): ?>
+                                <option value="<?= htmlspecialchars($name) ?>"><?= htmlspecialchars($name) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                     <div class="flex-grow min-w-[150px]">
+                        <label for="targetPairWeight" class="sr-only">Target Pair Weight</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                                <i class="fas fa-balance-scale text-gray-400"></i>
+                            </div>
+                            <input type="text" id="targetPairWeight" class="w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary text-xs" placeholder="Target pair weight (e.g., 8.0)">
+                        </div>
+                    </div>
+                    <button type="button" id="autoPairByWeightBtn" class="bg-purple-600 text-white px-3 py-1.5 rounded-md flex items-center gap-1 text-xs hover:bg-purple-700">
+                        <i class="fas fa-magic"></i> Auto Pair by Weight
+                    </button>
                 </div>
                 
                 <!-- Action Bar - Horizontal Scrollable -->
@@ -1254,6 +1394,21 @@ document.addEventListener('DOMContentLoaded', function() {
         loginBtn.addEventListener('click', openLoginModal);
     }
     
+    // Set up pair finder functionality
+    const pairFinderItemName = document.getElementById('pairFinderItemName');
+    const targetPairWeight = document.getElementById('targetPairWeight');
+    const autoPairByWeightBtn = document.getElementById('autoPairByWeightBtn');
+
+    if(pairFinderItemName) {
+        pairFinderItemName.addEventListener('change', updatePairFilter);
+    }
+    if(targetPairWeight) {
+        targetPairWeight.addEventListener('keyup', updatePairFilter);
+    }
+    if(autoPairByWeightBtn) {
+        autoPairByWeightBtn.addEventListener('click', autoPairByWeight);
+    }
+            
     // Confirm print button
     const confirmPrintBtn = document.getElementById('confirmPrintBtn');
     if (confirmPrintBtn) {
@@ -1354,6 +1509,125 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+function updatePairFilter() {
+    const itemName = document.getElementById('pairFinderItemName').value;
+    const targetWeight = parseFloat(document.getElementById('targetPairWeight').value);
+    const allRows = document.querySelectorAll('tbody tr');
+
+    // If no filter criteria, show all rows and exit
+    if (!itemName && isNaN(targetWeight)) {
+        allRows.forEach(row => { row.style.display = ''; });
+        return;
+    }
+
+    // First, hide all rows
+    allRows.forEach(row => { row.style.display = 'none'; });
+
+    // Get candidate items: correct name, not paired yet
+    const candidates = Array.from(allRows).filter(row => 
+        (itemName ? row.dataset.item === itemName : true) && !row.dataset.pairId
+    );
+
+    if (isNaN(targetWeight)) {
+        // If only item name is selected, show all items of that name
+        candidates.forEach(row => { row.style.display = ''; });
+        return;
+    }
+    
+    // Logic to find pairs that sum to targetWeight
+    const weightsMap = new Map();
+    candidates.forEach(row => {
+        const weightStr = parseFloat(row.querySelector('.weight-value').textContent).toFixed(3);
+        if (!weightsMap.has(weightStr)) {
+            weightsMap.set(weightStr, []);
+        }
+        weightsMap.get(weightStr).push(row);
+    });
+
+    const foundPairRows = new Set();
+    const processedRows = new Set();
+
+    for (const row of candidates) {
+        if (processedRows.has(row)) continue;
+
+        const currentWeight = parseFloat(row.querySelector('.weight-value').textContent);
+        const requiredWeightStr = (targetWeight - currentWeight).toFixed(3);
+        
+        // Find a partner
+        let partner = null;
+        if (weightsMap.has(requiredWeightStr)) {
+            const potentialPartners = weightsMap.get(requiredWeightStr);
+            for (const p of potentialPartners) {
+                // Ensure we don't pair an item with itself and that the partner is not already used
+                if (p !== row && !processedRows.has(p)) {
+                    partner = p;
+                    break;
+                }
+            }
+        }
+
+        if (partner) {
+            foundPairRows.add(row);
+            foundPairRows.add(partner);
+            processedRows.add(row);
+            processedRows.add(partner);
+        }
+    }
+    
+    // Show only the rows that are part of a found pair
+    foundPairRows.forEach(row => {
+        row.style.display = '';
+    });
+}
+
+function autoPairByWeight() {
+    const itemName = document.getElementById('pairFinderItemName').value;
+    const targetWeight = parseFloat(document.getElementById('targetPairWeight').value);
+    const requestNo = '<?= $request_no ?>';
+
+    if (!itemName || isNaN(targetWeight) || targetWeight <= 0) {
+        showToast('Please select an item and enter a valid target pair weight.', 'warning');
+        return;
+    }
+
+    // Show loader on button
+    const autoPairBtn = document.getElementById('autoPairByWeightBtn');
+    const originalButtonContent = autoPairBtn.innerHTML;
+    autoPairBtn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Pairing...';
+    autoPairBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('action', 'auto_pair_by_weight');
+    formData.append('request_no', requestNo);
+    formData.append('item_name', itemName);
+    formData.append('target_weight', targetWeight);
+
+    fetch('', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        autoPairBtn.innerHTML = originalButtonContent;
+        autoPairBtn.disabled = false;
+        
+        if (data.status === 'success') {
+            showToast(data.message, 'success');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            showToast(data.message || 'Failed to auto-pair items.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        autoPairBtn.innerHTML = originalButtonContent;
+        autoPairBtn.disabled = false;
+        showToast('An error occurred while auto-pairing.', 'error');
+    });
+}
 
 function checkLoginStatus() {
     const formData = new FormData();
@@ -2013,7 +2287,7 @@ function setupUploadImageButtons() {
             // Show loading state
             const submitBtn = uploadImageForm.querySelector('button[type="submit"]');
             const originalBtnText = submitBtn.innerHTML;
-            submitBtn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="  cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Uploading...';
+            submitBtn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Uploading...';
             submitBtn.disabled = true;
             
             fetch('', {

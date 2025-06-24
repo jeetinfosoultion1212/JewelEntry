@@ -3,6 +3,15 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+// Set a custom error log path within your project for easier debugging
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/php_custom_error.log');
+
+// Increase maximum execution time for potentially long operations like PDF generation
+ini_set('max_execution_time', 300); // 300 seconds = 5 minutes
+
+ob_start(); // Start output buffering as early as possible
+
 // Start session and include database config
 session_start();
 require 'config/config.php';
@@ -62,6 +71,7 @@ if (isset($_GET['action'])) {
         
         // Validate required fields
         if (empty($firstName) || empty($phone)) {
+            ob_clean(); // Clean output buffer before sending JSON
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'message' => 'Name and phone are required']);
             exit;
@@ -69,11 +79,17 @@ if (isset($_GET['action'])) {
         
         // Insert new customer
         $sql = "INSERT INTO Customer (firm_id, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         
         $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            ob_clean(); // Clean output buffer
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Prepare failed: ' . $conn->error]);
+            exit;
+        }
         $isGstRegistered = !empty($gst) ? 1 : 0;
-        $stmt->bind_param("isssssssssiss", $firm_id, $firstName, $lastName, $phone, $email, $address, $city, $state, $postalCode, $country, $isGstRegistered, $gst);
+        $stmt->bind_param("isssssssssis", $firm_id, $firstName, $lastName, $phone, $email, $address, $city, $state, $postalCode, $country, $isGstRegistered, $gst);
         
         if ($stmt->execute()) {
             $customerId = $stmt->insert_id;
@@ -88,9 +104,11 @@ if (isset($_GET['action'])) {
                 'due_amount' => 0,
                 'completedOrders' => []
             ];
+            ob_clean(); // Clean output buffer
             header('Content-Type: application/json');
             echo json_encode(['success' => true, 'customer' => $customer]);
         } else {
+            ob_clean(); // Clean output buffer
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'message' => 'Failed to add customer: ' . $stmt->error]);
         }
@@ -115,6 +133,7 @@ if (isset($_GET['action'])) {
            $rate = 7500; // Default rate if not found
        }
        
+       ob_clean(); // Clean output buffer before sending JSON
        header('Content-Type: application/json');
        echo json_encode(['rate' => $rate]);
        exit;
@@ -125,6 +144,7 @@ if (isset($_GET['action'])) {
         $orderId = $_GET['id'] ?? 0;
         
         if (!$orderId) {
+            ob_clean(); // Clean output buffer before sending JSON
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'message' => 'Order ID is required']);
             exit;
@@ -145,6 +165,7 @@ if (isset($_GET['action'])) {
         $orderResult = $orderStmt->get_result();
         
         if ($orderResult->num_rows === 0) {
+            ob_clean(); // Clean output buffer before sending JSON
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'message' => 'Order not found']);
             exit;
@@ -185,6 +206,7 @@ if (isset($_GET['action'])) {
 
         $order['items'] = $items;
 
+        ob_clean(); // Clean output buffer before sending JSON
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'order' => $order]);
         exit;
@@ -195,6 +217,7 @@ if (isset($_GET['action'])) {
   
 
 if ($action == 'updateOrder') {
+    ob_start(); // Start output buffering for this block
     header('Content-Type: application/json');
     
     try {
@@ -210,11 +233,41 @@ if ($action == 'updateOrder') {
 
         $conn->begin_transaction();
 
-        // First update the main order
+        // Get main karigar ID from the first item if available
+        $mainKarigarId = null;
+        if (isset($input['items']) && is_array($input['items']) && !empty($input['items'][0]['karigar_id'])) {
+            $mainKarigarId = $input['items'][0]['karigar_id'];
+        }
+
+        $advanceAmount = $input['advance_amount'] ?? 0;
+
+        // Fetch current grand_total to recalculate remaining_amount
+        $getGrandTotalSql = "SELECT grand_total FROM jewellery_customer_order WHERE id = ? AND FirmID = ?";
+        $gtStmt = $conn->prepare($getGrandTotalSql);
+        if (!$gtStmt) {
+            throw new Exception("Grand total fetch prepare failed: " . $conn->error);
+        }
+        $gtStmt->bind_param("ii", $orderId, $firm_id);
+        $gtStmt->execute();
+        $gtResult = $gtStmt->get_result();
+        $currentOrderGrandTotal = 0;
+        if ($gtResult->num_rows > 0) {
+            $row = $gtResult->fetch_assoc();
+            $currentOrderGrandTotal = $row['grand_total'];
+        } else {
+            // If order not found, or grand_total cannot be determined, assume grand_total is advance_amount for remaining calculation.
+            // This is a fallback, ideally order should always exist.
+            $currentOrderGrandTotal = $advanceAmount;
+        }
+        $remainingAmount = $currentOrderGrandTotal - $advanceAmount; // Recalculate remaining amount
+
+        // Update main order
         $updateOrderSql = "UPDATE jewellery_customer_order 
                           SET order_status = ?, 
-                              priority = ?,
-                              advance_amount = ?,
+                              priority = ?, 
+                              advance_amount = ?, 
+                              remaining_amount = ?, 
+                              karigar_id = ?, 
                               updated_at = NOW()
                           WHERE id = ? AND FirmID = ?";
         
@@ -225,12 +278,16 @@ if ($action == 'updateOrder') {
 
         $orderStatus = $input['order_status'] ?? 'pending';
         $priority = $input['priority'] ?? 'normal';
-        $advanceAmount = $input['advance_amount'] ?? 0;
 
-        $stmt->bind_param("ssdii", 
+        error_log("updateOrder - Main Order SQL: " . $updateOrderSql);
+        error_log("updateOrder - Main Order Params: Status=" . $orderStatus . ", Priority=" . $priority . ", Advance=" . $advanceAmount . ", Remaining=" . $remainingAmount . ", KarigarID=" . ($mainKarigarId ?? 'NULL') . ", OrderID=" . $orderId . ", FirmID=" . $firm_id);
+
+        $stmt->bind_param("ssddiii", 
             $orderStatus,
             $priority,
             $advanceAmount,
+            $remainingAmount,
+            $mainKarigarId,
             $orderId,
             $firm_id
         );
@@ -238,9 +295,9 @@ if ($action == 'updateOrder') {
         if (!$stmt->execute()) {
             throw new Exception("Order update execute failed: " . $stmt->error);
         }
+        error_log("updateOrder - Main Order updated rows: " . $stmt->affected_rows);
 
-        // Update each item and collect karigar IDs
-        $karigarIds = [];
+        // Update each item
         foreach ($input['items'] as $item) {
             $updateItemSql = "UPDATE jewellery_order_items 
                              SET karigar_id = ?, 
@@ -253,13 +310,12 @@ if ($action == 'updateOrder') {
                 throw new Exception("Item update prepare failed: " . $conn->error);
             }
 
-            $karigarId = $item['karigar_id'] ?? null;
+            $karigarId = $item['karigar_id'] ?? null; // This karigarId is for the current item
             $itemStatus = $item['status'] ?? null;
             $itemId = $item['id'];
 
-            if ($karigarId) {
-                $karigarIds[] = $karigarId;
-            }
+            error_log("updateOrder - Item SQL: " . $updateItemSql);
+            error_log("updateOrder - Item Params: KarigarID=" . ($karigarId ?? 'NULL') . ", ItemStatus=" . ($itemStatus ?? 'NULL') . ", ItemID=" . $itemId . ", FirmID=" . $firm_id);
 
             $stmt->bind_param("isii",
                 $karigarId,
@@ -271,6 +327,7 @@ if ($action == 'updateOrder') {
             if (!$stmt->execute()) {
                 throw new Exception("Item update execute failed: " . $stmt->error);
             }
+            error_log("updateOrder - Item updated rows: " . $stmt->affected_rows);
 
             // Handle metal issuance if provided
             if (isset($item['issued_metal_data']) && is_array($item['issued_metal_data'])) {
@@ -280,7 +337,7 @@ if ($action == 'updateOrder') {
                 $issuedWeight = $issuedMetal['weight'] ?? 0;
 
                 // Validate issued metal data
-                if (empty($itemKarigarId)) {
+                if (empty($karigarId)) {
                     throw new Exception("Cannot issue metal: Karigar not assigned to item '" . ($item['item_name'] ?? '') . "'.");
                 }
                 if (empty($issuedMetalType) || $issuedPurity <= 0 || $issuedWeight <= 0) {
@@ -321,7 +378,7 @@ if ($action == 'updateOrder') {
                 }
                 $notes = "Issued for order item " . $itemId . ".";
                 $transactionType = 'issue';
-                $ledgerStmt->bind_param("iisdds", $itemKarigarId, $itemId, $issuedMetalType, $issuedPurity, $issuedWeight, $transactionType, $notes);
+                $ledgerStmt->bind_param("iisdds", $karigarId, $itemId, $issuedMetalType, $issuedPurity, $issuedWeight, $transactionType, $notes);
                 if (!$ledgerStmt->execute()) {
                     throw new Exception("Ledger record execute failed: " . $ledgerStmt->error);
                 }
@@ -350,11 +407,13 @@ if ($action == 'updateOrder') {
         }
 
         $conn->commit();
+        ob_clean(); // Clean output buffer before sending JSON
         echo json_encode(['success' => true, 'message' => 'Order updated successfully!']);
 
     } catch (Exception $e) {
         $conn->rollback();
         error_log("Order update failed: " . $e->getMessage());
+        ob_clean(); // Clean output buffer before sending JSON
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     }
     exit;
@@ -382,6 +441,7 @@ if ($action == 'getKarigars') {
         $karigars[] = $row;
     }
     
+    ob_clean(); // Clean output buffer before sending JSON
     echo json_encode(['success' => true, 'karigars' => $karigars]);
     exit;
 }
@@ -412,6 +472,7 @@ if ($action == 'getKarigars') {
             $customers[] = $row;
         }
         
+        ob_clean(); // Clean output buffer before sending JSON
         header('Content-Type: application/json');
         echo json_encode($customers);
         exit;
@@ -432,14 +493,17 @@ if ($action == 'getKarigars') {
         
         if ($orderData === null) {
             error_log("JSON decode error: " . json_last_error_msg());
+            ob_clean(); // Clean output buffer before sending JSON
             echo json_encode(['success' => false, 'message' => 'Invalid JSON data']);
             exit;
         }
 
+        ob_clean(); // Clean output buffer before sending JSON
         header('Content-Type: application/json');
 
         // Basic validation
         if (!isset($orderData['customerId'], $orderData['cartItems'], $orderData['advanceAmount'], $orderData['paymentMethod'], $orderData['grandTotal'], $orderData['customerPhoneNumber']) || empty($orderData['cartItems'])) {
+            ob_clean(); // Clean output buffer before sending JSON
             echo json_encode(['success' => false, 'message' => 'Invalid order data provided.']);
             exit;
         }
@@ -481,8 +545,8 @@ if ($action == 'getKarigars') {
                                (FirmID, order_number, customer_id, karigar_id, total_metal_amount,
                                total_making_charges, total_stone_amount, grand_total,
                                advance_amount, remaining_amount, payment_method, payment_status,
-                               order_status, priority, notes, created_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                               order_status, priority, notes)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
             $stmtOrder = $conn->prepare($insertOrderSql);
 
@@ -495,11 +559,11 @@ if ($action == 'getKarigars') {
             $orderNotes = ''; // Default notes, assuming not set per order yet (designCustomization is per item)
             $orderStatus = 'pending';
 
-            $stmtOrder->bind_param("isiiiiddddsssss",
+            $stmtOrder->bind_param("isiiiddddddssss",
                 $firm_id,
                 $orderNumber,
                 $customerId,
-                $karigarId, // **Binding the hardcoded $karigarId = 0**
+                $karigarId, 
                 $totalMetalAmount,
                 $totalMakingCharges,
                 $totalStoneAmount,
@@ -510,12 +574,12 @@ if ($action == 'getKarigars') {
                 $paymentStatus,
                 $orderStatus,
                 $orderPriority,
-                $orderNotes,
-                
+                $orderNotes
             );
 
             // Execute the order insertion and get the new order ID
             if (!$stmtOrder->execute()) {
+                error_log("Error inserting order (jewellery_customer_order): " . $stmtOrder->error);
                 throw new Exception('Error inserting order: ' . $stmtOrder->error);
             }
             
@@ -591,6 +655,7 @@ if ($action == 'getKarigars') {
                 );
 
                 if (!$stmtItem->execute()) {
+                    error_log("Error inserting order item (jewellery_order_items): " . $stmtItem->error);
                     throw new Exception('Error inserting order item: ' . $stmtItem->error);
                 }
 
@@ -669,6 +734,7 @@ if ($action == 'getKarigars') {
                 );
 
                 if (!$stmtPayment->execute()) {
+                    error_log("Error inserting payment (Jewellery_Payments_Details): " . $stmtPayment->error);
                     throw new Exception('Error inserting payment: ' . $stmtPayment->error);
                 }
             }
@@ -677,6 +743,7 @@ if ($action == 'getKarigars') {
             $conn->commit();
 
             // Success response
+            ob_clean(); // Clean output buffer before sending JSON
             echo json_encode([
                 'success' => true,
                 'message' => 'Order processed successfully!',
@@ -700,6 +767,7 @@ if ($action == 'getKarigars') {
             // Rollback transaction on error
             $conn->rollback();
             error_log("Order Processing Error: " . $e->getMessage()); // Log the error on the server
+            ob_clean(); // Clean output buffer before sending JSON
             echo json_encode(['success' => false, 'message' => 'Error processing order: ' . $e->getMessage()]);
         }
         exit; // Exit after handling the AJAX request
@@ -744,6 +812,7 @@ if ($action == 'getKarigars') {
         
         if ($stmt === false) {
              error_log("Prepare failed: " . $conn->error); // Log prepare errors
+             ob_clean(); // Clean output buffer before sending JSON
              header('Content-Type: application/json');
              echo json_encode(['success' => false, 'message' => 'Database query preparation failed.']);
              exit;
@@ -752,6 +821,7 @@ if ($action == 'getKarigars') {
         // Check if the number of parameters matches the number of type specifiers
         if (count($params) !== strlen($types)) {
              error_log("Parameter count mismatch: Expected " . strlen($types) . ", got " . count($params));
+             ob_clean(); // Clean output buffer before sending JSON
              header('Content-Type: application/json');
              echo json_encode(['success' => false, 'message' => 'Database query parameter mismatch.']);
              exit;
@@ -817,6 +887,7 @@ if ($action == 'searchKarigars') {
         $karigars[] = $row;
     }
     
+    ob_clean(); // Clean output buffer before sending JSON
     header('Content-Type: application/json');
     echo json_encode($karigars);
     exit;
@@ -909,15 +980,30 @@ if ($action == 'addKarigar') {
 
 // Add print order action
 if ($action == 'printOrder') {
+    // Enable error logging
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
+    
+    // Check memory limit
+    $memoryLimit = ini_get('memory_limit');
+    error_log("Current memory limit: " . $memoryLimit);
+    
+    // Increase memory limit for PDF generation
+    ini_set('memory_limit', '256M');
+    error_log("Memory limit increased to 256M");
+    
+    // Log the start of print order process
+    error_log("Starting print order process - ID: " . ($_GET['id'] ?? 'not set') . ", Type: " . ($_GET['type'] ?? 'not set'));
+    
     // Prevent any output before PDF generation
     ob_start();
-    
-    error_log("Print order request received - ID: " . ($_GET['id'] ?? 'not set') . ", Type: " . ($_GET['type'] ?? 'not set'));
     
     $orderId = $_GET['id'] ?? 0;
     $printType = $_GET['type'] ?? 'customer'; // 'customer' or 'karigar'
     
     if (!$orderId) {
+        error_log("Print order failed - No order ID provided");
         ob_clean();
         die('Order ID is required');
     }

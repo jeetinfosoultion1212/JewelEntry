@@ -177,6 +177,7 @@ body {
 .input-field {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+  padding: 8px 12px;
   width: 100%;
   transition: all 0.2s ease;
 }
@@ -263,6 +264,7 @@ body {
   width: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
+  padding: 4px 8px;
   font-size: 0.8rem;
 }
 .field-input:focus {
@@ -274,6 +276,7 @@ body {
   width: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
+  padding: 4px 8px;
   font-size: 0.8rem;
   background-color: white;
   appearance: none;
@@ -289,15 +292,14 @@ body {
 }
 .field-icon {
   position: absolute;
-  left: 10px;
+  left: 6px;
   top: 50%;
   transform: translateY(-50%);
   color: #6b7280;
   font-size: 0.8rem;
-  z-index: 10;
 }
 .field-input-icon {
-  padding-left: calc(var(--icon-width) + var(--icon-spacing)) !important;
+  padding-left: 24px;
 }
 .field-container {
   position: relative;
@@ -316,6 +318,7 @@ body {
 }
 .compact-form .field-input,
 .compact-form .field-select {
+  padding: 3px 6px;
   font-size: 0.75rem;
 }
 .compact-form .section-title {
@@ -501,6 +504,7 @@ position: relative;
 
 .field-icon {
 position: absolute;
+left: 8px;
 top: 50%;
 transform: translateY(-50%);
 }
@@ -682,12 +686,12 @@ opacity: 1;
 /* Override default styles */
 input::placeholder,
 textarea::placeholder {
-  color: #94a3b8;
+color: #94a3b8;
 }
 
 input:focus::placeholder,
 textarea:focus::placeholder {
-  color: #cbd5e1;
+color: #cbd5e1;
 }
 
 #viewCartBtn {
@@ -1141,49 +1145,5 @@ right: 0;
 z-index: 50;
 }
 
-}
-
-/* Specific rules for input and textarea within form-group to ensure proper padding and prevent icon overlap */
-.form-group input,
-.form-group select,
-.form-group textarea {
-    padding-left: 5rem !important; /* Forces enough space for icon */
-}
-
-.form-group input::placeholder,
-.form-group select::placeholder,
-.form-group textarea::placeholder {
-    text-indent: 5rem; /* Ensures placeholder text starts after icon */
-}
-
-/* Ensure the custom properties are defined globally or where needed */
-:root {
-  --icon-left-position: 16px;
-}
-
-/* Ensure proper padding for input fields and textareas */
-.form-group input,
-.form-group select,
-.form-group textarea,
-.input-field,
-.field-input,
-.field-select {
-  padding-left: 50px !important; /* Force a generous padding-left */
-  padding-right: 0.75rem; /* Maintain consistent right padding if needed */
-}
-
-/* Adjust placeholder text indentation to match the new padding */
-.form-group input::placeholder,
-.form-group select::placeholder,
-.form-group textarea::placeholder,
-input::placeholder,
-textarea::placeholder {
-  text-indent: 40px; /* Slightly less than padding to prevent cutting off */
-  color: #94a3b8;
-}
-
-input:focus::placeholder,
-textarea:focus::placeholder {
-  color: #cbd5e1;
 }
 

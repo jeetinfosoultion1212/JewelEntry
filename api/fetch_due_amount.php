@@ -212,88 +212,50 @@ try {
             
         case 'Scheme Installment':
             logDebug("Processing Scheme Installment request");
-            
-            // Fetch active gold saving plans and their details
-            $planQuery = "SELECT 
-                            cgp.id AS customer_plan_id,
-                            cgp.enrollment_date,
-                            cgp.total_amount_paid,
-                            gsp.plan_name,
-                            gsp.duration_months,
-                            gsp.min_amount_per_installment
-                          FROM customer_gold_plans cgp 
-                          JOIN gold_saving_plans gsp ON cgp.plan_id = gsp.id 
-                          WHERE cgp.customer_id = ? AND cgp.current_status = 'active' 
-                          ORDER BY cgp.enrollment_date ASC";
-            
-            $planStmt = $conn->prepare($planQuery);
-            if (!$planStmt) {
-                throw new Exception("Scheme query preparation failed: " . $conn->error);
+
+            // Fetch all due/unpaid installments from gold_plan_installments for this customer
+            $query = "SELECT 
+                        gpi.id AS installment_id,
+                        gpi.customer_plan_id,
+                        gpi.payment_date,
+                        gpi.amount_paid,
+                        gsp.min_amount_per_installment,
+                        cgp.plan_id,
+                        gsp.plan_name,
+                        MONTH(gpi.payment_date) AS due_month,
+                        YEAR(gpi.payment_date) AS due_year
+                    FROM gold_plan_installments gpi
+                    JOIN customer_gold_plans cgp ON gpi.customer_plan_id = cgp.id
+                    JOIN gold_saving_plans gsp ON cgp.plan_id = gsp.id
+                    WHERE cgp.customer_id = ?
+                      AND (gpi.amount_paid IS NULL OR gpi.amount_paid < gsp.min_amount_per_installment)
+                    ORDER BY gpi.payment_date ASC";
+            $stmt = $conn->prepare($query);
+            if (!$stmt) {
+                throw new Exception("Installment query preparation failed: " . $conn->error);
             }
-            
-            $planStmt->bind_param("i", $customer_id);
-            $planStmt->execute();
-            $planResult = $planStmt->get_result();
-            
-            $current_overdue_group = null;
-
-            while ($plan = $planResult->fetch_assoc()) {
-                $customer_plan_id = $plan['customer_plan_id'];
-                $enrollment_date = new DateTime($plan['enrollment_date']);
-                $duration_months = $plan['duration_months'];
-                $min_amount_per_installment = floatval($plan['min_amount_per_installment']);
-                $total_amount_paid_on_plan = floatval($plan['total_amount_paid']);
-
-                // Calculate how many installments have been notionally covered by total_amount_paid
-                $covered_installments_count = floor($total_amount_paid_on_plan / $min_amount_per_installment);
-                $remainder_paid = $total_amount_paid_on_plan - ($covered_installments_count * $min_amount_per_installment);
-
-                $today = new DateTime();
-
-                // Iterate through each installment period
-                for ($i = 1; $i <= $duration_months; $i++) {
-                    $installment_date = clone $enrollment_date;
-                    $installment_date->modify("+$i months"); // Due date for i-th installment
-
-                    $status = 'upcoming';
-                    $due_for_this_installment = $min_amount_per_installment;
-                    $paid_for_this_installment = 0;
-
-                    if ($i <= $covered_installments_count) {
-                        // This installment is fully paid by previous payments
-                        $status = 'paid';
-                        $due_for_this_installment = 0;
-                        $paid_for_this_installment = $min_amount_per_installment;
-                    } else if ($i == $covered_installments_count + 1 && $remainder_paid > 0) {
-                        // This is the partially paid installment
-                        $status = 'partial';
-                        $paid_for_this_installment = $remainder_paid;
-                        $due_for_this_installment = $min_amount_per_installment - $remainder_paid;
-                    } else {
-                        // Check if installment is due/overdue
-                        if ($installment_date <= $today) {
-                            $status = 'due';
-                        }
-                    }
-
-                    // Only add if not fully paid, or if it's an upcoming installment we want to show
-                    if ($due_for_this_installment > 0.01 || $status === 'upcoming' || $status === 'due' || $status === 'partial') {
-                        $outstanding_items[] = [
-                            'id' => $customer_plan_id,
-                            'plan_name' => $plan['plan_name'],
-                            'installment_number' => $i,
-                            'installment_date' => $installment_date->format('d M, Y'),
-                            'amount' => $min_amount_per_installment,
-                            'due' => round($due_for_this_installment, 2),
-                            'paid_current_installment' => round($paid_for_this_installment, 2),
-                            'status' => $status
-                        ];
-                    }
-                }
+            $stmt->bind_param("i", $customer_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $due = floatval($row['min_amount_per_installment']) - floatval($row['amount_paid']);
+                if ($due < 0.01) continue; // Skip if already paid
+                $outstanding_items[] = [
+                    'installment_id' => $row['installment_id'],
+                    'customer_plan_id' => $row['customer_plan_id'],
+                    'plan_name' => $row['plan_name'],
+                    'installment_date' => date('d M, Y', strtotime($row['payment_date'])),
+                    'amount' => floatval($row['min_amount_per_installment']),
+                    'due' => round($due, 2),
+                    'paid_current_installment' => floatval($row['amount_paid']),
+                    'due_month' => $row['due_month'],
+                    'due_year' => $row['due_year'],
+                    'status' => ($row['payment_date'] < date('Y-m-d')) ? 'due' : 'upcoming'
+                ];
             }
+            $stmt->close();
             logDebug("Scheme Installment processing completed", [
-                'total_items' => count($outstanding_items),
-                'total_due_items' => array_sum(array_column($outstanding_items, 'due'))
+                'total_items' => count($outstanding_items)
             ]);
             break;
             

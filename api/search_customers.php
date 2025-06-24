@@ -1,4 +1,8 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 session_start();
 header('Content-Type: application/json');
 
@@ -14,7 +18,7 @@ $search_term = isset($_GET['term']) ? $_GET['term'] : '';
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "jewelentryapp";
+$dbname = "jewelentrypro";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 

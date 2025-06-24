@@ -686,10 +686,6 @@ if (isset($_GET['action'])) {
        header('Content-Type: application/json');
        
        try {
-           // Get session variables or set defaults
-           $firm_id = $_SESSION['firmID'] ?? 1;
-           $user_id = $_SESSION['user_id'] ?? 1;
-           
            // Start transaction
            $conn->begin_transaction();
            
@@ -884,8 +880,8 @@ if (isset($_GET['action'])) {
            $paymentSql = "INSERT INTO jewellery_payments (
                sale_id, payment_type, amount, reference_no, 
                reference_id, party_type, reference_type, party_id, remarks, 
-               created_at, transctions_type
-           ) VALUES (?, ?, ?, ?, ?, 'customer', 'sale', ?, ?, NOW(), 'Credit')";
+               created_at, transctions_type, firm_id
+           ) VALUES (?, ?, ?, ?, ?, 'customer', 'sale', ?, ?, NOW(), 'Credit', ?)";
 
            $paymentStmt = $conn->prepare($paymentSql);
            if (!$paymentStmt) {
@@ -904,14 +900,15 @@ if (isset($_GET['action'])) {
                }
                
                $paymentStmt->bind_param(
-                   "isdsiss",
+                   "isdsiisi",
                    $saleId,
                    $paymentType,
                    $paymentAmount,
                    $referenceNo,
                    $saleId,
                    $data['customerId'],
-                   $remarks
+                   $remarks,
+                   $firm_id
                );
                
                if (!$paymentStmt->execute()) {

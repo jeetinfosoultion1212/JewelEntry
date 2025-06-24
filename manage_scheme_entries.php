@@ -1,5 +1,5 @@
 <?php
-// Page to manage scheme entries for a specific scheme
+// Enhanced Compact Lottery Schemes Management Page with Advanced Winner Selection
 
 session_start();
 if (!isset($_SESSION['id'])) {
@@ -30,7 +30,7 @@ $userStmt->execute();
 $userResult = $userStmt->get_result();
 $userInfo = $userResult->fetch_assoc();
 
-// Enhanced subscription status check (needed for header/nav feature access)
+// Enhanced subscription status check
 $subscriptionQuery = "SELECT fs.*, sp.name as plan_name, sp.price, sp.duration_in_days, sp.features 
                     FROM firm_subscriptions fs 
                     JOIN subscription_plans sp ON fs.plan_id = sp.id 
@@ -68,22 +68,147 @@ if ($subscription) {
 // Feature access control
 $hasFeatureAccess = ($isPremiumUser && !$isExpired) || ($isTrialUser && !$isExpired);
 
-// Redirect if no access (adjust based on your feature access logic)
 if (!$hasFeatureAccess) {
     $_SESSION['error'] = 'You do not have access to this feature.';
     header("Location: home.php");
     exit();
 }
 
-// --- Manage Scheme Entries Page Logic ---
+// Handle AJAX requests
+if (isset($_GET['action'])) {
+    switch ($_GET['action']) {
+        case 'get_scheme_details':
+            $scheme_id = $_GET['scheme_id'] ?? null;
+            if ($scheme_id) {
+                // Fetch scheme details
+                $schemeQuery = "SELECT * FROM schemes WHERE id = ? AND firm_id = ?";
+                $schemeStmt = $conn->prepare($schemeQuery);
+                $schemeStmt->bind_param("ii", $scheme_id, $firm_id);
+                $schemeStmt->execute();
+                $schemeResult = $schemeStmt->get_result();
+                $scheme = $schemeResult->fetch_assoc();
+
+                // Fetch rewards
+                $rewardsQuery = "SELECT * FROM scheme_rewards WHERE scheme_id = ? ORDER BY rank ASC";
+                $rewardsStmt = $conn->prepare($rewardsQuery);
+                $rewardsStmt->bind_param("i", $scheme_id);
+                $rewardsStmt->execute();
+                $rewardsResult = $rewardsStmt->get_result();
+                $rewards = [];
+                while ($reward = $rewardsResult->fetch_assoc()) {
+                    $rewards[] = $reward;
+                }
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'scheme' => $scheme,
+                    'rewards' => $rewards
+                ]);
+                exit();
+            }
+            break;
+
+        case 'get_available_prizes':
+            $scheme_id = $_GET['scheme_id'] ?? null;
+            if ($scheme_id) {
+                // Get available prizes (not yet won)
+                $availablePrizesQuery = "SELECT sr.* FROM scheme_rewards sr 
+                                       LEFT JOIN scheme_winners sw ON sr.id = sw.reward_id 
+                                       WHERE sr.scheme_id = ? 
+                                       GROUP BY sr.id 
+                                       HAVING COUNT(sw.id) < sr.quantity 
+                                       ORDER BY sr.rank ASC";
+                $stmt = $conn->prepare($availablePrizesQuery);
+                $stmt->bind_param("i", $scheme_id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                
+                $availablePrizes = [];
+                while ($prize = $result->fetch_assoc()) {
+                    $wonCount = 0;
+                    $countQuery = "SELECT COUNT(*) as won_count FROM scheme_winners WHERE reward_id = ?";
+                    $countStmt = $conn->prepare($countQuery);
+                    $countStmt->bind_param("i", $prize['id']);
+                    $countStmt->execute();
+                    $countResult = $countStmt->get_result();
+                    if ($countRow = $countResult->fetch_assoc()) {
+                        $wonCount = $countRow['won_count'];
+                    }
+                    
+                    $prize['remaining_quantity'] = $prize['quantity'] - $wonCount;
+                    if ($prize['remaining_quantity'] > 0) {
+                        $availablePrizes[] = $prize;
+                    }
+                }
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'prizes' => $availablePrizes
+                ]);
+                exit();
+            }
+            break;
+
+        case 'save_winner':
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $scheme_id = $_POST['scheme_id'] ?? null;
+                $customer_id = $_POST['customer_id'] ?? null;
+                $reward_id = $_POST['reward_id'] ?? null;
+                $entry_id = $_POST['entry_id'] ?? null;
+
+                if ($scheme_id && $customer_id && $reward_id && $entry_id) {
+                    // Insert winner into database
+                    $insertWinnerQuery = "INSERT INTO scheme_winners (scheme_id, customer_id, reward_id, entry_id, firm_id, selected_at, selected_by) 
+                                        VALUES (?, ?, ?, ?, ?, NOW(), ?)";
+                    $stmt = $conn->prepare($insertWinnerQuery);
+                    $stmt->bind_param("iiiiii", $scheme_id, $customer_id, $reward_id, $entry_id, $firm_id, $user_id);
+                    
+                    if ($stmt->execute()) {
+                        // Get winner details for response
+                        $winnerDetailsQuery = "SELECT sw.*, 
+                                             CONCAT_WS(' ', c.FirstName, c.LastName) as customer_name,
+                                             c.PhoneNumber as customer_contact,
+                                             sr.prize_name, sr.rank, sr.description as prize_description,
+                                             se.entry_number
+                                             FROM scheme_winners sw
+                                             JOIN customer c ON sw.customer_id = c.id
+                                             JOIN scheme_rewards sr ON sw.reward_id = sr.id
+                                             JOIN scheme_entries se ON sw.entry_id = se.id
+                                             WHERE sw.id = ?";
+                        $detailStmt = $conn->prepare($winnerDetailsQuery);
+                        $detailStmt->bind_param("i", $stmt->insert_id);
+                        $detailStmt->execute();
+                        $winnerDetails = $detailStmt->get_result()->fetch_assoc();
+
+                        header('Content-Type: application/json');
+                        echo json_encode([
+                            'success' => true,
+                            'winner' => $winnerDetails,
+                            'message' => 'Winner saved successfully!'
+                        ]);
+                        exit();
+                    }
+                }
+                
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Failed to save winner']);
+                exit();
+            }
+            break;
+    }
+}
 
 // Get the scheme ID from the URL parameter
 $scheme_id = $_GET['scheme_id'] ?? null;
 $scheme = null;
-$schemeEntries = []; // Initialize an empty array for entries
+$schemeEntries = [];
+$schemeRewards = [];
+$schemeWinners = [];
 
 if ($scheme_id) {
-    // Fetch scheme details to display on the page
+    // Fetch scheme details
     $schemeQuery = "SELECT * FROM schemes WHERE id = ? AND firm_id = ?";
     $schemeStmt = $conn->prepare($schemeQuery);
     $schemeStmt->bind_param("ii", $scheme_id, $firm_id);
@@ -92,20 +217,50 @@ if ($scheme_id) {
     $scheme = $schemeResult->fetch_assoc();
 
     if (!$scheme) {
-        // Scheme not found or doesn't belong to the firm
         $_SESSION['error'] = 'Scheme not found or you do not have access.';
         header("Location: schemes.php");
         exit();
     }
 
-    $schemeName = htmlspecialchars($scheme['scheme_name']);
+    // Fetch scheme rewards
+    $rewardsQuery = "SELECT * FROM scheme_rewards WHERE scheme_id = ? ORDER BY rank ASC";
+    $rewardsStmt = $conn->prepare($rewardsQuery);
+    $rewardsStmt->bind_param("i", $scheme_id);
+    $rewardsStmt->execute();
+    $rewardsResult = $rewardsStmt->get_result();
+    while ($reward = $rewardsResult->fetch_assoc()) {
+        $schemeRewards[] = $reward;
+    }
 
-    // Fetch all entries for this scheme, including customer details
-    $entriesQuery = "SELECT se.*, CONCAT_WS(' ', c.FirstName, c.LastName) as customer_name, c.PhoneNumber as customer_contact 
+    // Fetch existing winners
+    $winnersQuery = "SELECT sw.*, 
+                     CONCAT_WS(' ', c.FirstName, c.LastName) as customer_name,
+                     c.PhoneNumber as customer_contact,
+                     sr.prize_name, sr.rank, sr.description as prize_description,
+                     se.entry_number
+                     FROM scheme_winners sw
+                     JOIN customer c ON sw.customer_id = c.id
+                     JOIN scheme_rewards sr ON sw.reward_id = sr.id
+                     JOIN scheme_entries se ON sw.entry_id = se.id
+                     WHERE sw.scheme_id = ? AND sw.firm_id = ?
+                     ORDER BY sr.rank ASC, sw.selected_at ASC";
+    $winnersStmt = $conn->prepare($winnersQuery);
+    $winnersStmt->bind_param("ii", $scheme_id, $firm_id);
+    $winnersStmt->execute();
+    $winnersResult = $winnersStmt->get_result();
+    while ($winner = $winnersResult->fetch_assoc()) {
+        $schemeWinners[] = $winner;
+    }
+
+    // Fetch all entries for this scheme with customer details
+    $entriesQuery = "SELECT se.*, CONCAT_WS(' ', c.FirstName, c.LastName) as customer_name, 
+                     c.PhoneNumber as customer_contact, c.Email as customer_email,
+                     c.City as customer_city
                      FROM scheme_entries se 
                      JOIN customer c ON se.customer_id = c.id 
-                     WHERE se.scheme_id = ? AND se.firm_id = ?
-                     ORDER BY se.entry_number DESC"; // Order by entry date
+                     JOIN schemes s ON se.scheme_id = s.id
+                     WHERE se.scheme_id = ? AND s.firm_id = ?
+                     ORDER BY se.entry_date DESC";
     $entriesStmt = $conn->prepare($entriesQuery);
     $entriesStmt->bind_param("ii", $scheme_id, $firm_id);
     $entriesStmt->execute();
@@ -114,18 +269,13 @@ if ($scheme_id) {
     while ($entry = $entriesResult->fetch_assoc()) {
         $schemeEntries[] = $entry;
     }
-
 } else {
-    // No scheme ID provided
     $_SESSION['error'] = 'No scheme specified.';
     header("Location: schemes.php");
     exit();
 }
 
-
-// Close the database connection
 $conn->close();
-
 ?>
 
 <!DOCTYPE html>
@@ -133,164 +283,445 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Manage Entries<?php echo $scheme ? ': ' . $schemeName : ''; ?></title>
+    <title><?php echo htmlspecialchars($scheme['scheme_name']); ?> - Lottery</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/home.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'poppins': ['Poppins', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary': {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        'gold': {
+                            50: '#fffbeb',
+                            100: '#fef3c7',
+                            200: '#fde68a',
+                            300: '#fcd34d',
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                            700: '#b45309',
+                            800: '#92400e',
+                            900: '#78350f',
+                        }
+                    },
+                    animation: {
+                        'spin-slow': 'spin 3s linear infinite',
+                        'bounce-slow': 'bounce 2s infinite',
+                        'pulse-fast': 'pulse 1s infinite',
+                        'wiggle': 'wiggle 1s ease-in-out infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .gradient-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+        .gradient-gold {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+        .gradient-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        .compact-card {
+            transition: all 0.2s ease;
+        }
+        .compact-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .winner-animation {
+            animation: bounce 0.5s ease-in-out infinite alternate;
+        }
+        @keyframes roulette {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes wiggle {
+            0%, 7% { transform: rotateZ(0); }
+            15% { transform: rotateZ(-15deg); }
+            20% { transform: rotateZ(10deg); }
+            25% { transform: rotateZ(-10deg); }
+            30% { transform: rotateZ(6deg); }
+            35% { transform: rotateZ(-4deg); }
+            40%, 100% { transform: rotateZ(0); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        .roulette-spin {
+            animation: roulette 0.1s linear infinite;
+        }
+        .prize-glow {
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+            animation: pulse 2s infinite;
+        }
+        .winner-card {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            animation: float 3s ease-in-out infinite;
+        }
+    </style>
 </head>
-<body class="font-poppins bg-gray-100">
+<body class="font-poppins bg-gray-50 text-sm">
     <!-- Notifications -->
     <?php if (isset($_SESSION['success'])): ?>
-        <div class="fixed top-4 right-4 bg-green-500 text-white p-3 rounded shadow-lg z-[70]">
-            <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
+        <div class="fixed top-16 right-3 bg-green-500 text-white p-3 rounded-lg shadow-lg z-[70] text-xs animate-bounce">
+            <i class="fas fa-check mr-1"></i><?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
         </div>
     <?php endif; ?>
     <?php if (isset($_SESSION['error'])): ?>
-        <div class="fixed top-4 right-4 bg-red-500 text-white p-3 rounded shadow-lg z-[70]">
-            <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
+        <div class="fixed top-16 right-3 bg-red-500 text-white p-3 rounded-lg shadow-lg z-[70] text-xs animate-bounce">
+            <i class="fas fa-times mr-1"></i><?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
         </div>
     <?php endif; ?>
 
-    <!-- Header -->
-    <header class="header-glass sticky top-0 z-50 shadow-md">
-        <div class="px-3 py-2">
+    <!-- Compact Glass Header -->
+    <header class="glass-header sticky top-0 z-50 shadow-sm">
+        <div class="px-3 py-2.5">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2">
-                    <div class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating">
-                        <i class="fas fa-gem text-white text-sm"></i>
-                    </div>
+                    <button onclick="history.back()" class="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center shadow-sm">
+                        <i class="fas fa-arrow-left text-white text-xs"></i>
+                    </button>
                     <div>
-                        <h1 class="text-sm font-bold text-gray-800"><?php echo $userInfo['FirmName']; ?></h1>
-                        <p class="text-xs text-gray-600 font-medium">Powered by JewelEntry</p>
+                        <h1 class="text-sm font-bold text-gray-800 leading-tight"><?php echo $userInfo['FirmName']; ?></h1>
+                        <p class="text-xs text-primary-600 font-medium leading-tight">Lottery Management</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
                     <div class="text-right">
-                        <p id="headerUserName" class="text-sm font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
-                        <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
+                        <p class="text-xs font-semibold text-gray-800 leading-tight"><?php echo $userInfo['Name']; ?></p>
+                        <p class="text-xs text-primary-600 leading-tight"><?php echo $userInfo['Role']; ?></p>
                     </div>
-                    <?php if ($hasFeatureAccess): ?>
-                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
+                    <div class="w-8 h-8 gradient-gold rounded-lg flex items-center justify-center shadow-sm overflow-hidden">
                         <?php 
                         $defaultImage = 'public/uploads/user.png';
                         if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
-                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="User Profile" class="w-full h-full object-cover">
-                        <?php elseif (file_exists($defaultImage)): ?>
-                            <img src="<?php echo htmlspecialchars($defaultImage); ?>" alt="Default User" class="w-full h-full object-cover">
+                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="Profile" class="w-full h-full object-cover">
                         <?php else: ?>
-                            <i class="fas fa-user-crown text-white text-sm"></i>
+                            <i class="fas fa-user text-white text-xs"></i>
                         <?php endif; ?>
-                    </a>
-                    <?php else: ?>
-                    <div class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200" onclick="showFeatureLockedModal()">
-                        <i class="fas fa-lock text-white text-sm"></i>
                     </div>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>
     </header>
 
-    <div class="px-3 pb-24">
-        <div class="flex justify-between items-center mb-4">
-             <h1 class="text-2xl font-bold text-gray-800">Manage Entries for <?php echo $schemeName; ?></h1>
-            <button onclick="openEditSchemeModal(<?php echo $scheme['id']; ?>)" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center">
-                <i class="fas fa-edit mr-2"></i> Edit Scheme
-            </button>
-        </div>
-
-        <!-- Scheme Details Section -->
-        <div class="bg-white rounded-xl shadow-lg p-4 mb-6 space-y-3 text-sm text-gray-700">
-            <h2 class="text-base font-bold text-gray-800 mb-2">Scheme Details</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-4 text-xs">
-                <div>
-                    <p><span class="font-semibold">Status:</span> 
-                        <span class="font-semibold <?php 
-                            if ($scheme['status'] === 'active') echo 'text-green-600';
-                            elseif ($scheme['status'] === 'draft') echo 'text-gray-500';
-                            elseif ($scheme['status'] === 'completed') echo 'text-blue-600';
-                            elseif ($scheme['status'] === 'cancelled') echo 'text-red-600';
-                        ?>">
-                            <?php echo ucfirst(htmlspecialchars($scheme['status'])); ?>
+    <div class="px-3 pb-20 pt-3 space-y-3">
+        <!-- Compact Scheme Header -->
+        <div class="gradient-primary rounded-xl p-3 text-white shadow-lg">
+            <div class="flex justify-between items-start mb-2">
+                <div class="flex-1">
+                    <h1 class="text-base font-bold mb-1 leading-tight"><?php echo htmlspecialchars($scheme['scheme_name']); ?></h1>
+                    <div class="flex items-center space-x-2">
+                        <span class="bg-white/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                            <?php echo ucfirst($scheme['status']); ?>
                         </span>
-                    </p>
-                    <p><span class="font-semibold">Min. Purchase:</span> ₹<?php echo htmlspecialchars($scheme['min_purchase_amount']); ?></p>
-                    <p><span class="font-semibold">Entry Fee:</span> ₹<?php echo htmlspecialchars($scheme['entry_fee']); ?></p>
+                        <span class="bg-white/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                            <i class="fas fa-users mr-1"></i><?php echo count($schemeEntries); ?>
+                        </span>
+                        <?php if (count($schemeWinners) > 0): ?>
+                        <span class="bg-green-500/80 px-2 py-0.5 rounded-full text-xs font-medium">
+                            <i class="fas fa-trophy mr-1"></i><?php echo count($schemeWinners); ?> Winners
+                        </span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div>
-                    <p><span class="font-semibold">Start Date:</span> <?php echo date('d M Y', strtotime($scheme['start_date'])); ?></p>
-                    <p><span class="font-semibold">End Date:</span> <?php echo date('d M Y', strtotime($scheme['end_date'])); ?></p>
-                    <p><span class="font-semibold">Auto-entry on Purchase:</span> <?php echo $scheme['auto_entry_on_purchase'] ? 'Yes' : 'No'; ?></p>
-                    <p><span class="font-semibold">Auto-entry on Registration:</span> <?php echo $scheme['auto_entry_on_registration'] ? 'Yes' : 'No'; ?></p>
-                </div>
-                <div class="col-span-1 sm:col-span-2 lg:col-span-1">
-                    <p><span class="font-semibold">Description:</span></p>
-                    <p class="mt-0.5"><?php echo nl2br(htmlspecialchars($scheme['description'])); ?></p>
+                <div class="flex space-x-1">
+                    <button onclick="openEditSchemeModal(<?php echo $scheme['id']; ?>)" class="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-all">
+                        <i class="fas fa-edit text-sm"></i>
+                    </button>
+                    <?php if (count($schemeEntries) > 0): ?>
+                    <button onclick="openWinnerModal()" class="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-all animate-wiggle">
+                        <i class="fas fa-trophy text-sm"></i>
+                    </button>
+                    <?php endif; ?>
                 </div>
             </div>
-            <div class="border-t border-gray-200 pt-3 mt-3">
-                 <p><span class="font-semibold">Terms & Conditions:</span> <?php echo nl2br(htmlspecialchars($scheme['terms_conditions'])); ?></p>
+            
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-white/10 rounded-lg p-2">
+                    <p class="text-white/70 text-xs">Entry Fee</p>
+                    <p class="text-sm font-bold">₹<?php echo number_format($scheme['entry_fee']); ?></p>
+                </div>
+                <div class="bg-white/10 rounded-lg p-2">
+                    <p class="text-white/70 text-xs">Min Purchase</p>
+                    <p class="text-sm font-bold">₹<?php echo number_format($scheme['min_purchase_amount']); ?></p>
+                </div>
             </div>
         </div>
 
-        <!-- Content for managing scheme entries will go here -->
-        <?php if (!empty($schemeEntries)): ?>
-            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                <ul class="divide-y divide-gray-200">
-                    <?php foreach ($schemeEntries as $entry): ?>
-                        <li class="p-4 hover:bg-gray-50 transition-colors duration-200">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <h3 class="text-base font-bold text-gray-800"><?php echo htmlspecialchars($entry['customer_name']); ?></h3>
-                                    <p class="text-sm text-gray-600 mt-0.5">Contact: <?php echo htmlspecialchars($entry['customer_contact']); ?></p>
-                                    <?php if (!empty($entry['entry_details'])): ?>
-                                        <p class="text-sm text-gray-600 mt-0.5">Details: <?php echo htmlspecialchars($entry['entry_details']); ?></p>
-                                    <?php endif; ?>
-                                </div>
-                                <div class="text-right">
-                                    <p class="text-sm text-gray-500">Entry Date:</p>
-                                    <p class="text-base font-semibold text-gray-700"><?php echo date('d M Y', strtotime($entry['entry_date'])); ?></p>
-                                </div>
+        <!-- Winners Section -->
+        <?php if (!empty($schemeWinners)): ?>
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="gradient-success p-2.5 flex items-center justify-between">
+                <h2 class="text-sm font-bold text-white flex items-center">
+                    <i class="fas fa-crown mr-1.5 text-xs"></i>Winners Announced
+                </h2>
+                <span class="bg-white/20 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                    <?php echo count($schemeWinners); ?>
+                </span>
+            </div>
+            <div class="p-2 space-y-2">
+                <?php foreach ($schemeWinners as $winner): ?>
+                <div class="winner-card rounded-lg p-3 text-white">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-bold">
+                                <?php echo $winner['rank']; ?>
                             </div>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+                            <div>
+                                <h3 class="font-bold text-sm"><?php echo htmlspecialchars($winner['customer_name']); ?></h3>
+                                <p class="text-xs opacity-90"><?php echo htmlspecialchars($winner['customer_contact']); ?></p>
+                                <p class="text-xs opacity-75">Entry #<?php echo $winner['entry_number']; ?></p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="bg-white/20 rounded-lg p-2">
+                                <p class="font-bold text-sm"><?php echo htmlspecialchars($winner['prize_name']); ?></p>
+                                <?php if (!empty($winner['prize_description'])): ?>
+                                <p class="text-xs opacity-90"><?php echo htmlspecialchars($winner['prize_description']); ?></p>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
             </div>
-        <?php else: ?>
-            <div class="bg-white rounded-xl shadow-lg p-6 text-center">
-                <p class="text-gray-600 font-medium">No entries found for this scheme yet.</p>
-            </div>
+        </div>
         <?php endif; ?>
 
-        <a href="schemes.php" class="mt-4 inline-block text-blue-500 hover:underline">&larr; Back to Schemes List</a>
+        <!-- Compact Rewards Section -->
+        <?php if (!empty($schemeRewards)): ?>
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="gradient-gold p-2.5 flex items-center justify-between">
+                <h2 class="text-sm font-bold text-white flex items-center">
+                    <i class="fas fa-trophy mr-1.5 text-xs"></i>Prizes
+                </h2>
+                <span class="bg-white/20 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                    <?php echo count($schemeRewards); ?>
+                </span>
+            </div>
+            <div class="p-2 space-y-1.5">
+                <?php foreach ($schemeRewards as $reward): ?>
+                <?php
+                // Count how many of this prize have been won
+                $wonCount = 0;
+                foreach ($schemeWinners as $winner) {
+                    if ($winner['rank'] == $reward['rank']) {
+                        $wonCount++;
+                    }
+                }
+                $isFullyWon = $wonCount >= $reward['quantity'];
+                ?>
+                <div class="flex items-center justify-between p-2 bg-gradient-to-r from-gold-50 to-primary-50 rounded-lg border border-gold-100 <?php echo $isFullyWon ? 'opacity-50' : ''; ?>">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-6 h-6 gradient-gold rounded-full flex items-center justify-center text-white font-bold text-xs">
+                            <?php echo $reward['rank']; ?>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-gray-800 text-xs leading-tight">
+                                <?php echo htmlspecialchars($reward['prize_name']); ?>
+                                <?php if ($isFullyWon): ?>
+                                <i class="fas fa-check-circle text-green-500 ml-1"></i>
+                                <?php endif; ?>
+                            </p>
+                            <?php if (!empty($reward['description'])): ?>
+                                <p class="text-xs text-gray-600 leading-tight"><?php echo htmlspecialchars($reward['description']); ?></p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <span class="bg-gold-100 text-gold-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
+                        <?php echo $wonCount; ?>/<?php echo $reward['quantity']; ?>
+                    </span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Compact Participants Section -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="gradient-primary p-2.5 flex justify-between items-center">
+                <h2 class="text-sm font-bold text-white flex items-center">
+                    <i class="fas fa-users mr-1.5 text-xs"></i>Participants (<?php echo count($schemeEntries); ?>)
+                </h2>
+                <div class="flex space-x-1">
+                    <?php if (count($schemeEntries) > 0): ?>
+                    <button onclick="openWinnerModal()" class="bg-white/20 hover:bg-white/30 p-1.5 rounded-lg transition-all animate-pulse" title="Select Winner">
+                        <i class="fas fa-crown text-xs"></i>
+                    </button>
+                    <?php endif; ?>
+                    <button onclick="toggleView()" class="bg-white/20 hover:bg-white/30 p-1.5 rounded-lg transition-all">
+                        <i id="viewToggleIcon" class="fas fa-th-large text-xs"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <?php if (!empty($schemeEntries)): ?>
+            <!-- Compact List View -->
+            <div id="listView" class="divide-y divide-gray-100">
+                <?php foreach ($schemeEntries as $entry): ?>
+                <div class="p-2.5 hover:bg-gray-50 transition-colors compact-card">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                                <?php echo strtoupper(substr($entry['customer_name'], 0, 2)); ?>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-semibold text-gray-800 text-xs leading-tight truncate"><?php echo htmlspecialchars($entry['customer_name']); ?></h3>
+                                <p class="text-xs text-gray-600 leading-tight">
+                                    <i class="fas fa-phone mr-1 text-primary-500"></i><?php echo htmlspecialchars($entry['customer_contact']); ?>
+                                </p>
+                                <p class="text-xs text-gray-500 leading-tight">
+                                    <i class="fas fa-calendar mr-1 text-primary-500"></i><?php echo date('d M Y, h:i A', strtotime($entry['entry_date'])); ?>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="bg-primary-100 text-primary-800 px-1.5 py-0.5 rounded-full text-xs font-semibold">
+                                #<?php echo $entry['entry_number']; ?>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- Compact Grid View -->
+            <div id="gridView" class="hidden p-2 grid grid-cols-1 gap-2">
+                <?php foreach ($schemeEntries as $entry): ?>
+                <div class="bg-gradient-to-br from-white to-gray-50 rounded-lg p-2.5 border border-gray-200 compact-card">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-7 h-7 gradient-primary rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                                <?php echo strtoupper(substr($entry['customer_name'], 0, 2)); ?>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-bold text-gray-800 text-xs leading-tight truncate"><?php echo htmlspecialchars($entry['customer_name']); ?></h3>
+                                <p class="text-xs text-gray-600 leading-tight truncate"><?php echo htmlspecialchars($entry['customer_contact']); ?></p>
+                            </div>
+                        </div>
+                        <span class="bg-primary-100 text-primary-800 px-1.5 py-0.5 rounded-full text-xs font-semibold">
+                            #<?php echo $entry['entry_number']; ?>
+                        </span>
+                    </div>
+                    
+                    <div class="space-y-1 text-xs">
+                        <?php if (!empty($entry['customer_email'])): ?>
+                        <p class="text-gray-600 truncate"><i class="fas fa-envelope mr-1 text-primary-500"></i><?php echo htmlspecialchars($entry['customer_email']); ?></p>
+                        <?php endif; ?>
+                        <p class="text-gray-600"><i class="fas fa-calendar mr-1 text-primary-500"></i><?php echo date('d M Y, h:i A', strtotime($entry['entry_date'])); ?></p>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+            <div class="p-6 text-center">
+                <div class="w-12 h-12 gradient-primary rounded-full flex items-center justify-center mx-auto mb-2">
+                    <i class="fas fa-users text-white"></i>
+                </div>
+                <h3 class="text-sm font-semibold text-gray-800 mb-1">No Participants Yet</h3>
+                <p class="text-gray-600 text-xs">Participants will appear here once they join.</p>
+            </div>
+            <?php endif; ?>
+        </div>
     </div>
 
-    <!-- Feature Locked Modal -->
-    <div id="featureLockedModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] hidden">
-        <div class="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md mx-4">
+    <!-- Enhanced Winner Selection Modal -->
+    <div id="winnerModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[90] hidden">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
             <div class="text-center">
-                <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-lock text-red-500 text-2xl"></i>
+                <!-- Prize Selection Phase -->
+                <div id="prizeSelectionPhase">
+                    <div class="w-16 h-16 gradient-gold rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                        <i class="fas fa-trophy text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Select Prize to Draw</h3>
+                    <p class="text-gray-600 mb-6 text-sm">Choose which prize you want to select a winner for:</p>
+                    
+                    <div id="availablePrizes" class="space-y-3 mb-6">
+                        <!-- Available prizes will be loaded here -->
+                    </div>
                 </div>
-                <h3 class="text-lg font-bold text-gray-800 mb-2">Feature Locked</h3>
-                <p class="text-gray-600 mb-4">
-                    <?php if ($subscriptionStatus === 'trial_expired'): ?>
-                        Your trial has expired. Upgrade to a premium plan to access this feature.
-                    <?php elseif ($subscriptionStatus === 'premium_expired'): ?>
-                        Your subscription has expired. Please renew to continue using this feature.
-                    <?php else: ?>
-                        This feature requires an active subscription. Please upgrade to access it.
-                    <?php endif; ?>
-                </p>
+
+                <!-- Spinning Phase -->
+                <div id="spinningPhase" class="hidden">
+                    <div class="w-20 h-20 gradient-primary rounded-full flex items-center justify-center mx-auto mb-4 roulette-spin">
+                        <i class="fas fa-users text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">🎲 Drawing Winner...</h3>
+                    <div id="currentPrizeInfo" class="bg-gold-50 rounded-lg p-3 mb-4">
+                        <p class="text-sm font-semibold text-gold-800">Prize: <span id="spinningPrizeName"></span></p>
+                        <p class="text-xs text-gold-600">Rank: <span id="spinningPrizeRank"></span></p>
+                    </div>
+                    <div class="text-center">
+                        <div id="participantCounter" class="text-2xl font-bold text-primary-600 mb-2">0</div>
+                        <p class="text-sm text-gray-600">Participants in the draw</p>
+                    </div>
+                </div>
+
+                <!-- Winner Display Phase -->
+                <div id="winnerDisplayPhase" class="hidden">
+                    <div class="w-20 h-20 gradient-success rounded-full flex items-center justify-center mx-auto mb-4 winner-animation">
+                        <span id="winnerInitials" class="font-bold text-2xl text-white"></span>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-2">🎉 Winner Selected! 🎉</h3>
+                    
+                    <div class="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-4 mb-4">
+                        <div class="prize-glow bg-gold-100 rounded-lg p-3 mb-3">
+                            <h4 class="font-bold text-gold-800" id="wonPrizeName"></h4>
+                            <p class="text-xs text-gold-600" id="wonPrizeDescription"></p>
+                            <p class="text-xs text-gold-600">Rank: <span id="wonPrizeRank"></span></p>
+                        </div>
+                        
+                        <div class="text-center">
+                            <p id="winnerName" class="text-xl font-bold text-gray-800"></p>
+                            <p id="winnerContact" class="text-sm text-gray-600"></p>
+                            <p id="winnerEntry" class="text-xs text-gray-500 mt-1"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
                 <div class="flex flex-col space-y-3">
-                    <button onclick="showUpgradeModal(); closeFeatureLockedModal();" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors">
-                        <i class="fas fa-star mr-2"></i>View Plans & Upgrade
+                    <button id="continueDrawBtn" onclick="continueDrawing()" class="hidden w-full gradient-primary text-white py-3 px-6 rounded-xl font-semibold hover:opacity-90 transition-all">
+                        <i class="fas fa-forward mr-2"></i>Continue Drawing
                     </button>
-                    <a href="https://wa.me/919810359334" target="_blank" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg font-medium transition-colors text-center">
-                        <i class="fab fa-whatsapp mr-2"></i>Contact Support
-                    </a>
-                    <button onclick="closeFeatureLockedModal()" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-700 py-2 px-4 rounded-lg font-medium transition-colors">
+                    <button id="finishDrawBtn" onclick="finishDrawing()" class="hidden w-full gradient-success text-white py-3 px-6 rounded-xl font-semibold hover:opacity-90 transition-all">
+                        <i class="fas fa-check mr-2"></i>Finish Drawing
+                    </button>
+                    <button onclick="closeWinnerModal()" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-700 py-3 px-6 rounded-xl font-semibold transition-all">
                         Close
                     </button>
                 </div>
@@ -298,347 +729,395 @@ $conn->close();
         </div>
     </div>
 
-    <!-- Upgrade Modal (Placeholder - content will be added as needed) -->
-     <div id="upgradeModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] hidden">
-         <div class="bg-white rounded-xl p-6 shadow-2xl w-full max-w-6xl mx-4 max-h-[90vh] overflow-y-auto">
-             <div class="flex justify-between items-center mb-6">
-                 <div>
-                     <h3 class="text-2xl font-bold text-gray-800">Choose Your Perfect Plan</h3>
-                     <p class="text-gray-600 mt-1">Select the plan that best fits your business needs</p>
-                 </div>
-                 <button onclick="closeUpgradeModal()" class="text-gray-500 hover:text-gray-700">
-                     <i class="fas fa-times text-xl"></i>
-                 </button>
-             </div>
-             <p>Plan details will load here...</p>
-             <!-- Plan details can be loaded via AJAX or rendered here if simple -->
-         </div>
-     </div>
-
-    <!-- Edit Scheme Modal -->
-    <div id="editSchemeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[90] hidden">
-        <div class="bg-white rounded-xl p-4 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-800">Edit Scheme</h3>
-                <button onclick="closeEditSchemeModal()" class="text-gray-500 hover:text-gray-700">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-
-            <form id="editSchemeForm" class="space-y-2">
-                <input type="hidden" id="editSchemeId" name="scheme_id" value="">
-                <input type="hidden" name="_method" value="PUT"> <!-- To simulate PUT request -->
-                
-                <!-- Main Form Fields - Similar to Create Modal -->
-                <div class="grid grid-cols-2 gap-2">
-                    <!-- Left Column -->
-                    <div class="space-y-2">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Scheme Name</label>
-                            <input type="text" name="scheme_name" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" required>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Status</label>
-                            <select name="status" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
-                                <option value="draft">Draft</option>
-                                <option value="active">Active</option>
-                                <option value="completed">Completed</option>
-                                <option value="cancelled">Cancelled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Start Date</label>
-                            <input type="date" name="start_date" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" required>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">End Date</label>
-                            <input type="date" name="end_date" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" required>
-                        </div>
-                    </div>
-
-                    <!-- Right Column -->
-                    <div class="space-y-2">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Min. Purchase (₹)</label>
-                            <input type="number" name="min_purchase_amount" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" min="0" step="0.01">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Entry Fee (₹)</label>
-                            <input type="number" name="entry_fee" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" min="0" step="0.01">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Description</label>
-                            <textarea name="description" rows="2" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"></textarea>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Terms & Conditions</label>
-                            <textarea name="terms_conditions" rows="2" class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"></textarea>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Rewards Section - Similar to Create Modal -->
-                <div class="space-y-3 border-t border-gray-200 pt-3 mt-3">
-                    <h4 class="text-sm font-bold text-gray-800">Scheme Rewards</h4>
-                    <div id="editRewardsContainer" class="space-y-2">
-                        <!-- Existing and new reward fields will be added here by JavaScript -->
-                    </div>
-                    <button type="button" onclick="addEditRewardField()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center">
-                        <i class="fas fa-plus mr-1"></i> Add Reward
-                    </button>
-                </div>
-
-                <!-- Auto-entry Options - Similar to Create Modal -->
-                <div class="flex items-center space-x-4 pt-2">
-                    <div class="flex items-center">
-                        <input type="checkbox" name="auto_entry_on_purchase" id="editAutoEntryOnPurchase" class="w-3.5 h-3.5 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
-                        <label for="editAutoEntryOnPurchase" class="ml-2 text-xs text-gray-700">Auto-entry on purchase</label>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" name="auto_entry_on_registration" id="editAutoEntryOnRegistration" class="w-3.5 h-3.5 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
-                        <label for="editAutoEntryOnRegistration" class="ml-2 text-xs text-gray-700">Auto-entry on registration</label>
-                    </div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex justify-end space-x-2 pt-3">
-                    <button type="button" onclick="closeEditSchemeModal()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button type="submit" class="px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700">Save Changes</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Enhanced Bottom Navigation -->
-    <nav class="bottom-nav fixed bottom-0 left-0 right-0 shadow-xl">
+    <!-- Fixed Bottom Navigation -->
+    <nav class="glass-nav fixed bottom-0 left-0 right-0 shadow-lg z-40">
         <div class="px-4 py-2">
-            <div class="flex justify-around">
-                <a href="home.php" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-home text-gray-400 text-sm"></i>
+            <div class="flex justify-around items-center">
+                <a href="home.php" class="flex flex-col items-center space-y-0.5 py-1.5 px-2 rounded-lg transition-all duration-300 hover:bg-primary-50">
+                    <div class="w-6 h-6 bg-gray-200 rounded-md flex items-center justify-center">
+                        <i class="fas fa-home text-gray-600 text-xs"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Home</span>
+                    <span class="text-xs text-gray-600 font-medium">Home</span>
                 </a>
-                <?php if ($hasFeatureAccess): ?>
-                <button data-nav-id="search" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-search text-gray-400 text-sm"></i>
+                <a href="schemes.php" class="flex flex-col items-center space-y-0.5 py-1.5 px-2 rounded-lg transition-all duration-300 bg-primary-100">
+                    <div class="w-6 h-6 gradient-primary rounded-md flex items-center justify-center">
+                        <i class="fas fa-trophy text-white text-xs"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Search</span>
-                </button>
-                <button data-nav-id="add" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-plus-circle text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Add</span>
-                </button>
-                <button data-nav-id="alerts_nav" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-bell text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Alerts</span>
-                </button>
-                <a href="profile.php" data-nav-id="profile" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-user-circle text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Profile</span>
+                    <span class="text-xs text-primary-700 font-medium">Schemes</span>
                 </a>
-                <?php else: ?>
-                <button onclick="showFeatureLockedModal()" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-search text-gray-400 text-sm"></i>
+                <a href="add.php" class="flex flex-col items-center space-y-0.5 py-1.5 px-2 rounded-lg transition-all duration-300 hover:bg-primary-50">
+                    <div class="w-6 h-6 bg-gray-200 rounded-md flex items-center justify-center">
+                        <i class="fas fa-plus-circle text-gray-600 text-xs"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Search</span>
-                </button>
-                <button onclick="showFeatureLockedModal()" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-plus-circle text-gray-400 text-sm"></i>
+                    <span class="text-xs text-gray-600 font-medium">Add</span>
+                </a>
+                <a href="alerts.php" class="flex flex-col items-center space-y-0.5 py-1.5 px-2 rounded-lg transition-all duration-300 hover:bg-primary-50">
+                    <div class="w-6 h-6 bg-gray-200 rounded-md flex items-center justify-center">
+                        <i class="fas fa-bell text-gray-600 text-xs"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Add</span>
-                </button>
-                <button onclick="showFeatureLockedModal()" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-bell text-gray-400 text-sm"></i>
+                    <span class="text-xs text-gray-600 font-medium">Alerts</span>
+                </a>
+                <a href="profile.php" class="flex flex-col items-center space-y-0.5 py-1.5 px-2 rounded-lg transition-all duration-300 hover:bg-primary-50">
+                    <div class="w-6 h-6 bg-gray-200 rounded-md flex items-center justify-center">
+                        <i class="fas fa-user-circle text-gray-600 text-xs"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Alerts</span>
-                </button>
-                <button onclick="showFeatureLockedModal()" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-user-circle text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Profile</span>
-                </button>
-                <?php endif; ?>
+                    <span class="text-xs text-gray-600 font-medium">Profile</span>
+                </a>
             </div>
         </div>
     </nav>
 
-    <script type="module" src="js/home.js"></script>
     <script>
-        window.hasFeatureAccess = <?php echo $hasFeatureAccess ? 'true' : 'false'; ?>;
-        window.subscriptionStatus = '<?php echo $subscriptionStatus; ?>';
-        window.isTrialUser = <?php echo $isTrialUser ? 'true' : 'false'; ?>;
-        window.isPremiumUser = <?php echo $isPremiumUser ? 'true' : 'false'; ?>;
-        window.isExpired = <?php echo $isExpired ? 'true' : 'false'; ?>;
-        window.daysRemaining = <?php echo $daysRemaining; ?>;
+    let rewardCounter = 0;
+    const participants = <?php echo json_encode($schemeEntries); ?>;
+    const schemeId = <?php echo $scheme_id; ?>;
+    let availablePrizes = [];
+    let currentPrize = null;
+    let selectedWinner = null;
 
-        // Global functions for modals
-        function showFeatureLockedModal() {
-            document.getElementById('featureLockedModal').classList.remove('hidden');
+    // Toggle between grid and list view
+    function toggleView() {
+        const gridView = document.getElementById('gridView');
+        const listView = document.getElementById('listView');
+        const toggleIcon = document.getElementById('viewToggleIcon');
+        
+        if (gridView.classList.contains('hidden')) {
+            gridView.classList.remove('hidden');
+            listView.classList.add('hidden');
+            toggleIcon.className = 'fas fa-list text-xs';
+        } else {
+            gridView.classList.add('hidden');
+            listView.classList.remove('hidden');
+            toggleIcon.className = 'fas fa-th-large text-xs';
         }
+    }
 
-        function closeFeatureLockedModal() {
-            document.getElementById('featureLockedModal').classList.add('hidden');
+    // Winner Selection Functions
+    function openWinnerModal() {
+        console.log('Opening winner modal...');
+        const modal = document.getElementById('winnerModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            resetWinnerModal();
+            loadAvailablePrizes();
+        } else {
+            console.error('Winner modal not found');
         }
+    }
 
-        function showUpgradeModal() {
-            document.getElementById('upgradeModal').classList.remove('hidden');
-            // You might want to load plan details here via AJAX if they are complex
+    function closeWinnerModal() {
+        console.log('Closing winner modal...');
+        const modal = document.getElementById('winnerModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            resetWinnerModal();
         }
+    }
 
-        function closeUpgradeModal() {
-            document.getElementById('upgradeModal').classList.add('hidden');
-        }
+    function resetWinnerModal() {
+        console.log('Resetting winner modal...');
+        const prizePhase = document.getElementById('prizeSelectionPhase');
+        const spinPhase = document.getElementById('spinningPhase');
+        const winnerPhase = document.getElementById('winnerDisplayPhase');
+        const continueBtn = document.getElementById('continueDrawBtn');
+        const finishBtn = document.getElementById('finishDrawBtn');
 
-        // Add event listener to close modal on outside click
-         window.onclick = function(event) {
-             const lockedModal = document.getElementById('featureLockedModal');
-             const upgradeModal = document.getElementById('upgradeModal');
-             const editModal = document.getElementById('editSchemeModal'); // Added edit modal
-             if (event.target === lockedModal) {
-                 closeFeatureLockedModal();
-             } else if (event.target === upgradeModal) {
-                 closeUpgradeModal();
-             } else if (event.target === editModal) { // Added edit modal check
-                 closeEditSchemeModal();
-             }
-         };
+        if (prizePhase) prizePhase.classList.remove('hidden');
+        if (spinPhase) spinPhase.classList.add('hidden');
+        if (winnerPhase) winnerPhase.classList.add('hidden');
+        if (continueBtn) continueBtn.classList.add('hidden');
+        if (finishBtn) finishBtn.classList.add('hidden');
+        
+        currentPrize = null;
+        selectedWinner = null;
+    }
 
-        // Function to add a new reward input field set for editing
-        function addEditRewardField(reward = {}) {
-            const container = document.getElementById('editRewardsContainer');
-            const rewardIndex = container.children.length;
-            const rewardFieldHTML = `
-                <div class="reward-item p-2 border border-gray-200 rounded-lg space-y-2">
-                    <div class="flex justify-between items-center">
-                         <h5 class="text-xs font-semibold text-gray-700">Reward #\${rewardIndex + 1}</h5>
-                         <button type="button" onclick="removeRewardField(this)" class="text-red-500 hover:text-red-700 text-sm\"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="grid grid-cols-4 gap-2">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Rank</label>
-                            <input type="number" name="rewards[\${rewardIndex}][rank]" class="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500" min="1" value="\${reward.rank || ''}" required>
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Prize Name</label>
-                            <input type="text" name="rewards[\${rewardIndex}][prize_name]" class="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500" value="\${reward.prize_name || ''}" required>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Quantity</label>
-                            <input type="number" name="rewards[\${rewardIndex}][quantity]" class="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500" min="1" value="\${reward.quantity || '1'}" required>
-                        </div>
-                    </div>
-                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-0.5">Description (Optional)</label>
-                        <textarea name="rewards[\${rewardIndex}][description]" rows="1" class="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">\${reward.description || ''}</textarea>
-                    </div>
+    function loadAvailablePrizes() {
+        console.log('Loading available prizes...');
+        
+        // Show loading state
+        const container = document.getElementById('availablePrizes');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto mb-2"></div>
+                    <p class="text-sm text-gray-600">Loading available prizes...</p>
                 </div>
             `;
-            container.insertAdjacentHTML('beforeend', rewardFieldHTML);
         }
 
-        // Function to open the edit scheme modal and populate data
-        function openEditSchemeModal(schemeId) {
-            // Clear previous rewards
-            document.getElementById('editRewardsContainer').innerHTML = '';
-
-            // Fetch scheme details
-            fetch(`fetch_scheme_details.php?scheme_id=\${schemeId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const scheme = data.scheme;
-                        const form = document.getElementById('editSchemeForm');
-
-                        // Populate scheme details
-                        form.querySelector('#editSchemeId').value = scheme.id;
-                        form.querySelector('[name="scheme_name"]').value = scheme.scheme_name;
-                        form.querySelector('[name="status"]').value = scheme.status;
-                        form.querySelector('[name="start_date"]').value = scheme.start_date; // Assuming date format is YYYY-MM-DD
-                        form.querySelector('[name="end_date"]').value = scheme.end_date;     // Assuming date format is YYYY-MM-DD
-                        form.querySelector('[name="min_purchase_amount"]').value = scheme.min_purchase_amount;
-                        form.querySelector('[name="entry_fee"]').value = scheme.entry_fee;
-                        form.querySelector('[name="description"]').value = scheme.description;
-                        form.querySelector('[name="terms_conditions"]').value = scheme.terms_conditions;
-                        form.querySelector('#editAutoEntryOnPurchase').checked = scheme.auto_entry_on_purchase == 1;
-                        form.querySelector('#editAutoEntryOnRegistration').checked = scheme.auto_entry_on_registration == 1;
-
-                        // Populate rewards
-                        if (data.rewards && data.rewards.length > 0) {
-                            data.rewards.forEach(reward => {
-                                addEditRewardField(reward);
-                            });
-                        }
-
-                        // Show the modal
-                        document.getElementById('editSchemeModal').classList.remove('hidden');
-                    } else {
-                        alert('Error fetching scheme details: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error fetching scheme details.');
-                });
-        }
-
-        // Function to close the edit scheme modal
-        function closeEditSchemeModal() {
-            document.getElementById('editSchemeModal').classList.add('hidden');
-            document.getElementById('editSchemeForm').reset();
-            document.getElementById('editRewardsContainer').innerHTML = ''; // Clear rewards
-        }
-
-        // Form submission for editing
-        document.getElementById('editSchemeForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-
-            // Collect reward data (similar to create form)
-            const rewards = [];
-            document.querySelectorAll('#editRewardsContainer .reward-item').forEach(rewardItem => {
-                 const rank = rewardItem.querySelector('[name^="rewards"][name$="[rank]"]').value;
-                 const prize_name = rewardItem.querySelector('[name^="rewards"][name$="[prize_name]"]').value;
-                 const quantity = rewardItem.querySelector('[name^="rewards"][name$="[quantity]"]').value;
-                 const description = rewardItem.querySelector('[name^="rewards"][name$="[description]"]').value;
-                 rewards.push({ rank, prize_name, quantity, description });
-            });
-
-            // Append rewards as a JSON string
-            formData.append('rewards', JSON.stringify(rewards));
-
-            // Append firm_id (assuming you need it for the update endpoint)
-            formData.append('firm_id', '<?php echo $firm_id; ?>');
-
-            fetch('update_scheme.php', {
-                method: 'POST', // Or 'PUT' if your server framework supports it and you configure it
-                body: formData
+        fetch(`?action=get_available_prizes&scheme_id=${schemeId}`)
+            .then(response => {
+                console.log('Response received:', response);
+                return response.json();
             })
-            .then(response => response.json())
             .then(data => {
+                console.log('Available prizes data:', data);
                 if (data.success) {
-                    alert('Scheme updated successfully!');
-                    window.location.reload(); // Reload to see changes
+                    availablePrizes = data.prizes || [];
+                    displayAvailablePrizes();
                 } else {
-                    alert(data.message || 'Error updating scheme');
+                    console.error('Error in response:', data);
+                    showPrizeLoadError();
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
-                alert('Error updating scheme.');
+                console.error('Error loading prizes:', error);
+                showPrizeLoadError();
             });
+    }
+
+    function showPrizeLoadError() {
+        const container = document.getElementById('availablePrizes');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-exclamation-triangle text-red-500"></i>
+                    </div>
+                    <p class="text-sm text-red-600 mb-3">Error loading prizes</p>
+                    <button onclick="loadAvailablePrizes()" class="bg-primary-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-primary-600">
+                        Try Again
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    function displayAvailablePrizes() {
+        console.log('Displaying available prizes:', availablePrizes);
+        const container = document.getElementById('availablePrizes');
+        
+        if (!container) {
+            console.error('Available prizes container not found');
+            return;
+        }
+
+        if (availablePrizes.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-check-circle text-green-500 text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">All Prizes Distributed!</h3>
+                    <p class="text-gray-600 text-sm">All prizes for this scheme have been awarded to winners.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = availablePrizes.map(prize => `
+            <button onclick="selectPrizeForDraw(${prize.id})" 
+                    class="w-full bg-gradient-to-r from-gold-50 to-primary-50 border-2 border-gold-200 rounded-lg p-4 hover:border-gold-400 transition-all prize-card">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 gradient-gold rounded-full flex items-center justify-center text-white font-bold">
+                            ${prize.rank}
+                        </div>
+                        <div class="text-left">
+                            <h4 class="font-bold text-gray-800">${prize.prize_name}</h4>
+                            ${prize.description ? `<p class="text-xs text-gray-600">${prize.description}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="bg-gold-100 text-gold-800 px-2 py-1 rounded-full text-xs font-medium">
+                            ${prize.remaining_quantity || prize.quantity} left
+                        </span>
+                    </div>
+                </div>
+            </button>
+        `).join('');
+    }
+
+    function selectPrizeForDraw(prizeId) {
+        console.log('Selecting prize for draw:', prizeId);
+        currentPrize = availablePrizes.find(p => p.id == prizeId);
+        if (!currentPrize) {
+            console.error('Prize not found:', prizeId);
+            return;
+        }
+
+        // Hide prize selection, show spinning phase
+        const prizePhase = document.getElementById('prizeSelectionPhase');
+        const spinPhase = document.getElementById('spinningPhase');
+        
+        if (prizePhase) prizePhase.classList.add('hidden');
+        if (spinPhase) spinPhase.classList.remove('hidden');
+
+        // Update spinning phase info
+        const prizeNameEl = document.getElementById('spinningPrizeName');
+        const prizeRankEl = document.getElementById('spinningPrizeRank');
+        
+        if (prizeNameEl) prizeNameEl.textContent = currentPrize.prize_name;
+        if (prizeRankEl) prizeRankEl.textContent = currentPrize.rank;
+
+        // Start the enhanced spinning animation
+        startEnhancedSpinning();
+    }
+
+    function startEnhancedSpinning() {
+        console.log('Starting enhanced spinning...');
+        
+        if (participants.length === 0) {
+            alert('No participants available for selection!');
+            return;
+        }
+
+        let counter = 0;
+        const maxCount = participants.length;
+        const counterElement = document.getElementById('participantCounter');
+        
+        // Animate counter for 5 seconds
+        const spinDuration = 5000; // 5 seconds
+        const intervalTime = 50; // Update every 50ms
+        const totalSteps = spinDuration / intervalTime;
+        let currentStep = 0;
+
+        const spinInterval = setInterval(() => {
+            // Random participant count animation
+            counter = Math.floor(Math.random() * maxCount) + 1;
+            if (counterElement) {
+                counterElement.textContent = counter;
+            }
+            currentStep++;
+
+            if (currentStep >= totalSteps) {
+                clearInterval(spinInterval);
+                selectFinalWinner();
+            }
+        }, intervalTime);
+    }
+
+    function selectFinalWinner() {
+        console.log('Selecting final winner...');
+        
+        // Select random winner
+        const randomIndex = Math.floor(Math.random() * participants.length);
+        selectedWinner = participants[randomIndex];
+
+        // Trigger confetti if available
+        if (typeof confetti !== 'undefined') {
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+        }
+
+        // Show winner display phase
+        const spinPhase = document.getElementById('spinningPhase');
+        const winnerPhase = document.getElementById('winnerDisplayPhase');
+        
+        if (spinPhase) spinPhase.classList.add('hidden');
+        if (winnerPhase) winnerPhase.classList.remove('hidden');
+
+        // Update winner display
+        const initialsEl = document.getElementById('winnerInitials');
+        const nameEl = document.getElementById('winnerName');
+        const contactEl = document.getElementById('winnerContact');
+        const entryEl = document.getElementById('winnerEntry');
+        
+        if (initialsEl) initialsEl.textContent = selectedWinner.customer_name.substring(0, 2).toUpperCase();
+        if (nameEl) nameEl.textContent = selectedWinner.customer_name;
+        if (contactEl) contactEl.textContent = selectedWinner.customer_contact;
+        if (entryEl) entryEl.textContent = `Entry #${selectedWinner.entry_number} • ${new Date(selectedWinner.entry_date).toLocaleDateString()}`;
+        
+        // Update prize info
+        const prizeNameEl = document.getElementById('wonPrizeName');
+        const prizeDescEl = document.getElementById('wonPrizeDescription');
+        const prizeRankEl = document.getElementById('wonPrizeRank');
+        
+        if (prizeNameEl) prizeNameEl.textContent = currentPrize.prize_name;
+        if (prizeDescEl) prizeDescEl.textContent = currentPrize.description || '';
+        if (prizeRankEl) prizeRankEl.textContent = currentPrize.rank;
+
+        // Save winner to database
+        saveWinnerToDatabase();
+
+        // Show appropriate buttons after a delay
+        setTimeout(() => {
+            const continueBtn = document.getElementById('continueDrawBtn');
+            const finishBtn = document.getElementById('finishDrawBtn');
+            
+            // For now, always show continue button - we'll check for more prizes when clicked
+            if (continueBtn) continueBtn.classList.remove('hidden');
+            if (finishBtn) finishBtn.classList.remove('hidden');
+        }, 1000);
+    }
+
+    function saveWinnerToDatabase() {
+        console.log('Saving winner to database...');
+        
+        const formData = new FormData();
+        formData.append('scheme_id', schemeId);
+        formData.append('customer_id', selectedWinner.customer_id);
+        formData.append('reward_id', currentPrize.id);
+        formData.append('entry_id', selectedWinner.id);
+
+        fetch('?action=save_winner', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Save winner response:', data);
+            if (data.success) {
+                console.log('Winner saved successfully:', data.winner);
+            } else {
+                console.error('Failed to save winner:', data.message);
+                alert('Failed to save winner: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error saving winner:', error);
+            alert('Error saving winner');
         });
-    </script>
+    }
+
+    function continueDrawing() {
+        console.log('Continue drawing...');
+        // Reset for next prize selection
+        resetWinnerModal();
+        loadAvailablePrizes();
+    }
+
+    function finishDrawing() {
+        console.log('Finish drawing...');
+        
+        // Show completion message and reload page
+        if (typeof confetti !== 'undefined') {
+            confetti({
+                particleCount: 200,
+                spread: 100,
+                origin: { y: 0.6 }
+            });
+        }
+        
+        setTimeout(() => {
+            alert('🎉 Drawing completed! The page will refresh to show the results.');
+            window.location.reload();
+        }, 1000);
+    }
+
+    // Close modals on outside click
+    window.onclick = function(event) {
+        const winnerModal = document.getElementById('winnerModal');
+        if (event.target === winnerModal) {
+            closeWinnerModal();
+        }
+    };
+
+    // Auto-hide notifications
+    setTimeout(() => {
+        const notifications = document.querySelectorAll('.fixed.top-16.right-3');
+        notifications.forEach(notification => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 300);
+        });
+    }, 4000);
+
+    // Debug: Log when page loads
+    console.log('Page loaded. Participants:', participants.length, 'Scheme ID:', schemeId);
+</script>
 </body>
-</html> 
+</html>

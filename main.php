@@ -192,8 +192,8 @@
       </div>
     </div>
     <div class="p-2 pt-1">
-      <h3 class="text-lg font-bold text-gray-800">₹1.9L</h3>
-      <p class="text-xs font-medium text-green-600 ">+₹23K today</p>
+      <h3 id="dashboard-sales" class="text-lg font-bold text-gray-800">₹0</h3>
+      <p class="text-xs font-medium text-green-600 ">+₹0 today</p>
     </div>
   </div>
 
@@ -211,8 +211,8 @@
       </div>
     </div>
     <div class="p-3 pt-1">
-      <h3 class="text-lg font-bold text-gray-800">340</h3>
-      <p class="text-xs font-medium text-green-600 mt-0.5">+18 today</p>
+      <h3 id="dashboard-orders" class="text-lg font-bold text-gray-800">0</h3>
+      <p class="text-xs font-medium text-green-600 mt-0.5">+0 today</p>
     </div>
   </div>
 
@@ -230,8 +230,8 @@
       </div>
     </div>
     <div class="p-3 pt-1">
-      <h3 class="text-lg font-bold text-gray-800">400g</h3>
-      <p class="text-xs font-medium text-red-600 ">-20g today</p>
+      <h3 id="dashboard-gold-stock" class="text-lg font-bold text-gray-800">0g</h3>
+      <p class="text-xs font-medium text-red-600 ">-0g today</p>
     </div>
   </div>
 
@@ -249,8 +249,8 @@
       </div>
     </div>
     <div class="p-3 pt-1">
-      <h3 class="text-lg font-bold text-gray-800">1,240</h3>
-      <p class="text-xs font-medium text-green-600 mt-0.2">+45 this week</p>
+      <h3 id="dashboard-customers" class="text-lg font-bold text-gray-800">0</h3>
+      <p class="text-xs font-medium text-green-600 mt-0.2">+0 this week</p>
     </div>
   </div>
 </section>
@@ -704,6 +704,59 @@
         }
       });
     });
+  </script>
+  <script src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+  <script>
+  $(function() {
+    // Set default date range (last 30 days)
+    const start = moment().subtract(29, 'days');
+    const end = moment();
+
+    function fetchDashboardData(startDate, endDate) {
+        $.ajax({
+            url: 'api/get_report_data.php',
+            type: 'GET',
+            data: {
+                start_date: startDate,
+                end_date: endDate
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    updateDashboardUI(response.data);
+                } else {
+                    console.error("Error fetching dashboard data:", response.message);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error("AJAX Error:", error);
+            }
+        });
+    }
+
+    function formatCurrency(val) {
+        val = Number(val) || 0;
+        return '₹' + val.toLocaleString('en-IN', {maximumFractionDigits: 2});
+    }
+
+    function updateDashboardUI(data) {
+        // Sales
+        $('#dashboard-sales').text(formatCurrency(data.summary.total_revenue));
+        // Orders (items sold)
+        $('#dashboard-orders').text(data.summary.items_sold_count || 0);
+        // Gold Stock (items added weight)
+        $('#dashboard-gold-stock').text((data.summary.items_added_weight || 0) + 'g');
+        // Customers (count unique customers from sales)
+        if (data.cash_flow && data.cash_flow.income) {
+            const uniqueCustomers = new Set(data.cash_flow.income.map(row => row.customer_name));
+            $('#dashboard-customers').text(uniqueCustomers.size);
+        }
+    }
+
+    // Initial fetch
+    fetchDashboardData(start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD'));
+  });
   </script>
 </body>
 </html>

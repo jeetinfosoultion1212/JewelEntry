@@ -123,6 +123,50 @@ function createTrialSubscription($conn, $firmId) {
     return $subscriptionId;
 }
 
+// Function to send SMS using Fast2SMS
+function sendWelcomeSMS($mobile, $username, $password) {
+    $apiKey = "XcAU17bOEmokyIQN65YKSG2w4Mfg0RrTe38nsqx9FLWVDutlJZ9Wwf6J8qYNuL1OGUVlhaECoDnSApZ2";
+    $message = "Welcome to JewelEntry! Your account has been created successfully. Username: $username, Password: $password. Thank you for choosing us!";
+    
+    $curl = curl_init();
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => "https://www.fast2sms.com/dev/bulkV2",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => "",
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_SSL_VERIFYPEER => 0,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_POSTFIELDS => json_encode([
+            'route' => 'v3',
+            'sender_id' => 'JEWELENTRY',
+            'message' => $message,
+            'language' => 'english',
+            'flash' => 0,
+            'numbers' => $mobile,
+        ]),
+        CURLOPT_HTTPHEADER => array(
+            "authorization: " . $apiKey,
+            "accept: */*",
+            "content-type: application/json"
+        ),
+    ));
+
+    $response = curl_exec($curl);
+    $err = curl_error($curl);
+    curl_close($curl);
+
+    if ($err) {
+        error_log("SMS sending failed: " . $err);
+        return false;
+    }
+    
+    $result = json_decode($response, true);
+    return isset($result['return']) && $result['return'] === true;
+}
+
 // Handle the registration request
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -185,6 +229,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $conn->commit();
+
+            // Send welcome SMS
+            $smsSent = sendWelcomeSMS($mobile, $mobile, $userPassword);
+            if (!$smsSent) {
+                error_log("Failed to send welcome SMS to: " . $mobile);
+            }
 
             session_start();
             $_SESSION['id'] = $userId;
