@@ -325,6 +325,27 @@ $reportData = $data;
                 <p id="totalRevenue" class="metric-value text-gray-900">₹0.00</p>
             </div>
 
+            <!-- NEW: Total Sales Card -->
+            <div class="stat-card">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="icon-wrapper bg-pink-100">
+                        <i class="fas fa-receipt text-pink-600 text-sm"></i>
+                    </div>
+                    <h3 class="metric-label text-gray-600">Total Sales</h3>
+                </div>
+                <p id="totalSales" class="metric-value text-gray-900 mb-1">₹0.00</p>
+                <div class="flex justify-between">
+                    <span class="text-green-600 flex items-center metric-sub">
+                        <i class="fas fa-check-circle text-xs mr-1"></i>
+                        <span id="totalSalesPaid">₹0</span>
+                    </span>
+                    <span class="text-red-600 flex items-center metric-sub">
+                        <i class="fas fa-exclamation-circle text-xs mr-1"></i>
+                        <span id="totalSalesDue">₹0</span>
+                    </span>
+                </div>
+            </div>
+
             <!-- Items Sold -->
             <div class="stat-card">
                 <div class="flex items-center justify-between mb-2">

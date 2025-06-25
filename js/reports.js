@@ -89,6 +89,11 @@ $(function() {
         $('#itemsAdded').text(data.summary.items_added_count || 0);
         $('#itemsAddedWeight').text((Number(data.summary.items_added_weight) || 0).toFixed(2) + ' g');
 
+        // --- NEW: Total Sales Card ---
+        $('#totalSales').text(formatCurrency(data.summary.total_sales));
+        $('#totalSalesPaid').text(formatSimpleCurrency(data.summary.total_sales_paid));
+        $('#totalSalesDue').text(formatSimpleCurrency(data.summary.total_sales_due));
+
         // Tables
         populateIncomeTable('#incomeTableBody', data.cash_flow.income);
         populateExpenseTable('#expenseTableBody', data.cash_flow.expenses);
@@ -150,11 +155,15 @@ $(function() {
             const category = item.category || '-';
             const description = item.description || '-';
             const amount = item.amount !== undefined ? formatCurrency(item.amount) : '-';
+            let paidBadge = '';
+            if (item.paid_amount !== undefined && item.paid_amount !== null) {
+                paidBadge = `<div style="margin-top:2px;"><span style="background:#ef4444;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;display:inline-block;">Paid: ${formatCurrency(item.paid_amount)}</span></div>`;
+            }
             tbody.append(`<tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="px-2 py-3 text-left">${date}</td>
                 <td class="px-2 py-3 text-left">${category}</td>
                 <td class="px-2 py-3 text-left">${description}</td>
-                <td class="px-2 py-3 text-right">${amount}</td>
+                <td class="px-2 py-3 text-right">${amount}${paidBadge}</td>
             </tr>`);
         });
     }

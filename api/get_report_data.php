@@ -68,6 +68,16 @@ try {
     $revStmt->execute();
     $data['summary']['total_revenue'] = $revStmt->get_result()->fetch_assoc()['total_sales'];
 
+    // --- NEW: Total Sales, Paid, Due ---
+    $salesBreakdownQuery = "SELECT COALESCE(SUM(grand_total),0) as total_sales, COALESCE(SUM(paid_amount),0) as total_paid, COALESCE(SUM(grand_total - paid_amount),0) as total_due FROM jewellery_sales WHERE firm_id = ? AND DATE(created_at) BETWEEN ? AND ?";
+    $salesBreakdownStmt = $conn->prepare($salesBreakdownQuery);
+    $salesBreakdownStmt->bind_param("iss", $firm_id, $start_date, $end_date);
+    $salesBreakdownStmt->execute();
+    $salesBreakdown = $salesBreakdownStmt->get_result()->fetch_assoc();
+    $data['summary']['total_sales'] = $salesBreakdown['total_sales'];
+    $data['summary']['total_sales_paid'] = $salesBreakdown['total_paid'];
+    $data['summary']['total_sales_due'] = $salesBreakdown['total_due'];
+
     // Total Expenses
     $expQuery = "SELECT COALESCE(SUM(amount), 0) as total_expenses FROM expenses WHERE firm_id = ? AND DATE(date) BETWEEN ? AND ?";
     $expStmt = $conn->prepare($expQuery);
@@ -118,9 +128,25 @@ try {
     $expensesStmt->bind_param("iss", $firm_id, $start_date, $end_date);
     $expensesStmt->execute();
     $expensesResult = $expensesStmt->get_result();
+    $expenses = [];
     while($row = $expensesResult->fetch_assoc()) {
-        $data['cash_flow']['expenses'][] = $row;
+        $expenses[] = $row;
     }
+
+    // --- NEW: Metal Purchases as Expenses ---
+    $metalPurchasesQuery = "SELECT purchase_date as date, 'Metal Purchase' as category, total_amount as amount, CONCAT(material_type, ' ', stock_name, ' ', purity, 'K, Qty: ', quantity, ', Rate: ', rate_per_gram) as description, paid_amount FROM metal_purchases WHERE firm_id = ? AND DATE(purchase_date) BETWEEN ? AND ? ORDER BY purchase_date DESC";
+    $metalPurchasesStmt = $conn->prepare($metalPurchasesQuery);
+    $metalPurchasesStmt->bind_param("iss", $firm_id, $start_date, $end_date);
+    $metalPurchasesStmt->execute();
+    $metalPurchasesResult = $metalPurchasesStmt->get_result();
+    while($row = $metalPurchasesResult->fetch_assoc()) {
+        $expenses[] = $row;
+    }
+    // Sort all expenses by date DESC
+    usort($expenses, function($a, $b) {
+        return strtotime($b['date']) - strtotime($a['date']);
+    });
+    $data['cash_flow']['expenses'] = $expenses;
 
     // --- INVENTORY DETAILS ---
     // Stock In

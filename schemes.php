@@ -535,6 +535,7 @@ $conn->close();
 
             <form id="schemeForm" class="space-y-3">
                 <input type="hidden" name="scheme_type" value="lucky_draw">
+                <input type="hidden" name="scheme_id" id="scheme_id">
                 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -587,8 +588,8 @@ $conn->close();
                 <!-- Action Buttons -->
                 <div class="flex justify-end space-x-2 pt-3">
                     <button type="button" onclick="closeCreateSchemeModal()" class="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button type="submit" class="gradient-primary text-white px-4 py-2 text-sm rounded-lg hover:opacity-90">
-                        <i class="fas fa-save mr-1"></i>Create
+                    <button type="submit" id="schemeSubmitBtn" class="gradient-primary text-white px-4 py-2 text-sm rounded-lg hover:opacity-90">
+                        <i class="fas fa-save mr-1"></i><span id="schemeSubmitBtnText">Create</span>
                     </button>
                 </div>
             </form>
@@ -670,6 +671,12 @@ $conn->close();
         // Modal functions
         function showCreateSchemeModal() {
             document.getElementById('createSchemeModal').classList.remove('hidden');
+            // Reset form to create mode if not editing
+            if (!document.getElementById('scheme_id').value) {
+                document.getElementById('schemeSubmitBtnText').textContent = 'Create';
+                document.getElementById('schemeSubmitBtn').classList.add('gradient-primary');
+                document.getElementById('schemeSubmitBtn').classList.remove('bg-green-600');
+            }
         }
 
         function closeCreateSchemeModal() {
@@ -677,6 +684,10 @@ $conn->close();
             document.getElementById('schemeForm').reset();
             document.getElementById('rewardsContainer').innerHTML = '';
             rewardCounter = 0;
+            document.getElementById('scheme_id').value = '';
+            document.getElementById('schemeSubmitBtnText').textContent = 'Create';
+            document.getElementById('schemeSubmitBtn').classList.add('gradient-primary');
+            document.getElementById('schemeSubmitBtn').classList.remove('bg-green-600');
         }
 
         // Add reward field
@@ -744,18 +755,42 @@ $conn->close();
         }
 
         function openEditSchemeModal(schemeId) {
-            // Implementation for editing scheme
-            alert('Edit functionality to be implemented');
+            document.getElementById('scheme_id').value = schemeId;
+            document.getElementById('schemeSubmitBtnText').textContent = 'Update';
+            document.getElementById('schemeSubmitBtn').classList.remove('gradient-primary');
+            document.getElementById('schemeSubmitBtn').classList.add('bg-green-600');
+            showCreateSchemeModal();
+            fetch('api/fetch_scheme_details.php?scheme_id=' + schemeId)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const scheme = data.scheme;
+                        const rewards = data.rewards || [];
+                        const form = document.getElementById('schemeForm');
+                        form.querySelector('[name="scheme_name"]').value = scheme.scheme_name || '';
+                        form.querySelector('[name="status"]').value = scheme.status || 'draft';
+                        form.querySelector('[name="entry_fee"]').value = scheme.entry_fee || '';
+                        form.querySelector('[name="min_purchase_amount"]').value = scheme.min_purchase_amount || '';
+                        form.querySelector('[name="start_date"]').value = scheme.start_date || '';
+                        form.querySelector('[name="end_date"]').value = scheme.end_date || '';
+                        form.querySelector('[name="description"]').value = scheme.description || '';
+                        document.getElementById('rewardsContainer').innerHTML = '';
+                        rewardCounter = 0;
+                        rewards.forEach(reward => addRewardField(reward));
+                    } else {
+                        alert(data.message || 'Failed to fetch scheme details');
+                    }
+                })
+                .catch(err => {
+                    alert('Error fetching scheme details');
+                });
         }
 
         // Form submission
         document.getElementById('schemeForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
-            
             formData.append('firm_id', '<?php echo $firm_id; ?>');
-
-            // Collect reward data
             const rewards = [];
             document.querySelectorAll('#rewardsContainer .reward-item').forEach(rewardItem => {
                 const rank = rewardItem.querySelector('[name*="[rank]"]').value;
@@ -763,25 +798,25 @@ $conn->close();
                 const quantity = rewardItem.querySelector('[name*="[quantity]"]').value;
                 rewards.push({ rank, prize_name, quantity });
             });
-
             formData.append('rewards', JSON.stringify(rewards));
-
-            fetch('create_scheme.php', {
+            const schemeId = formData.get('scheme_id');
+            const url = schemeId ? 'api/update_scheme.php' : 'create_scheme.php';
+            fetch(url, {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Scheme created successfully!');
+                    alert(schemeId ? 'Scheme updated successfully!' : 'Scheme created successfully!');
                     window.location.reload();
                 } else {
-                    alert(data.message || 'Error creating scheme');
+                    alert(data.message || (schemeId ? 'Error updating scheme' : 'Error creating scheme'));
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error creating scheme');
+                alert(schemeId ? 'Error updating scheme' : 'Error creating scheme');
             });
         });
 
