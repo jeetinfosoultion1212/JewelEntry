@@ -652,7 +652,7 @@ $totalGoldDue = count($goldDues);
                     </div>
                     <span class="text-xs text-gray-500 font-medium">Alerts</span>
                 </button>
-                <a href="customer.php" class="flex flex-col items-center space-y-1 py-2 px-3 rounded-2xl transition-all">
+                <a href="customers.php" class="flex flex-col items-center space-y-1 py-2 px-3 rounded-2xl transition-all">
                     <div class="w-8 h-8 gradient-jewel rounded-xl flex items-center justify-center shadow-lg">
                         <i data-feather="users" class="w-4 h-4 text-white"></i>
                     </div>

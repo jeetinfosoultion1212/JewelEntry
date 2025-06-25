@@ -2,11 +2,11 @@
 
 include_once 'config/config.php';
 
-// Database connection details
-$servername = DB_SERVER;
-$username = DB_USERNAME;
-$password = DB_PASSWORD;
-$dbname = DB_NAME;
+// Database connection details - using variables from config.php
+$servername = $servername; // Already defined in config.php
+$username = $username; // Already defined in config.php
+$password = $password; // Already defined in config.php
+$dbname = $dbname; // Already defined in config.php
 
 // Initialize variables with dummy values, which will be overwritten by real data if available
 $totalProducts = "15,000+"; // Dummy data
@@ -21,13 +21,17 @@ $debugRawFirms = 'N/A';
 $debugRawOrders = 'N/A';
 
 try {
-    $conn = new PDO("mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME, DB_USERNAME, DB_PASSWORD);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Use mysqli connection like other files in the project
+    $conn = new mysqli($servername, $username, $password, $dbname);
+    
+    if ($conn->connect_error) {
+        throw new Exception("Connection failed: " . $conn->connect_error);
+    }
 
     // Fetch Total Products
     $stmt = $conn->prepare("SELECT COUNT(id) AS total_products FROM jewellery_items");
     $stmt->execute();
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $result = $stmt->get_result()->fetch_assoc();
     if ($result && $result['total_products'] !== null) {
         $totalProducts = number_format($result['total_products']);
         $debugRawProducts = $result['total_products'];
@@ -36,7 +40,7 @@ try {
     // Fetch Total Revenue
     $stmt = $conn->prepare("SELECT SUM(grand_total) AS total_revenue FROM jewellery_sales");
     $stmt->execute();
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $result = $stmt->get_result()->fetch_assoc();
     if ($result && $result['total_revenue'] !== null) {
         // Format revenue to Cr+ if value is large, otherwise just format number
         $revenue = $result['total_revenue'];
@@ -51,7 +55,7 @@ try {
     // Fetch Active Firms
     $stmt = $conn->prepare("SELECT COUNT(id) AS active_firms FROM firm");
     $stmt->execute();
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $result = $stmt->get_result()->fetch_assoc();
     if ($result && $result['active_firms'] !== null) {
         $activeFirms = number_format($result['active_firms']) . "+";
         $debugRawFirms = $result['active_firms'];
@@ -60,13 +64,13 @@ try {
     // Fetch Total Orders
     $stmt = $conn->prepare("SELECT COUNT(id) AS total_orders FROM jewellery_sales");
     $stmt->execute();
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $result = $stmt->get_result()->fetch_assoc();
     if ($result && $result['total_orders'] !== null) {
         $totalOrders = number_format($result['total_orders']) . "+";
         $debugRawOrders = $result['total_orders'];
     }
 
-} catch(PDOException $e) {
+} catch(Exception $e) {
     error_log("Database Error: " . $e->getMessage());
     // Output error message for debugging purposes on the page
     // echo "<p style=\"color:red;\">Database Error: " . $e->getMessage() . "</p>";
@@ -111,8 +115,8 @@ $conn = null;
     <div class="container mx-auto flex flex-col items-center justify-start min-h-screen w-full pt-10 pb-10 px-4 sm:px-6">
 
         <!-- Logo -->
-        <div class="bg-orange-500 rounded-lg p-3 w-14 h-14 flex items-center justify-center mb-5 shadow-md">
-            <i class="fas fa-search text-white text-2xl"></i>
+        <div class="flex items-center justify-center mb-5">
+            <img src="uploads/logo.png" alt="JewelEntry Logo" class="w-14 h-14 object-contain">
         </div>
 
         <!-- App Name -->
@@ -263,6 +267,10 @@ $conn = null;
         <!-- Login Link -->
         <p class="text-sm text-gray-600 mb-8">
             Already have an account? <a href="login.php" class="text-orange-500 font-semibold hover:underline">Log in</a>
+        </p>
+        <!-- Credit Line -->
+        <p class="text-xs text-gray-400 mb-4 text-center">
+            Develop and maintain by <span class="font-semibold text-orange-500">Prosenjit Tech Hub</span>
         </p>
 
     </div>

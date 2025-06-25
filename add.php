@@ -1378,17 +1378,33 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
               </div>
             </div>
             
-            <!-- Source Info Display (read-only) - Compact View -->
+            <!-- Source Info Display (read-only) - Collapsible -->
             <div id="sourceInfoDisplay" class="bg-gradient-to-br from-white via-blue-50 to-blue-100 p-2 rounded-xl border-2 border-dashed border-blue-300 shadow-sm mt-2 hidden">
-              <div class="text-sm font-semibold text-blue-700 mb-1 flex items-center gap-2">
-                <i class="fas fa-info-circle text-blue-500"></i>
-                <span>Source Info</span>
+              <div class="flex justify-between items-center mb-1">
+                <div class="text-sm font-semibold text-blue-700 flex items-center gap-2">
+                  <i class="fas fa-info-circle text-blue-500"></i>
+                  <span>Source Info</span>
+                </div>
+                <button id="minimizeSourceInfoBtn" type="button" class="text-blue-500 hover:text-blue-700 focus:outline-none" title="Minimize Source Info">
+                  <i class="fas fa-chevron-up"></i>
+                </button>
               </div>
               <div class="grid grid-cols-2 gap-2 text-sm text-gray-700">
                 <div><span class="text-gray-500">Name:</span> <span id="sourceNameDisplay" class="font-medium ml-1">-</span></div>
                 <div><span class="text-gray-500">Weight:</span> <span id="sourceWeightDisplay" class="font-medium ml-1">-</span></div>
                 <div><span class="text-gray-500">Purity:</span> <span id="sourcePurityDisplay" class="font-medium ml-1">-</span></div>
               </div>
+            </div>
+            <!-- Source Info Minimized Bar -->
+            <div id="sourceInfoMinimizedBar" class="bg-blue-100 border-2 border-blue-300 rounded-xl shadow-sm mt-2 px-3 py-1 flex items-center justify-between cursor-pointer hidden">
+              <div class="text-blue-800 font-semibold text-sm">
+                <i class="fas fa-balance-scale mr-1"></i>
+                <span id="sourceWeightMinimizedLabel">Weight Left:</span>
+                <span id="sourceWeightMinimizedValue">-</span>
+              </div>
+              <button id="expandSourceInfoBtn" type="button" class="text-blue-500 hover:text-blue-700 focus:outline-none ml-2" title="Expand Source Info">
+                <i class="fas fa-chevron-down"></i>
+              </button>
             </div>
             
             <!-- Hidden fields to store source data -->

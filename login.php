@@ -154,7 +154,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #fef7cd;
+            background-color: #FFF9F3;
             min-height: 100vh;
             display: flex;
             align-items: center;

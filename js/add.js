@@ -105,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   
-  // Source Type Dropdown Handling
+  // Source Type Dropdown Handling and Source Info Elements
   const sourceTypeSelect = document.getElementById("sourceTypeSelect")
   const sourceId = document.getElementById("sourceId")
   const sourceInfoDisplay = document.getElementById("sourceInfoDisplay")
@@ -119,7 +119,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const sourcePurityField = document.getElementById("sourcePurity")
   const sourceWeightField = document.getElementById("sourceWeight")
   const sourceInventoryIdField = document.getElementById("sourceInventoryId")
-  
 
   // Display elements
   const sourceNameDisplay = document.getElementById("sourceNameDisplay")
@@ -129,6 +128,43 @@ document.addEventListener("DOMContentLoaded", () => {
   const sourceWeightDisplay = document.getElementById("sourceWeightDisplay")
   const sourceStatusDisplay = document.getElementById("sourceStatusDisplay")
   const sourceInvoiceNoDisplay = document.getElementById("sourceInvoiceNoDisplay")
+  const minimizeSourceInfoBtn = document.getElementById("minimizeSourceInfoBtn")
+  const expandSourceInfoBtn = document.getElementById("expandSourceInfoBtn")
+  const sourceInfoMinimizedBar = document.getElementById("sourceInfoMinimizedBar")
+  const sourceWeightMinimizedValue = document.getElementById("sourceWeightMinimizedValue")
+  const sourceWeightMinimizedLabel = document.getElementById("sourceWeightMinimizedLabel")
+
+  // Debug: Log if any important element is missing
+  const debugElements = [
+    ["sourceTypeSelect", sourceTypeSelect],
+    ["sourceId", sourceId],
+    ["sourceInfoDisplay", sourceInfoDisplay],
+    ["sourceResetBtn", sourceResetBtn],
+    ["sourceTypeField", sourceTypeField],
+    ["sourceNameField", sourceNameField],
+    ["sourceLocationField", sourceLocationField],
+    ["sourceMaterialTypeField", sourceMaterialTypeField],
+    ["sourcePurityField", sourcePurityField],
+    ["sourceWeightField", sourceWeightField],
+    ["sourceInventoryIdField", sourceInventoryIdField],
+    ["sourceNameDisplay", sourceNameDisplay],
+    ["sourceTypeDisplay", sourceTypeDisplay],
+    ["sourceMaterialDisplay", sourceMaterialDisplay],
+    ["sourcePurityDisplay", sourcePurityDisplay],
+    ["sourceWeightDisplay", sourceWeightDisplay],
+    ["sourceStatusDisplay", sourceStatusDisplay],
+    ["sourceInvoiceNoDisplay", sourceInvoiceNoDisplay],
+    ["minimizeSourceInfoBtn", minimizeSourceInfoBtn],
+    ["expandSourceInfoBtn", expandSourceInfoBtn],
+    ["sourceInfoMinimizedBar", sourceInfoMinimizedBar],
+    ["sourceWeightMinimizedValue", sourceWeightMinimizedValue],
+    ["sourceWeightMinimizedLabel", sourceWeightMinimizedLabel],
+  ];
+  for (var i = 0; i < debugElements.length; i++) {
+    var name = debugElements[i][0];
+    var el = debugElements[i][1];
+    if (!el) console.warn("Element not found: " + name);
+  }
 
   // Source reset button handler
   if (sourceResetBtn) {
@@ -195,22 +231,29 @@ document.addEventListener("DOMContentLoaded", () => {
       return
     }
 
+    // Always show full info and hide minimized bar initially
     sourceInfoDisplay.classList.remove("hidden")
+    if (sourceInfoMinimizedBar) sourceInfoMinimizedBar.classList.add("hidden")
+
+    let remaining = null
+    let weightLabel = "Weight Left:"
 
     if (type === "Manufacturing Order") {
+      // Use remaining_weight if available, else fallback to expected_weight
+      remaining = (typeof data.remaining_weight !== 'undefined') ? data.remaining_weight : data.expected_weight
       // Update hidden fields
       if (sourceNameField) sourceNameField.value = data.karigar_name
       if (sourceLocationField) sourceLocationField.value = "Manufacturing"
       if (sourceMaterialTypeField) sourceMaterialTypeField.value = "Gold" // Assuming gold, adjust if needed
       if (sourcePurityField) sourcePurityField.value = data.purity_out
-      if (sourceWeightField) sourceWeightField.value = data.expected_weight
+      if (sourceWeightField) sourceWeightField.value = remaining
 
       // Update display
       if (sourceNameDisplay) sourceNameDisplay.textContent = data.karigar_name
       if (sourceTypeDisplay) sourceTypeDisplay.textContent = "Karigar"
       if (sourceMaterialDisplay) sourceMaterialDisplay.textContent = "Gold"
       if (sourcePurityDisplay) sourcePurityDisplay.textContent = data.purity_out + "%"
-      if (sourceWeightDisplay) sourceWeightDisplay.textContent = data.expected_weight + "g"
+      if (sourceWeightDisplay) sourceWeightDisplay.textContent = remaining + "g"
       if (sourceStatusDisplay) sourceStatusDisplay.textContent = data.status
 
       // Auto-fill material and purity fields
@@ -224,12 +267,13 @@ document.addEventListener("DOMContentLoaded", () => {
       keepMaterialSelection = true
       keepPuritySelection = true
     } else if (type === "Purchase") {
+      remaining = data.remaining_stock
       // Update hidden fields
       if (sourceNameField) sourceNameField.value = data.supplier_name
       if (sourceLocationField) sourceLocationField.value = "Purchase"
       if (sourceMaterialTypeField) sourceMaterialTypeField.value = data.material_type
       if (sourcePurityField) sourcePurityField.value = data.purity
-      if (sourceWeightField) sourceWeightField.value = data.weight
+      if (sourceWeightField) sourceWeightField.value = remaining
       if (sourceInventoryIdField) sourceInventoryIdField.value = data.inventory_id
 
       // Update display
@@ -237,8 +281,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (sourceTypeDisplay) sourceTypeDisplay.textContent = "Supplier"
       if (sourceMaterialDisplay) sourceMaterialDisplay.textContent = data.material_type
       if (sourcePurityDisplay) sourcePurityDisplay.textContent = data.purity + "%"
-      if (sourceWeightDisplay) sourceWeightDisplay.textContent = data.weight + "g"
-      if (sourceStatusDisplay) sourceStatusDisplay.textContent = "Available: " + data.remaining_stock + "g"
+      if (sourceWeightDisplay) sourceWeightDisplay.textContent = remaining + "g"
+      if (sourceStatusDisplay) sourceStatusDisplay.textContent = "Available: " + remaining + "g"
       if (sourceInvoiceNoDisplay) sourceInvoiceNoDisplay.textContent = "Invoice: " + data.invoice_number
 
       // Auto-fill material and purity fields
@@ -252,6 +296,24 @@ document.addEventListener("DOMContentLoaded", () => {
       keepMaterialSelection = true
       keepPuritySelection = true
     }
+
+    // Update minimized bar value
+    if (sourceWeightMinimizedValue) sourceWeightMinimizedValue.textContent = (remaining !== null ? remaining + "g" : "-")
+    if (sourceWeightMinimizedLabel) sourceWeightMinimizedLabel.textContent = weightLabel
+  }
+
+  // Collapsible logic for Source Info
+  if (minimizeSourceInfoBtn && sourceInfoDisplay && sourceInfoMinimizedBar) {
+    minimizeSourceInfoBtn.addEventListener("click", function() {
+      sourceInfoDisplay.classList.add("hidden")
+      sourceInfoMinimizedBar.classList.remove("hidden")
+    })
+  }
+  if (expandSourceInfoBtn && sourceInfoDisplay && sourceInfoMinimizedBar) {
+    expandSourceInfoBtn.addEventListener("click", function() {
+      sourceInfoDisplay.classList.remove("hidden")
+      sourceInfoMinimizedBar.classList.add("hidden")
+    })
   }
 
   // Tab Switching Logic

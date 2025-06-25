@@ -90,6 +90,9 @@ if (isset($_GET['action'])) {
    if ($action == 'getFirmConfiguration') {
        $firm_id_param = isset($_GET['firm_id']) ? (int)$_GET['firm_id'] : $firm_id;
        
+       // Debug logging
+       error_log("getFirmConfiguration called with firm_id_param: $firm_id_param, session firm_id: $firm_id");
+       
        $sql = "SELECT * FROM firm_configurations WHERE firm_id = ?";
        $stmt = $conn->prepare($sql);
        $stmt->bind_param("i", $firm_id_param);
@@ -2245,17 +2248,18 @@ function assignPostPurchaseCoupon($conn, $customerId, $firmId, $saleId) {
    </div>
 
    <!-- Sales List -->
-   <a href="sale-list.php" class="nav-item">
-     <i class="nav-icon fas fa-clipboard-list"></i>
-     <span class="nav-text">Sales</span>
-   </a>
-
+   
    <!-- Reports -->
-   <a href="reports.php" class="nav-item">
+   <a href="sale-list.php" class="nav-item">
      <i class="nav-icon fas fa-chart-pie"></i>
      <span class="nav-text">Reports</span>
    </a>
  </nav>
+ 
+ <script>
+     // Set firm ID for JavaScript
+     window.firmID = <?php echo json_encode($firm_id); ?>;
+ </script>
  <script src="js/sale.js"></script>
 
  <!-- Subscription Expiration Modal -->

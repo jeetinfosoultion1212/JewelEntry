@@ -4,7 +4,7 @@ require 'config/config.php';
 date_default_timezone_set('Asia/Kolkata');
 
 // Check if user is logged in
-if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
+if (!isset($_SESSION['id'])) {
     header("Location: login.php");
     exit();
 }
@@ -12,675 +12,628 @@ if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
 $user_id = $_SESSION['id'];
 $firm_id = $_SESSION['firmID'];
 
-// Get user details
-$userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName, f.City
-             FROM Firm_Users u
-             JOIN Firm f ON f.id = u.FirmID
-             WHERE u.id = ?";
-$userStmt = $conn->prepare($userQuery);
-$userStmt->bind_param("i", $user_id);
-$userStmt->execute();
-$userResult = $userStmt->get_result();
-$userInfo = $userResult->fetch_assoc();
 
-// Date range setup
-$start_date = $_GET['start_date'] ?? date('Y-m-d');
-$end_date = $_GET['end_date'] ?? date('Y-m-d');
 
-// Fetch comprehensive report data
-function fetchReportData($conn, $firm_id, $start_date, $end_date) {
-    $data = [
-        'summary' => [],
-        'cash_flow' => [],
-        'inventory' => [],
-        'balances' => [],
-        'trends' => [],
-        'top_items' => [],
-        'customer_insights' => []
-    ];
+// You can add subscription checks here if needed, similar to home.php
+$hasFeatureAccess = true; // Assuming access for now
 
-    try {
-        // Summary Statistics
-        $summaryQuery = "SELECT 
-            COALESCE(SUM(js.grand_total), 0) as total_revenue,
-            COUNT(DISTINCT js.id) as total_sales,
-            COUNT(DISTINCT js.customer_id) as unique_customers,
-            COALESCE(AVG(js.grand_total), 0) as avg_sale_value,
-            COALESCE(SUM(jsi.gross_weight), 0) as total_weight_sold
-            FROM jewellery_sales js 
-            LEFT JOIN jewellery_sales_items jsi ON js.id = jsi.sale_id
-            WHERE js.firm_id = ? AND DATE(js.created_at) BETWEEN ? AND ?";
-        $summaryStmt = $conn->prepare($summaryQuery);
-        $summaryStmt->bind_param("iss", $firm_id, $start_date, $end_date);
-        $summaryStmt->execute();
-        $data['summary'] = $summaryStmt->get_result()->fetch_assoc();
+try {
+    // Jewellery Stock by Purity (Available only)
+    $jewelleryPurityQuery = "SELECT purity, COUNT(*) as item_count, SUM(gross_weight) as total_weight FROM jewellery_items WHERE firm_id = ? AND status = 'Available' GROUP BY purity ORDER BY purity DESC";
+    $jewelleryPurityStmt = $conn->prepare($jewelleryPurityQuery);
+    $jewelleryPurityStmt->bind_param("i", $firm_id);
+    $jewelleryPurityStmt->execute();
+    $jewelleryPurityResult = $jewelleryPurityStmt->get_result();
+    $jewelleryPurityData = $jewelleryPurityResult->fetch_all(MYSQLI_ASSOC);
+    $data['stock']['jewellery_purity'] = $jewelleryPurityData;
 
-        // Payment Balances
-        $balanceQuery = "SELECT 
-            payment_type,
-            transctions_type,
-            SUM(amount) as total
-            FROM jewellery_payments 
-            WHERE Firm_id = ? AND DATE(created_at) BETWEEN ? AND ?
-            GROUP BY payment_type, transctions_type";
-        $balanceStmt = $conn->prepare($balanceQuery);
-        $balanceStmt->bind_param("iss", $firm_id, $start_date, $end_date);
-        $balanceStmt->execute();
-        $balanceResult = $balanceStmt->get_result();
-        
-        $balances = ['cash' => ['in' => 0, 'out' => 0], 'bank' => ['in' => 0, 'out' => 0], 'upi' => ['in' => 0, 'out' => 0]];
-        while ($row = $balanceResult->fetch_assoc()) {
-            $type = strtolower($row['payment_type']);
-            $direction = $row['transctions_type'] === 'credit' ? 'in' : 'out';
-            $amount = floatval($row['total']);
-            
-            if ($type === 'cash') $balances['cash'][$direction] += $amount;
-            elseif ($type === 'upi') $balances['upi'][$direction] += $amount;
-            elseif (in_array($type, ['bank', 'bank_transfer', 'card'])) $balances['bank'][$direction] += $amount;
-        }
-        $data['balances'] = $balances;
+    // Inventory Metal by Purity
+    $inventoryMetalPurityQuery = "SELECT purity, COUNT(*) as lot_count, SUM(remaining_stock) as total_weight FROM inventory_metals WHERE firm_id = ? GROUP BY purity ORDER BY purity DESC";
+    $inventoryMetalPurityStmt = $conn->prepare($inventoryMetalPurityQuery);
+    $inventoryMetalPurityStmt->bind_param("i", $firm_id);
+    $inventoryMetalPurityStmt->execute();
+    $inventoryMetalPurityResult = $inventoryMetalPurityStmt->get_result();
+    $inventoryMetalPurityData = $inventoryMetalPurityResult->fetch_all(MYSQLI_ASSOC);
+    $data['stock']['inventorymetal_purity'] = $inventoryMetalPurityData;
 
-        // Recent Sales
-        $salesQuery = "SELECT js.id, js.created_at, js.grand_total, js.payment_status,
-                       CONCAT(c.FirstName, ' ', c.LastName) as customer_name,
-                       COUNT(jsi.id) as item_count
-                       FROM jewellery_sales js
-                       LEFT JOIN customer c ON js.customer_id = c.id
-                       LEFT JOIN jewellery_sales_items jsi ON js.id = jsi.sale_id
-                       WHERE js.firm_id = ? AND DATE(js.created_at) BETWEEN ? AND ?
-                       GROUP BY js.id
-                       ORDER BY js.created_at DESC LIMIT 10";
-        $salesStmt = $conn->prepare($salesQuery);
-        $salesStmt->bind_param("iss", $firm_id, $start_date, $end_date);
-        $salesStmt->execute();
-        $salesResult = $salesStmt->get_result();
-        $data['cash_flow']['recent_sales'] = $salesResult->fetch_all(MYSQLI_ASSOC);
-
-        // Top Selling Items
-        $topItemsQuery = "SELECT jsi.product_name, jsi.category,
-                          COUNT(*) as sold_count,
-                          SUM(jsi.gross_weight) as total_weight,
-                          SUM(jsi.total_amount) as total_revenue
-                          FROM jewellery_sales_items jsi
-                          JOIN jewellery_sales js ON jsi.sale_id = js.id
-                          WHERE js.firm_id = ? AND DATE(js.created_at) BETWEEN ? AND ?
-                          GROUP BY jsi.product_name, jsi.category
-                          ORDER BY sold_count DESC LIMIT 5";
-        $topItemsStmt = $conn->prepare($topItemsQuery);
-        $topItemsStmt->bind_param("iss", $firm_id, $start_date, $end_date);
-        $topItemsStmt->execute();
-        $data['top_items'] = $topItemsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-        // Inventory Summary
-        $inventoryQuery = "SELECT 
-            COUNT(*) as total_items,
-            SUM(gross_weight) as total_weight,
-            SUM(selling_price) as total_value,
-            AVG(selling_price) as avg_price
-            FROM jewellery_items 
-            WHERE firm_id = ? AND status = 'available'";
-        $inventoryStmt = $conn->prepare($inventoryQuery);
-        $inventoryStmt->bind_param("i", $firm_id);
-        $inventoryStmt->execute();
-        $data['inventory']['summary'] = $inventoryStmt->get_result()->fetch_assoc();
-
-        // Daily Trends
-        $trendsQuery = "SELECT 
-            DATE(created_at) as date,
-            COUNT(*) as sales_count,
-            SUM(grand_total) as daily_revenue
-            FROM jewellery_sales 
-            WHERE firm_id = ? AND DATE(created_at) BETWEEN ? AND ?
-            GROUP BY DATE(created_at)
-            ORDER BY date ASC";
-        $trendsStmt = $conn->prepare($trendsQuery);
-        $trendsStmt->bind_param("iss", $firm_id, $start_date, $end_date);
-        $trendsStmt->execute();
-        $data['trends'] = $trendsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-    } catch (Exception $e) {
-        error_log("Report data fetch error: " . $e->getMessage());
-    }
-
-    return $data;
+    // echo '<pre style="color:blue">Jewellery Data: '; print_r($data['stock']['jewellery_purity']); echo '</pre>';
+    // echo '<pre style="color:blue">Inventory Metal Data: '; print_r($data['stock']['inventorymetal_purity']); echo '</pre>';
+} catch (Exception $e) {
+    error_log("Report data fetch error: " . $e->getMessage());
 }
 
-$reportData = fetchReportData($conn, $firm_id, $start_date, $end_date);
-$conn->close();
-?>
+$reportData = $data;
 
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Reports Dashboard - <?php echo htmlspecialchars($userInfo['FirmName']); ?></title>
+    <title>Reports - JewelEntry</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        'inter': ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        'primary': {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+    <link rel="stylesheet" href="css/main.css">
     <style>
-        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-        .glass-effect { 
-            background: rgba(255,255,255,0.95); 
-            backdrop-filter: blur(20px); 
-            border: 1px solid rgba(255,255,255,0.2); 
+        * { font-family: 'Inter', sans-serif; }
+        
+        .stat-card {
+            flex: 0 0 auto;
+            width: 130px;
+            border-radius: 12px;
+            padding: 12px;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+            border: 1px solid rgba(0,0,0,0.04);
+            transition: all 0.2s ease;
         }
-        .gradient-primary { background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); }
-        .gradient-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
-        .gradient-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
-        .gradient-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-        .compact-card { transition: all 0.2s ease; }
-        .compact-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
-        .tab-button { transition: all 0.3s ease; }
-        .tab-button.active { background: #3b82f6; color: white; font-weight: 600; }
-        .tab-button:not(.active) { color: #6b7280; background: #f9fafb; }
-        .metric-card { background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); }
-        .trend-up { color: #10b981; }
-        .trend-down { color: #ef4444; }
-        .chart-container { position: relative; height: 200px; }
+        
+        .stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            transform: translateY(-1px);
+        }
+        
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .table-responsive { 
+            overflow-x: auto; 
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .table-responsive table { 
+            min-width: 100%; 
+            font-size: 11px;
+        }
+        
+        .tab-button {
+            position: relative;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .tab-button.active {
+            background: #4f46e5;
+            color: white;
+            box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);
+        }
+        
+        .tab-button:not(.active) {
+            color: #6b7280;
+            background: #f9fafb;
+        }
+        
+        .header-glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .gradient-gold {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+        
+        .gradient-purple {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        }
+        
+        .bottom-nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .nav-btn {
+            transition: all 0.2s ease;
+        }
+        
+        .nav-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .compact-input {
+            font-size: 12px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            background: white;
+        }
+        
+        .status-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-paid { background: #dcfce7; color: #166534; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-partial { background: #e0e7ff; color: #3730a3; }
+        
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.04);
+        }
+        
+        .metric-value {
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        .metric-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .metric-sub {
+            font-size: 10px;
+            font-weight: 500;
+        }
+        
+        .icon-wrapper {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .table-header {
+            background: #f8fafc;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #475569;
+        }
+        
+        .table-cell {
+            padding: 8px 6px;
+            font-size: 11px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        
+        @media (max-width: 375px) {
+            .stat-card { width: 120px; padding: 10px; }
+            .metric-value { font-size: 14px; }
+            .table-responsive table { font-size: 10px; }
+        }
     </style>
 </head>
-<body class="font-inter bg-gray-50 text-sm">
-    <!-- Compact Header -->
-    <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div class="px-4 py-2">
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="header-glass sticky top-0 z-50">
+        <div class="px-4 py-3">
             <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <a href="home.php" class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-arrow-left text-gray-600 text-xs"></i>
-                    </a>
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 gradient-gold rounded-xl flex items-center justify-center shadow-sm">
+                        <i class="fas fa-chart-pie text-white text-lg"></i>
+                    </div>
                     <div>
-                        <h1 class="text-sm font-semibold text-gray-900">Reports Dashboard</h1>
-                        <p class="text-xs text-gray-500"><?php echo strtoupper(htmlspecialchars($userInfo['FirmName'])); ?></p>
+                        <h1 class="text-lg font-bold text-gray-900">Reports</h1>
+                        <p class="text-xs text-gray-500 font-medium -mt-0.5">JewelEntry Analytics</p>
                     </div>
                 </div>
-                <div class="flex space-x-2">
-                    <button onclick="exportReport()" class="bg-blue-500 text-white px-3 py-1.5 rounded-md text-xs font-semibold">
-                        <i class="fas fa-download mr-1"></i>Export
-                    </button>
-                    <button onclick="refreshData()" class="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md text-xs font-semibold">
-                        <i class="fas fa-sync-alt mr-1"></i>Refresh
-                    </button>
+                <div class="flex items-center space-x-2">
+                    <a href="home.php" class="w-9 h-9 gradient-purple rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all">
+                        <i class="fas fa-home text-white text-sm"></i>
+                    </a>
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="px-4 py-3 pb-20 space-y-4">
-        <!-- Date Range Selector -->
-        <div class="bg-white rounded-lg p-3 shadow-sm">
+    <main class="px-4 pb-24 pt-4">
+        <!-- Date Range Picker -->
+        <div class="mb-4 section-card p-3">
             <div class="flex items-center justify-between">
-                <label class="text-xs font-medium text-gray-700">Report Period:</label>
-                <div class="flex space-x-2">
-                    <button onclick="setDateRange('today')" class="date-btn px-2 py-1 text-xs rounded-md bg-gray-100 text-gray-700">Today</button>
-                    <button onclick="setDateRange('week')" class="date-btn px-2 py-1 text-xs rounded-md bg-gray-100 text-gray-700">Week</button>
-                    <button onclick="setDateRange('month')" class="date-btn px-2 py-1 text-xs rounded-md bg-blue-500 text-white">Month</button>
-                    <input type="date" id="customDate" class="px-2 py-1 text-xs border border-gray-300 rounded-md" value="<?php echo $start_date; ?>">
+                <label for="reportrange" class="metric-label text-gray-600">Date Range</label>
+                <div id="reportrange" class="flex items-center cursor-pointer compact-input bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <i class="fas fa-calendar-alt text-gray-400 mr-2 text-xs"></i>
+                    <span class="font-medium text-gray-800 text-xs"></span>
+                    <i class="fa fa-caret-down text-gray-400 ml-2 text-xs"></i>
                 </div>
             </div>
         </div>
 
-        <!-- Key Metrics Grid -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <!-- Revenue Card -->
-            <div class="metric-card rounded-lg p-3 shadow-sm compact-card border border-blue-100">
+        <!-- Compact Stats Grid -->
+        <div class="flex space-x-3 overflow-x-auto pb-3 hide-scrollbar mb-4">
+            <!-- Cash Balance -->
+            <div class="stat-card">
                 <div class="flex items-center justify-between mb-2">
-                    <div class="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-                        <i class="fas fa-rupee-sign text-white text-xs"></i>
+                    <div class="icon-wrapper bg-green-100">
+                        <i class="fas fa-money-bill-wave text-green-600 text-sm"></i>
                     </div>
-                    <span class="trend-up text-xs font-medium">
-                        <i class="fas fa-arrow-up mr-1"></i>12%
-                    </span>
+                    <h3 class="metric-label text-gray-600">Cash</h3>
                 </div>
-                <p class="text-lg font-bold text-gray-800">₹<?php echo number_format($reportData['summary']['total_revenue'] ?? 0); ?></p>
-                <p class="text-xs text-gray-600">Total Revenue</p>
-                <div class="mt-1 text-xs text-blue-600">
-                    <?php echo $reportData['summary']['total_sales'] ?? 0; ?> sales
+                <p id="cashNet" class="metric-value text-gray-900 mb-1">₹0.00</p>
+                <div class="flex justify-between">
+                    <span class="text-green-600 flex items-center metric-sub">
+                        <i class="fas fa-arrow-down text-xs mr-1"></i>
+                        <span id="cashIn">₹0</span>
+                    </span>
+                    <span class="text-red-600 flex items-center metric-sub">
+                        <i class="fas fa-arrow-up text-xs mr-1"></i>
+                        <span id="cashOut">₹0</span>
+                    </span>
                 </div>
             </div>
 
-            <!-- Cash Flow Card -->
-            <div class="metric-card rounded-lg p-3 shadow-sm compact-card border border-green-100">
+            <!-- Bank Balance -->
+            <div class="stat-card">
                 <div class="flex items-center justify-between mb-2">
-                    <div class="w-8 h-8 gradient-success rounded-lg flex items-center justify-center">
-                        <i class="fas fa-money-bill-wave text-white text-xs"></i>
+                    <div class="icon-wrapper bg-blue-100">
+                        <i class="fas fa-university text-blue-600 text-sm"></i>
                     </div>
-                    <span class="trend-up text-xs font-medium">
-                        <i class="fas fa-arrow-up mr-1"></i>8%
-                    </span>
+                    <h3 class="metric-label text-gray-600">Bank</h3>
                 </div>
-                <?php 
-                $cashNet = ($reportData['balances']['cash']['in'] ?? 0) - ($reportData['balances']['cash']['out'] ?? 0);
-                ?>
-                <p class="text-lg font-bold text-gray-800">₹<?php echo number_format($cashNet); ?></p>
-                <p class="text-xs text-gray-600">Cash Flow</p>
-                <div class="mt-1 text-xs text-green-600">
-                    Net: ₹<?php echo number_format($cashNet); ?>
+                <p id="bankNet" class="metric-value text-gray-900 mb-1">₹0.00</p>
+                <div class="flex justify-between">
+                    <span class="text-green-600 flex items-center metric-sub">
+                        <i class="fas fa-arrow-down text-xs mr-1"></i>
+                        <span id="bankIn">₹0</span>
+                    </span>
+                    <span class="text-red-600 flex items-center metric-sub">
+                        <i class="fas fa-arrow-up text-xs mr-1"></i>
+                        <span id="bankOut">₹0</span>
+                    </span>
                 </div>
             </div>
 
-            <!-- Inventory Value Card -->
-            <div class="metric-card rounded-lg p-3 shadow-sm compact-card border border-yellow-100">
+            <!-- UPI Balance -->
+            <div class="stat-card">
                 <div class="flex items-center justify-between mb-2">
-                    <div class="w-8 h-8 gradient-warning rounded-lg flex items-center justify-center">
-                        <i class="fas fa-boxes text-white text-xs"></i>
+                    <div class="icon-wrapper bg-purple-100">
+                        <i class="fab fa-google-pay text-purple-600 text-sm"></i>
                     </div>
-                    <span class="trend-up text-xs font-medium">
-                        <i class="fas fa-arrow-up mr-1"></i>5%
-                    </span>
+                    <h3 class="metric-label text-gray-600">UPI</h3>
                 </div>
-                <p class="text-lg font-bold text-gray-800">₹<?php echo number_format($reportData['inventory']['summary']['total_value'] ?? 0); ?></p>
-                <p class="text-xs text-gray-600">Inventory Value</p>
-                <div class="mt-1 text-xs text-yellow-600">
-                    <?php echo $reportData['inventory']['summary']['total_items'] ?? 0; ?> items
+                <p id="upiNet" class="metric-value text-gray-900 mb-1">₹0.00</p>
+                <div class="flex justify-between">
+                    <span class="text-green-600 flex items-center metric-sub">
+                        <i class="fas fa-arrow-down text-xs mr-1"></i>
+                        <span id="upiIn">₹0</span>
+                    </span>
+                    <span class="text-red-600 flex items-center metric-sub">
+                        <i class="fas fa-arrow-up text-xs mr-1"></i>
+                        <span id="upiOut">₹0</span>
+                    </span>
                 </div>
             </div>
 
-            <!-- Customers Card -->
-            <div class="metric-card rounded-lg p-3 shadow-sm compact-card border border-purple-100">
+            <!-- Total Revenue -->
+            <div class="stat-card">
                 <div class="flex items-center justify-between mb-2">
-                    <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-users text-white text-xs"></i>
+                    <div class="icon-wrapper bg-yellow-100">
+                        <i class="fas fa-chart-line text-yellow-600 text-sm"></i>
                     </div>
-                    <span class="trend-up text-xs font-medium">
-                        <i class="fas fa-arrow-up mr-1"></i>15%
-                    </span>
+                    <h3 class="metric-label text-gray-600">Revenue</h3>
                 </div>
-                <p class="text-lg font-bold text-gray-800"><?php echo $reportData['summary']['unique_customers'] ?? 0; ?></p>
-                <p class="text-xs text-gray-600">Active Customers</p>
-                <div class="mt-1 text-xs text-purple-600">
-                    Avg: ₹<?php echo number_format($reportData['summary']['avg_sale_value'] ?? 0); ?>
+                <p id="totalRevenue" class="metric-value text-gray-900">₹0.00</p>
+            </div>
+
+            <!-- Items Sold -->
+            <div class="stat-card">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="icon-wrapper bg-orange-100">
+                        <i class="fas fa-arrow-down text-orange-600 text-sm"></i>
+                    </div>
+                    <h3 class="metric-label text-gray-600">Sold</h3>
+                </div>
+                <p id="itemsSold" class="metric-value text-gray-900 mb-1">0</p>
+                <div class="metric-sub text-orange-700">
+                    <span id="itemsSoldWeight">0.00 g</span>
+                </div>
+            </div>
+
+            <!-- Items Added -->
+            <div class="stat-card">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="icon-wrapper bg-indigo-100">
+                        <i class="fas fa-arrow-up text-indigo-600 text-sm"></i>
+                    </div>
+                    <h3 class="metric-label text-gray-600">Added</h3>
+                </div>
+                <p id="itemsAdded" class="metric-value text-gray-900 mb-1">0</p>
+                <div class="metric-sub text-indigo-700">
+                    <span id="itemsAddedWeight">0.00 g</span>
                 </div>
             </div>
         </div>
 
-        <!-- Payment Methods Breakdown -->
-        <div class="bg-white rounded-lg p-4 shadow-sm">
+        <!-- Detailed Reports -->
+        <section class="section-card p-4">
+            <!-- Tab Navigation -->
+            <div class="flex space-x-2 mb-4 bg-gray-100 p-1 rounded-lg">
+                <button data-tab="cashflow" class="tab-button active flex-1 text-center">
+                    <i class="fas fa-money-bill-wave mr-2"></i>Cash Flow
+                </button>
+                <button data-tab="inventory" class="tab-button flex-1 text-center">
+                    <i class="fas fa-boxes mr-2"></i>Inventory
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="space-y-4">
+                <div id="cashflow-content" class="tab-content">
+                    <!-- Income Section -->
+                    <div class="mb-6">
+                        <div class="flex items-center mb-3">
+                            <div class="icon-wrapper bg-green-100 mr-3">
+                                <i class="fas fa-plus text-green-600 text-sm"></i>
+                            </div>
+                            <h3 class="text-sm font-bold text-gray-900">Income (Sales)</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="table-header">
+                                        <th class="px-3 py-2 text-left">Invoice</th>
+                                        <th class="px-3 py-2 text-left">Date</th>
+                                        <th class="px-3 py-2 text-left">Customer</th>
+                                        <th class="px-3 py-2 text-right">Amount</th>
+                                        <th class="px-3 py-2 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="incomeTableBody" class="bg-white"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Expenses Section -->
+                    <div>
+                        <div class="flex items-center mb-3">
+                            <div class="icon-wrapper bg-red-100 mr-3">
+                                <i class="fas fa-minus text-red-600 text-sm"></i>
+                            </div>
+                            <h3 class="text-sm font-bold text-gray-900">Expenses</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="table-header">
+                                        <th class="px-3 py-2 text-left">Date</th>
+                                        <th class="px-3 py-2 text-left">Category</th>
+                                        <th class="px-3 py-2 text-left">Description</th>
+                                        <th class="px-3 py-2 text-right">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="expenseTableBody" class="bg-white"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="inventory-content" class="tab-content hidden">
+                    <!-- Stock In Section -->
+                    <div class="mb-6">
+                        <div class="flex items-center mb-3">
+                            <div class="icon-wrapper bg-blue-100 mr-3">
+                                <i class="fas fa-arrow-up text-blue-600 text-sm"></i>
+                            </div>
+                            <h3 class="text-sm font-bold text-gray-900">Stock In (New Items)</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="table-header">
+                                        <th class="px-3 py-2 text-left">Product ID</th>
+                                        <th class="px-3 py-2 text-left">Item Name</th>
+                                        <th class="px-3 py-2 text-left">Date Added</th>
+                                        <th class="px-3 py-2 text-right">Gross Wt.</th>
+                                        <th class="px-3 py-2 text-left">Supplier</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stockInTableBody" class="bg-white"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Stock Out Section -->
+                    <div>
+                        <div class="flex items-center mb-3">
+                            <div class="icon-wrapper bg-orange-100 mr-3">
+                                <i class="fas fa-arrow-down text-orange-600 text-sm"></i>
+                            </div>
+                            <h3 class="text-sm font-bold text-gray-900">Stock Out (Sold Items)</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="table-header">
+                                        <th class="px-3 py-2 text-left">Product ID</th>
+                                        <th class="px-3 py-2 text-left">Item Name</th>
+                                        <th class="px-3 py-2 text-left">Date Sold</th>
+                                        <th class="px-3 py-2 text-right">Gross Wt.</th>
+                                        <th class="px-3 py-2 text-left">Invoice ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stockOutTableBody" class="bg-white"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Jewellery Stock by Purity Chart -->
+        <div class="bg-white rounded-lg p-4 shadow-sm mt-4">
             <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                <i class="fas fa-credit-card mr-2 text-blue-500"></i>Payment Methods
+                <i class="fas fa-layer-group mr-2 text-yellow-500"></i>Jewellery Stock by Purity
             </h3>
-            <div class="grid grid-cols-3 gap-3">
-                <!-- Cash -->
-                <div class="text-center p-3 bg-green-50 rounded-lg">
-                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                        <i class="fas fa-money-bill text-green-600"></i>
-                    </div>
-                    <p class="text-sm font-bold text-gray-800">₹<?php echo number_format($reportData['balances']['cash']['in'] ?? 0); ?></p>
-                    <p class="text-xs text-gray-600">Cash</p>
-                    <div class="mt-1">
-                        <div class="w-full bg-green-200 rounded-full h-1">
-                            <?php 
-                            $totalIn = ($reportData['balances']['cash']['in'] ?? 0) + ($reportData['balances']['bank']['in'] ?? 0) + ($reportData['balances']['upi']['in'] ?? 0);
-                            $cashPercent = $totalIn > 0 ? (($reportData['balances']['cash']['in'] ?? 0) / $totalIn) * 100 : 0;
-                            ?>
-                            <div class="bg-green-500 h-1 rounded-full" style="width: <?php echo $cashPercent; ?>%"></div>
-                        </div>
-                        <p class="text-xs text-green-600 mt-1"><?php echo round($cashPercent); ?>%</p>
-                    </div>
-                </div>
-
-                <!-- UPI -->
-                <div class="text-center p-3 bg-purple-50 rounded-lg">
-                    <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                        <i class="fab fa-google-pay text-purple-600"></i>
-                    </div>
-                    <p class="text-sm font-bold text-gray-800">₹<?php echo number_format($reportData['balances']['upi']['in'] ?? 0); ?></p>
-                    <p class="text-xs text-gray-600">UPI</p>
-                    <div class="mt-1">
-                        <div class="w-full bg-purple-200 rounded-full h-1">
-                            <?php $upiPercent = $totalIn > 0 ? (($reportData['balances']['upi']['in'] ?? 0) / $totalIn) * 100 : 0; ?>
-                            <div class="bg-purple-500 h-1 rounded-full" style="width: <?php echo $upiPercent; ?>%"></div>
-                        </div>
-                        <p class="text-xs text-purple-600 mt-1"><?php echo round($upiPercent); ?>%</p>
-                    </div>
-                </div>
-
-                <!-- Bank -->
-                <div class="text-center p-3 bg-blue-50 rounded-lg">
-                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                        <i class="fas fa-university text-blue-600"></i>
-                    </div>
-                    <p class="text-sm font-bold text-gray-800">₹<?php echo number_format($reportData['balances']['bank']['in'] ?? 0); ?></p>
-                    <p class="text-xs text-gray-600">Bank</p>
-                    <div class="mt-1">
-                        <div class="w-full bg-blue-200 rounded-full h-1">
-                            <?php $bankPercent = $totalIn > 0 ? (($reportData['balances']['bank']['in'] ?? 0) / $totalIn) * 100 : 0; ?>
-                            <div class="bg-blue-500 h-1 rounded-full" style="width: <?php echo $bankPercent; ?>%"></div>
-                        </div>
-                        <p class="text-xs text-blue-600 mt-1"><?php echo round($bankPercent); ?>%</p>
-                    </div>
-                </div>
+            <div class="chart-container" style="height:220px;">
+                <canvas id="jewelleryPurityChart"></canvas>
+            </div>
+            <div class="overflow-x-auto mt-2">
+                <table class="min-w-full text-xs">
+                    <thead><tr><th>Purity</th><th>Count</th><th>Total Weight (g)</th></tr></thead>
+                    <tbody>
+                    <?php foreach (($reportData['stock']['jewellery_purity'] ?? []) as $row): ?>
+                        <tr class="border-b"><td><?php echo htmlspecialchars($row['purity']); ?></td><td><?php echo $row['item_count']; ?></td><td><?php echo number_format($row['total_weight'],2); ?></td></tr>
+                    <?php endforeach; ?>
+                    <?php if (empty($reportData['stock']['jewellery_purity'])): ?><tr><td colspan="3" class="text-center text-gray-400">No jewellery stock data</td></tr><?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
-
-        <!-- Sales Trend Chart -->
-        <div class="bg-white rounded-lg p-4 shadow-sm">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-semibold text-gray-800 flex items-center">
-                    <i class="fas fa-chart-line mr-2 text-blue-500"></i>Sales Trend
-                </h3>
-                <div class="flex space-x-1">
-                    <button onclick="changeChartView('revenue')" class="chart-btn px-2 py-1 text-xs rounded-md bg-blue-500 text-white">Revenue</button>
-                    <button onclick="changeChartView('count')" class="chart-btn px-2 py-1 text-xs rounded-md bg-gray-100 text-gray-700">Count</button>
-                </div>
-            </div>
-            <div class="chart-container">
-                <canvas id="salesChart"></canvas>
-            </div>
-        </div>
-
-        <!-- Top Selling Items -->
-        <div class="bg-white rounded-lg p-4 shadow-sm">
+        <!-- Inventory Metal by Purity Chart -->
+        <div class="bg-white rounded-lg p-4 shadow-sm mt-4">
             <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                <i class="fas fa-star mr-2 text-yellow-500"></i>Top Selling Items
+                <i class="fas fa-cubes mr-2 text-blue-500"></i>Inventory Metal by Purity
             </h3>
-            <div class="space-y-2">
-                <?php foreach (array_slice($reportData['top_items'], 0, 5) as $index => $item): ?>
-                <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-6 h-6 bg-yellow-100 rounded-full flex items-center justify-center">
-                            <span class="text-yellow-600 font-bold text-xs"><?php echo $index + 1; ?></span>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-800 text-sm"><?php echo htmlspecialchars($item['product_name']); ?></p>
-                            <p class="text-xs text-gray-600"><?php echo htmlspecialchars($item['category']); ?></p>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-sm font-semibold text-gray-800"><?php echo $item['sold_count']; ?> sold</p>
-                        <p class="text-xs text-gray-600">₹<?php echo number_format($item['total_revenue']); ?></p>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-                
-                <?php if (empty($reportData['top_items'])): ?>
-                <div class="text-center py-6">
-                    <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-box text-gray-400 text-xl"></i>
-                    </div>
-                    <p class="text-gray-600 text-sm">No sales data available for this period</p>
-                </div>
-                <?php endif; ?>
+            <div class="chart-container" style="height:220px;">
+                <canvas id="inventoryMetalPurityChart"></canvas>
             </div>
-        </div>
-
-        <!-- Recent Transactions -->
-        <div class="bg-white rounded-lg p-4 shadow-sm">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-semibold text-gray-800 flex items-center">
-                    <i class="fas fa-receipt mr-2 text-green-500"></i>Recent Sales
-                </h3>
-                <a href="sales.php" class="text-xs text-blue-600 hover:underline">View All</a>
-            </div>
-            <div class="space-y-2">
-                <?php foreach (array_slice($reportData['cash_flow']['recent_sales'], 0, 5) as $sale): ?>
-                <div class="flex items-center justify-between p-2 border border-gray-100 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                            <i class="fas fa-shopping-bag text-green-600 text-xs"></i>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-800 text-sm">#<?php echo $sale['id']; ?></p>
-                            <p class="text-xs text-gray-600"><?php echo htmlspecialchars($sale['customer_name'] ?? 'Walk-in Customer'); ?></p>
-                            <p class="text-xs text-gray-500"><?php echo date('d M Y, h:i A', strtotime($sale['created_at'])); ?></p>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-sm font-semibold text-gray-800">₹<?php echo number_format($sale['grand_total']); ?></p>
-                        <span class="<?php 
-                            echo $sale['payment_status'] === 'paid' ? 'bg-green-100 text-green-800' : 
-                                ($sale['payment_status'] === 'partial' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'); 
-                        ?> px-2 py-1 rounded-full text-xs font-medium">
-                            <?php echo ucfirst($sale['payment_status']); ?>
-                        </span>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-                
-                <?php if (empty($reportData['cash_flow']['recent_sales'])): ?>
-                <div class="text-center py-6">
-                    <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-receipt text-gray-400 text-xl"></i>
-                    </div>
-                    <p class="text-gray-600 text-sm">No sales recorded for this period</p>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="bg-white rounded-lg p-4 shadow-sm">
-            <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                <i class="fas fa-bolt mr-2 text-orange-500"></i>Quick Actions
-            </h3>
-            <div class="grid grid-cols-2 gap-3">
-                <button onclick="window.location.href='sale-entry.php'" class="flex items-center justify-center p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
-                    <i class="fas fa-plus-circle text-blue-600 mr-2"></i>
-                    <span class="text-sm font-medium text-blue-700">New Sale</span>
-                </button>
-                <button onclick="window.location.href='add.php'" class="flex items-center justify-center p-3 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
-                    <i class="fas fa-box text-green-600 mr-2"></i>
-                    <span class="text-sm font-medium text-green-700">Add Item</span>
-                </button>
-                <button onclick="window.location.href='customers.php'" class="flex items-center justify-center p-3 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors">
-                    <i class="fas fa-user-plus text-purple-600 mr-2"></i>
-                    <span class="text-sm font-medium text-purple-700">Add Customer</span>
-                </button>
-                <button onclick="exportReport()" class="flex items-center justify-center p-3 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
-                    <i class="fas fa-file-export text-orange-600 mr-2"></i>
-                    <span class="text-sm font-medium text-orange-700">Export Report</span>
-                </button>
+            <div class="overflow-x-auto mt-2">
+                <table class="min-w-full text-xs">
+                    <thead><tr><th>Purity</th><th>Count</th><th>Total Weight (g)</th></tr></thead>
+                    <tbody>
+                    <?php foreach (($reportData['stock']['inventorymetal_purity'] ?? []) as $row): ?>
+                        <tr class="border-b"><td><?php echo htmlspecialchars($row['purity']); ?></td><td><?php echo $row['lot_count']; ?></td><td><?php echo number_format($row['total_weight'],2); ?></td></tr>
+                    <?php endforeach; ?>
+                    <?php if (empty($reportData['stock']['inventorymetal_purity'])): ?><tr><td colspan="3" class="text-center text-gray-400">No inventory metal data</td></tr><?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </main>
 
     <!-- Bottom Navigation -->
-    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40">
+    <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-40">
         <div class="px-4 py-2">
             <div class="flex justify-around">
-                <a href="home.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-home text-gray-500 text-xs"></i>
-                    </div>
-                    <span class="text-xs text-gray-500 mt-1">Home</span>
+                <a href="home.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
+                    <i class="fas fa-home text-gray-400 text-lg"></i>
+                    <span class="text-xs text-gray-500 font-medium">Home</span>
                 </a>
-                <a href="reports.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-blue-500 rounded-md flex items-center justify-center">
-                        <i class="fas fa-chart-bar text-white text-xs"></i>
-                    </div>
-                    <span class="text-xs text-blue-600 font-semibold mt-1">Reports</span>
+                <a href="reports.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg bg-purple-100">
+                    <i class="fas fa-chart-pie text-purple-600 text-lg"></i>
+                    <span class="text-xs text-purple-700 font-bold">Reports</span>
                 </a>
-                <a href="sale-entry.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-plus text-gray-500 text-xs"></i>
-                    </div>
-                    <span class="text-xs text-gray-500 mt-1">Sale</span>
+                <a href="sale-entry.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
+                    <i class="fas fa-plus-circle text-gray-400 text-2xl"></i>
                 </a>
-                <a href="customers.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-users text-gray-500 text-xs"></i>
-                    </div>
-                    <span class="text-xs text-gray-500 mt-1">Customers</span>
+                <a href="customers.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
+                    <i class="fas fa-users text-gray-400 text-lg"></i>
+                    <span class="text-xs text-gray-500 font-medium">Customers</span>
                 </a>
-                <a href="settings.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-cog text-gray-500 text-xs"></i>
-                    </div>
-                    <span class="text-xs text-gray-500 mt-1">Settings</span>
+                <a href="settings.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
+                    <i class="fas fa-cog text-gray-400 text-lg"></i>
+                    <span class="text-xs text-gray-500 font-medium">Settings</span>
                 </a>
             </div>
         </div>
     </nav>
 
+    <script src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script>
-        // Chart.js configuration
-        let salesChart;
-        const chartData = <?php echo json_encode($reportData['trends']); ?>;
-
-        function initializeChart() {
-            const ctx = document.getElementById('salesChart').getContext('2d');
+        // Enhanced tab functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
             
-            const labels = chartData.map(item => moment(item.date).format('MMM DD'));
-            const revenueData = chartData.map(item => parseFloat(item.daily_revenue));
-            const countData = chartData.map(item => parseInt(item.sales_count));
-
-            salesChart = new Chart(ctx, {
-                type: 'line',
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabId = button.getAttribute('data-tab');
+                    
+                    // Remove active class from all buttons and hide all content
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabContents.forEach(content => content.classList.add('hidden'));
+                    
+                    // Add active class to clicked button and show corresponding content
+                    button.classList.add('active');
+                    document.getElementById(tabId + '-content').classList.remove('hidden');
+                });
+            });
+        });
+    </script>
+    <script src="js/reports.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Jewellery Stock by Purity Chart
+        const jewelleryPurityData = <?php echo json_encode($reportData['stock']['jewellery_purity'] ?? []); ?>;
+        if (jewelleryPurityData.length > 0) {
+            const ctxJewellery = document.getElementById('jewelleryPurityChart').getContext('2d');
+            new Chart(ctxJewellery, {
+                type: 'bar',
                 data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: revenueData,
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.4
-                    }]
+                    labels: jewelleryPurityData.map(row => row.purity + 'K'),
+                    datasets: [
+                        {
+                            label: 'Count',
+                            data: jewelleryPurityData.map(row => row.item_count),
+                            backgroundColor: '#fbbf24',
+                            yAxisID: 'y1'
+                        },
+                        {
+                            label: 'Total Weight (g)',
+                            data: jewelleryPurityData.map(row => row.total_weight),
+                            backgroundColor: '#fde68a',
+                            yAxisID: 'y2'
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
+                    plugins: { legend: { position: 'top' } },
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.1)'
-                            },
-                            ticks: {
-                                font: {
-                                    size: 10
-                                },
-                                callback: function(value) {
-                                    return '₹' + value.toLocaleString();
-                                }
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                font: {
-                                    size: 10
-                                }
-                            }
-                        }
+                        y1: { beginAtZero: true, position: 'left', title: { display: true, text: 'Count' } },
+                        y2: { beginAtZero: true, position: 'right', title: { display: true, text: 'Weight (g)' }, grid: { drawOnChartArea: false } }
                     }
                 }
             });
         }
 
-        function changeChartView(type) {
-            document.querySelectorAll('.chart-btn').forEach(btn => {
-                btn.classList.remove('bg-blue-500', 'text-white');
-                btn.classList.add('bg-gray-100', 'text-gray-700');
+        // Inventory Metal by Purity Chart
+        const inventoryMetalPurityData = <?php echo json_encode($reportData['stock']['inventorymetal_purity'] ?? []); ?>;
+        if (inventoryMetalPurityData.length > 0) {
+            const ctxMetal = document.getElementById('inventoryMetalPurityChart').getContext('2d');
+            new Chart(ctxMetal, {
+                type: 'bar',
+                data: {
+                    labels: inventoryMetalPurityData.map(row => row.purity + 'K'),
+                    datasets: [
+                        {
+                            label: 'Count',
+                            data: inventoryMetalPurityData.map(row => row.lot_count),
+                            backgroundColor: '#60a5fa',
+                            yAxisID: 'y1'
+                        },
+                        {
+                            label: 'Total Weight (g)',
+                            data: inventoryMetalPurityData.map(row => row.total_weight),
+                            backgroundColor: '#bfdbfe',
+                            yAxisID: 'y2'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y1: { beginAtZero: true, position: 'left', title: { display: true, text: 'Count' } },
+                        y2: { beginAtZero: true, position: 'right', title: { display: true, text: 'Weight (g)' }, grid: { drawOnChartArea: false } }
+                    }
+                }
             });
-            event.target.classList.remove('bg-gray-100', 'text-gray-700');
-            event.target.classList.add('bg-blue-500', 'text-white');
-
-            const labels = chartData.map(item => moment(item.date).format('MMM DD'));
-            let data, label, color;
-
-            if (type === 'revenue') {
-                data = chartData.map(item => parseFloat(item.daily_revenue));
-                label = 'Revenue';
-                color = '#3b82f6';
-            } else {
-                data = chartData.map(item => parseInt(item.sales_count));
-                label = 'Sales Count';
-                color = '#10b981';
-            }
-
-            salesChart.data.datasets[0] = {
-                label: label,
-                data: data,
-                borderColor: color,
-                backgroundColor: color + '20',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4
-            };
-            salesChart.update();
         }
-
-        function setDateRange(period) {
-            document.querySelectorAll('.date-btn').forEach(btn => {
-                btn.classList.remove('bg-blue-500', 'text-white');
-                btn.classList.add('bg-gray-100', 'text-gray-700');
-            });
-            event.target.classList.remove('bg-gray-100', 'text-gray-700');
-            event.target.classList.add('bg-blue-500', 'text-white');
-
-            let startDate, endDate;
-            const today = new Date();
-
-            switch(period) {
-                case 'today':
-                    startDate = endDate = today.toISOString().split('T')[0];
-                    break;
-                case 'week':
-                    startDate = new Date(today.setDate(today.getDate() - 7)).toISOString().split('T')[0];
-                    endDate = new Date().toISOString().split('T')[0];
-                    break;
-                case 'month':
-                    startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                    endDate = new Date().toISOString().split('T')[0];
-                    break;
-            }
-
-            window.location.href = `?start_date=${startDate}&end_date=${endDate}`;
-        }
-
-        function refreshData() {
-            window.location.reload();
-        }
-
-        function exportReport() {
-            const startDate = '<?php echo $start_date; ?>';
-            const endDate = '<?php echo $end_date; ?>';
-            window.open(`export_report.php?start_date=${startDate}&end_date=${endDate}&format=pdf`, '_blank');
-        }
-
-        // Initialize chart when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeChart();
-        });
-
-        // Auto-refresh every 5 minutes
-        setInterval(refreshData, 300000);
+    });
     </script>
 </body>
 </html>
