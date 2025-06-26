@@ -557,8 +557,19 @@ $conn->close();
                     </div>
                 </div>
                 <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                    <select name="status" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1">Description</label>
                     <textarea name="description" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Terms & Conditions</label>
+                    <textarea name="terms_conditions" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"></textarea>
                 </div>
                 <div class="flex justify-end space-x-2 pt-3">
                     <button type="button" onclick="closeCreatePlanModal()" class="px-4 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
@@ -593,6 +604,7 @@ $conn->close();
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <div id="planDetails" class="bg-gray-50 border border-gray-200 rounded-md p-2 mt-2 text-xs text-gray-700 hidden"></div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
@@ -655,6 +667,68 @@ $conn->close();
                 <div class="flex justify-end space-x-2 pt-3">
                     <button type="button" onclick="closeInstallmentModal()" class="px-4 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
                     <button type="submit" class="bg-green-500 text-white px-4 py-2 text-sm rounded-md hover:bg-green-600">Add Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Plan Modal -->
+    <div id="editPlanModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-4 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-gray-800">Edit Plan</h3>
+                <button onclick="closeEditPlanModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="editPlanForm" class="space-y-3">
+                <input type="hidden" name="plan_id" id="editPlanId">
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Plan Name</label>
+                    <input type="text" name="plan_name" id="editPlanName" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Duration (months)</label>
+                        <input type="number" name="duration_months" id="editDurationMonths" min="1" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Min Amount</label>
+                        <input type="number" name="min_amount_per_installment" id="editMinAmount" min="1" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Frequency</label>
+                        <select name="installment_frequency" id="editFrequency" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                            <option value="Monthly">Monthly</option>
+                            <option value="Weekly">Weekly</option>
+                            <option value="Quarterly">Quarterly</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Bonus %</label>
+                        <input type="number" name="bonus_percentage" id="editBonus" min="0" step="0.01" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                    <select name="status" id="editStatus" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="editDescription" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Terms & Conditions</label>
+                    <textarea name="terms_conditions" id="editTerms" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-3">
+                    <button type="button" onclick="closeEditPlanModal()" class="px-4 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="bg-orange-500 text-white px-4 py-2 text-sm rounded-md hover:bg-orange-600">Save Changes</button>
                 </div>
             </form>
         </div>
@@ -739,7 +813,26 @@ $conn->close();
 
         // Action functions
         function editPlan(planId) {
-            alert('Edit plan functionality will be implemented for plan ID: ' + planId);
+            // Find the plan data from the global JS array
+            const plan = window.plans.find(p => p.id == planId);
+            if (!plan) {
+                alert('Plan not found!');
+                return;
+            }
+            document.getElementById('editPlanId').value = plan.id;
+            document.getElementById('editPlanName').value = plan.plan_name;
+            document.getElementById('editDurationMonths').value = plan.duration_months;
+            document.getElementById('editMinAmount').value = plan.min_amount_per_installment;
+            document.getElementById('editFrequency').value = plan.installment_frequency;
+            document.getElementById('editBonus').value = plan.bonus_percentage;
+            document.getElementById('editStatus').value = plan.status;
+            document.getElementById('editDescription').value = plan.description;
+            document.getElementById('editTerms').value = plan.terms_conditions;
+            document.getElementById('editPlanModal').classList.remove('hidden');
+        }
+
+        function closeEditPlanModal() {
+            document.getElementById('editPlanModal').classList.add('hidden');
         }
 
         function enrollCustomer(planId) {
@@ -775,13 +868,57 @@ $conn->close();
             alert('Export data functionality will be implemented');
         }
 
-        // Form submissions
-        document.getElementById('createPlanForm').addEventListener('submit', function(e) {
+        // Customer search dropdown implementation
+        const customerInput = document.getElementById('customerSearch');
+        const customerDropdown = document.createElement('div');
+        customerDropdown.id = 'customerDropdown';
+        customerDropdown.className = 'absolute z-50 bg-white border border-gray-300 rounded-md mt-1 w-full hidden';
+        customerInput.parentNode.appendChild(customerDropdown);
+        const selectedCustomerId = document.getElementById('selectedCustomerId');
+
+        customerInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (query.length < 2) {
+                customerDropdown.classList.add('hidden');
+                return;
+            }
+            fetch(`api/search_customers.php?term=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(customers => {
+                    if (!Array.isArray(customers) || customers.length === 0) {
+                        customerDropdown.innerHTML = '<div class="p-2 text-gray-500">No customers found</div>';
+                        customerDropdown.classList.remove('hidden');
+                        return;
+                    }
+                    customerDropdown.innerHTML = customers.map(c =>
+                        `<div class="p-2 hover:bg-blue-100 cursor-pointer" data-id="${c.id}" data-name="${c.name}">${c.name} <span class="text-xs text-gray-400">(${c.phone})</span></div>`
+                    ).join('');
+                    customerDropdown.classList.remove('hidden');
+                });
+        });
+
+        customerDropdown.addEventListener('click', function(e) {
+            const target = e.target.closest('[data-id]');
+            if (target) {
+                customerInput.value = target.dataset.name;
+                selectedCustomerId.value = target.dataset.id;
+                customerDropdown.classList.add('hidden');
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!customerInput.contains(e.target) && !customerDropdown.contains(e.target)) {
+                customerDropdown.classList.add('hidden');
+            }
+        });
+
+        // Create Plan form submission with new fields
+        const createPlanForm = document.getElementById('createPlanForm');
+        createPlanForm.addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
             formData.append('firm_id', '<?php echo $firm_id; ?>');
-            formData.append('status', 'active');
-
+            formData.append('created_by', '<?php echo $user_id; ?>');
             fetch('create_gold_plan.php', {
                 method: 'POST',
                 body: formData
@@ -801,19 +938,90 @@ $conn->close();
             });
         });
 
-        document.getElementById('enrollForm').addEventListener('submit', function(e) {
+        // Handle Edit Plan form submit
+        document.getElementById('editPlanForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
-            formData.append('firm_id', '<?php echo $firm_id; ?>');
-
-            fetch('enroll_customer.php', {
+            fetch('edit_gold_plan.php', {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Customer enrolled successfully!');
+                    alert('Plan updated successfully!');
+                    window.location.reload();
+                } else {
+                    alert(data.message || 'Error updating plan');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error updating plan');
+            });
+        });
+
+        // Plan details and maturity date auto-fill
+        const planSelect = document.querySelector('#enrollModal select[name="plan_id"]');
+        const planDetailsDiv = document.getElementById('planDetails');
+        const startDateInput = document.querySelector('#enrollModal input[name="enrollment_date"]');
+        const maturityDateInput = document.querySelector('#enrollModal input[name="maturity_date"]');
+
+        function showPlanDetails(planId) {
+            const plan = window.plans.find(p => p.id == planId);
+            if (!plan) {
+                planDetailsDiv.classList.add('hidden');
+                planDetailsDiv.innerHTML = '';
+                return;
+            }
+            // Show plan details
+            planDetailsDiv.innerHTML = `
+                <div><b>Duration:</b> ${plan.duration_months} months</div>
+                <div><b>EMI Amount:</b> ₹${Number(plan.min_amount_per_installment).toLocaleString()} / ${plan.installment_frequency}</div>
+                <div><b>Bonus:</b> ${plan.bonus_percentage}%</div>
+                <div><b>Description:</b> ${plan.description || 'N/A'}</div>
+                <div><b>Terms:</b> ${plan.terms_conditions || 'N/A'}</div>
+            `;
+            planDetailsDiv.classList.remove('hidden');
+            // Auto-calculate maturity date if start date is selected
+            if (startDateInput.value) {
+                const start = new Date(startDateInput.value);
+                start.setMonth(start.getMonth() + parseInt(plan.duration_months));
+                // Format as yyyy-mm-dd
+                const yyyy = start.getFullYear();
+                const mm = String(start.getMonth() + 1).padStart(2, '0');
+                const dd = String(start.getDate()).padStart(2, '0');
+                maturityDateInput.value = `${yyyy}-${mm}-${dd}`;
+            }
+        }
+
+        // When plan changes
+        planSelect.addEventListener('change', function() {
+            showPlanDetails(this.value);
+        });
+
+        // When start date changes, recalculate maturity date if plan is selected
+        startDateInput.addEventListener('change', function() {
+            if (planSelect.value) {
+                showPlanDetails(planSelect.value);
+            }
+        });
+
+        // Enroll Customer form submission
+        const enrollForm = document.getElementById('enrollForm');
+        enrollForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            formData.append('firm_id', '<?php echo $firm_id; ?>');
+            formData.append('created_by', '<?php echo $user_id; ?>');
+            fetch('api/add_gold_plan_enrollment.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Customer enrolled and installments created successfully!');
                     window.location.reload();
                 } else {
                     alert(data.message || 'Error enrolling customer');
@@ -824,49 +1032,10 @@ $conn->close();
                 alert('Error enrolling customer');
             });
         });
+    </script>
 
-        document.getElementById('installmentForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-            
-            // Calculate gold credited
-            const amountPaid = parseFloat(formData.get('amount_paid'));
-            const goldRate = parseFloat(formData.get('gold_rate_per_gram'));
-            const goldCredited = amountPaid / goldRate;
-            formData.append('gold_credited_g', goldCredited.toFixed(4));
-
-            fetch('add_installment.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Installment added successfully!');
-                    window.location.reload();
-                } else {
-                    alert(data.message || 'Error adding installment');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error adding installment');
-            });
-        });
-
-        // Customer search functionality
-        document.getElementById('customerSearch').addEventListener('input', function() {
-            const query = this.value.trim();
-            if (query.length < 2) return;
-
-            fetch(`search_customers.php?term=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(customers => {
-                    // Implementation for customer search dropdown
-                    console.log('Customers found:', customers);
-                })
-                .catch(error => console.error('Error searching customers:', error));
-        });
+    <script>
+    window.plans = <?php echo json_encode($plans); ?>;
     </script>
 </body>
 </html>

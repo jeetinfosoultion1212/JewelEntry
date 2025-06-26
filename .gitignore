@@ -44,4 +44,11 @@ composer.phar
 # Other
 *.bak
 *.backup
-*.old 
+*.old
+
+# Database configuration files
+config/database.local.php
+config/database.prod.php
+
+# Keep the example file
+!config/database.example.php 
