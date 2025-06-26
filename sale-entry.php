@@ -4,12 +4,10 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
 // Start session and include database config
-
 error_log("POST data: " . print_r($_POST, true));
 
 session_start();
 require 'config/config.php';
-date_default_timezone_set('Asia/Kolkata');
 
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
@@ -21,11 +19,8 @@ if (!isset($_SESSION['id'])) {
 $user_id = $_SESSION['id'];
 $firm_id = $_SESSION['firmID'];
 
-// Establish database connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-   die("Connection failed: " . $conn->connect_error);
-}
+// Database connection is now handled in config.php
+// The $conn variable is already available from config.php
 
 // Enhanced subscription status check
 $subscriptionQuery = "SELECT fs.*, sp.name as plan_name, sp.price, sp.duration_in_days, sp.features 
@@ -89,6 +84,9 @@ if (isset($_GET['action'])) {
    // NEW: Get firm configuration
    if ($action == 'getFirmConfiguration') {
        $firm_id_param = isset($_GET['firm_id']) ? (int)$_GET['firm_id'] : $firm_id;
+       
+       // Debug logging
+       error_log("getFirmConfiguration called with firm_id_param: $firm_id_param, session firm_id: $firm_id");
        
        $sql = "SELECT * FROM firm_configurations WHERE firm_id = ?";
        $stmt = $conn->prepare($sql);
@@ -686,10 +684,6 @@ if (isset($_GET['action'])) {
        header('Content-Type: application/json');
        
        try {
-           // Get session variables or set defaults
-           $firm_id = $_SESSION['firmID'] ?? 1;
-           $user_id = $_SESSION['user_id'] ?? 1;
-           
            // Start transaction
            $conn->begin_transaction();
            
@@ -784,7 +778,7 @@ if (isset($_GET['action'])) {
                is_gst_applicable, notes, total_paid_amount, due_amount,
                payment_method, user_id, coupon_discount, loyalty_discount,
                manual_discount, coupon_code, advance_amount
-           ) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";        
+           ) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
            $stmt = $conn->prepare($sql);
            if (!$stmt) {
@@ -884,8 +878,8 @@ if (isset($_GET['action'])) {
            $paymentSql = "INSERT INTO jewellery_payments (
                sale_id, payment_type, amount, reference_no, 
                reference_id, party_type, reference_type, party_id, remarks, 
-               created_at, transctions_type
-           ) VALUES (?, ?, ?, ?, ?, 'customer', 'sale', ?, ?, NOW(), 'Credit')";
+               created_at, transctions_type, firm_id
+           ) VALUES (?, ?, ?, ?, ?, 'customer', 'sale', ?, ?, NOW(), 'Credit', ?)";
 
            $paymentStmt = $conn->prepare($paymentSql);
            if (!$paymentStmt) {
@@ -904,14 +898,15 @@ if (isset($_GET['action'])) {
                }
                
                $paymentStmt->bind_param(
-                   "isdsiss",
+                   "isdsiisi",
                    $saleId,
                    $paymentType,
                    $paymentAmount,
                    $referenceNo,
                    $saleId,
                    $data['customerId'],
-                   $remarks
+                   $remarks,
+                   $firm_id
                );
                
                if (!$paymentStmt->execute()) {
@@ -2248,17 +2243,18 @@ function assignPostPurchaseCoupon($conn, $customerId, $firmId, $saleId) {
    </div>
 
    <!-- Sales List -->
-   <a href="sale-list.php" class="nav-item">
-     <i class="nav-icon fas fa-clipboard-list"></i>
-     <span class="nav-text">Sales</span>
-   </a>
-
+   
    <!-- Reports -->
-   <a href="reports.php" class="nav-item">
+   <a href="sale-list.php" class="nav-item">
      <i class="nav-icon fas fa-chart-pie"></i>
      <span class="nav-text">Reports</span>
    </a>
  </nav>
+ 
+ <script>
+     // Set firm ID for JavaScript
+     window.firmID = <?php echo json_encode($firm_id); ?>;
+ </script>
  <script src="js/sale.js"></script>
 
  <!-- Subscription Expiration Modal -->

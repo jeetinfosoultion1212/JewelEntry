@@ -2615,7 +2615,6 @@ let editingItems = {};
 function toggleItemEdit(index) {
     console.log('Toggling edit mode for item:', index);
     
-    // Get the item container
     const itemContainer = document.querySelector(`#editOrderItems > div:nth-child(${index + 1})`);
     if (!itemContainer) {
         console.error('Item container not found for index:', index);
@@ -2628,19 +2627,31 @@ function toggleItemEdit(index) {
     if (editingItems[index]) {
         // Switch to edit mode
         const item = editingOrder.items[index];
-        const currentHTML = itemContainer.innerHTML;
         
+        // Store original values for history
+        if (!itemEditHistory[index]) {
+            itemEditHistory[index] = {
+                original: { ...item },
+                changes: []
+            };
+        }
+
         itemContainer.innerHTML = `
             <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
                 <div class="flex justify-between items-center mb-3">
                     <h5 class="font-medium text-gray-800">Edit Item</h5>
-                    <button onclick="toggleItemEdit(${index})" class="text-blue-600 hover:text-blue-700">
-                        <i class="fas fa-times"></i>
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="viewItemHistory(${index})" class="text-blue-600 hover:text-blue-700" title="View History">
+                            <i class="fas fa-history"></i>
+                        </button>
+                        <button onclick="toggleItemEdit(${index})" class="text-blue-600 hover:text-blue-700">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="grid grid-cols-2 gap-4">
-                    <!-- Item Name -->
+                    <!-- Basic Details -->
                     <div class="col-span-2">
                         <label class="text-xs text-gray-600">Item Name</label>
                         <input type="text" 
@@ -2649,17 +2660,77 @@ function toggleItemEdit(index) {
                                class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
                     </div>
                     
-                    <!-- Karigar Selection -->
+                    <!-- Product Details -->
+                    <div>
+                        <label class="text-xs text-gray-600">Product Type</label>
+                        <select id="editProductType_${index}" 
+                                class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                            <option value="ring" ${item.product_type === 'ring' ? 'selected' : ''}>Ring</option>
+                            <option value="necklace" ${item.product_type === 'necklace' ? 'selected' : ''}>Necklace</option>
+                            <option value="bracelet" ${item.product_type === 'bracelet' ? 'selected' : ''}>Bracelet</option>
+                            <option value="earring" ${item.product_type === 'earring' ? 'selected' : ''}>Earring</option>
+                            <option value="other" ${item.product_type === 'other' ? 'selected' : ''}>Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-600">Design Reference</label>
+                        <input type="text" 
+                               id="editDesignRef_${index}" 
+                               value="${item.design_reference || ''}"
+                               class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                    </div>
+
+                    <!-- Metal Details -->
+                    <div>
+                        <label class="text-xs text-gray-600">Metal Type</label>
+                        <select id="editMetalType_${index}" 
+                                class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                            <option value="gold" ${item.metal_type === 'gold' ? 'selected' : ''}>Gold</option>
+                            <option value="silver" ${item.metal_type === 'silver' ? 'selected' : ''}>Silver</option>
+                            <option value="platinum" ${item.metal_type === 'platinum' ? 'selected' : ''}>Platinum</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-600">Purity</label>
+                        <select id="editPurity_${index}" 
+                                class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                            <option value="24" ${item.purity === '24' ? 'selected' : ''}>24K</option>
+                            <option value="22" ${item.purity === '22' ? 'selected' : ''}>22K</option>
+                            <option value="18" ${item.purity === '18' ? 'selected' : ''}>18K</option>
+                            <option value="14" ${item.purity === '14' ? 'selected' : ''}>14K</option>
+                        </select>
+                    </div>
+
+                    <!-- Weight and Making Charges -->
+                    <div>
+                        <label class="text-xs text-gray-600">Weight (g)</label>
+                        <input type="number" 
+                               id="editWeight_${index}" 
+                               value="${item.net_weight || 0}"
+                               step="0.001"
+                               class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                    </div>
+                    
+                    <div>
+                        <label class="text-xs text-gray-600">Making Charges (₹)</label>
+                        <input type="number" 
+                               id="editMakingCharges_${index}" 
+                               value="${item.making_charges || 0}"
+                               step="0.01"
+                               class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                    </div>
+
+                    <!-- Karigar and Status -->
                     <div>
                         <label class="text-xs text-gray-600">Assigned Karigar</label>
                         <select id="editKarigar_${index}" 
                                 class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
                             <option value="">Select Karigar</option>
-                            <!-- Karigars will be populated via JavaScript -->
                         </select>
                     </div>
                     
-                    <!-- Item Status -->
                     <div>
                         <label class="text-xs text-gray-600">Status</label>
                         <select id="editItemStatus_${index}" 
@@ -2670,62 +2741,44 @@ function toggleItemEdit(index) {
                         </select>
                     </div>
 
-                    <!-- Weight -->
-                    <div>
-                        <label class="text-xs text-gray-600">Weight (g)</label>
-                        <input type="number" 
-                               id="editWeight_${index}" 
-                               value="${item.net_weight || 0}"
-                               step="0.001"
-                               class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
+                    <!-- Additional Details -->
+                    <div class="col-span-2">
+                        <label class="text-xs text-gray-600">Design Customization</label>
+                        <textarea id="editDesignCustomization_${index}" 
+                                  class="w-full px-3 py-2 rounded-lg border-2 border-gray-200 text-sm"
+                                  rows="2">${item.design_customization || ''}</textarea>
                     </div>
-                    
-                    <!-- Making Charges -->
-                    <div>
-                        <label class="text-xs text-gray-600">Making Charges (₹)</label>
-                        <input type="number" 
-                               id="editMakingCharges_${index}" 
-                               value="${item.making_charges || 0}"
-                               class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
-                    </div>
-                </div>
 
-                <!-- Notes -->
-                <div class="mt-3">
-                    <label class="text-xs text-gray-600">Notes</label>
-                    <textarea id="editNotes_${index}" 
-                              class="w-full px-3 py-2 rounded-lg border-2 border-gray-200 text-sm"
-                              rows="2">${item.design_customization || ''}</textarea>
-                </div>
-
-                <!-- Metal Issuance Section (Optional) -->
-                <div class="mt-4 p-3 bg-white rounded-lg border border-gray-200">
-                    <div class="flex items-center mb-3">
-                        <input type="checkbox" id="issueMetalCheckbox_${index}" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                        <label for="issueMetalCheckbox_${index}" class="ml-2 block text-sm font-medium text-gray-700">Issue Metal to Karigar</label>
-                    </div>
-                    <div id="metalIssuanceFields_${index}" class="grid grid-cols-2 gap-4 hidden">
-                        <div>
-                            <label class="text-xs text-gray-600">Metal Type</label>
-                            <select id="issueMetalType_${index}" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
-                                <!-- Options will be populated by JavaScript -->
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-600">Purity</label>
-                            <select id="issuePurity_${index}" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm">
-                                <!-- Options will be populated by JavaScript -->
-                            </select>
-                        </div>
-                        <div class="col-span-2">
-                            <label class="text-xs text-gray-600">Weight (g)</label>
-                            <input type="number" id="issueWeight_${index}" step="0.001" class="w-full h-9 px-3 rounded-lg border-2 border-gray-200 text-sm" value="0">
+                    <!-- Image Management -->
+                    <div class="col-span-2">
+                        <label class="text-xs text-gray-600">Reference Images</label>
+                        <div class="mt-1 flex gap-2 overflow-x-auto p-2 bg-gray-50 rounded-lg">
+                            ${(item.reference_images || []).map((img, imgIndex) => `
+                                <div class="relative group">
+                                    <img src="${img}" class="h-20 w-20 object-cover rounded-lg" />
+                                    <button onclick="removeItemImage(${index}, ${imgIndex})" 
+                                            class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i class="fas fa-times text-xs"></i>
+                                    </button>
+                                </div>
+                            `).join('')}
+                            <label class="h-20 w-20 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-500">
+                                <input type="file" 
+                                       class="hidden" 
+                                       accept="image/*" 
+                                       onchange="addItemImage(${index}, this)" />
+                                <i class="fas fa-plus text-gray-400"></i>
+                            </label>
                         </div>
                     </div>
                 </div>
 
                 <!-- Save Button -->
-                <div class="mt-3 flex justify-end">
+                <div class="mt-4 flex justify-end gap-2">
+                    <button onclick="cancelItemEdit(${index})" 
+                            class="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg text-sm font-medium hover:bg-gray-200">
+                        Cancel
+                    </button>
                     <button onclick="saveItemEdit(${index})" 
                             class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
                         Save Changes
@@ -2734,11 +2787,8 @@ function toggleItemEdit(index) {
             </div>
         `;
 
-        // Load and populate karigars and inventory metals
-        Promise.all([
-            loadKarigars(),
-            fetchInventoryMetals() // Fetch metals
-        ]).then(([karigars]) => { // Only need karigars from the promise.all result here
+        // Load karigars for the select dropdown
+        loadKarigars().then(karigars => {
             const karigarSelect = document.getElementById(`editKarigar_${index}`);
             if (karigarSelect) {
                 karigars.forEach(karigar => {
@@ -2747,70 +2797,73 @@ function toggleItemEdit(index) {
                 });
                 karigarSelect.value = item.karigar_id || '';
             }
-
-            // Populate metal type dropdown and add change listener
-            const issueMetalTypeSelect = document.getElementById(`issueMetalType_${index}`);
-            const issuePuritySelect = document.getElementById(`issuePurity_${index}`);
-            const metalIssuanceFields = document.getElementById(`metalIssuanceFields_${index}`);
-            const issueMetalCheckbox = document.getElementById(`issueMetalCheckbox_${index}`);
-
-            if (issueMetalTypeSelect && issuePuritySelect && metalIssuanceFields && issueMetalCheckbox) {
-                // Populate metal types
-                const uniqueMetalTypes = [...new Set(inventoryMetals.map(m => m.metal_type))];
-                issueMetalTypeSelect.innerHTML = '<option value="">Select Metal Type</option>';
-                uniqueMetalTypes.forEach(metalType => {
-                    const option = new Option(metalType, metalType);
-                    issueMetalTypeSelect.add(option);
-                });
-
-                // Function to populate purities based on selected metal type
-                const populatePurities = (selectedMetalType) => {
-                    issuePuritySelect.innerHTML = '<option value="">Select Purity</option>';
-                    const puritiesForType = inventoryMetals.filter(m => m.metal_type === selectedMetalType);
-                    const uniquePurities = [...new Set(puritiesForType.map(m => m.purity))].sort((a, b) => a - b);
-                    uniquePurities.forEach(purity => {
-                        const option = new Option(purity, purity);
-                        issuePuritySelect.add(option);
-                    });
-                };
-
-                // Add event listener for metal type change
-                issueMetalTypeSelect.addEventListener('change', (e) => {
-                    populatePurities(e.target.value);
-                });
-
-                // Checkbox listener to show/hide fields
-                issueMetalCheckbox.addEventListener('change', () => {
-                    if (issueMetalCheckbox.checked) {
-                        metalIssuanceFields.classList.remove('hidden');
-                    } else {
-                        metalIssuanceFields.classList.add('hidden');
-                        // Clear fields if checkbox is unchecked
-                        issueMetalTypeSelect.value = '';
-                        issuePuritySelect.innerHTML = '<option value="">Select Purity</option>'; // Clear purities
-                        document.getElementById(`issueWeight_${index}`).value = '0';
-                    }
-                });
-
-                // If there's existing issued metal data for this item, populate the fields
-                if (item.issued_metal_type && item.issued_purity && item.issued_weight) {
-                    issueMetalCheckbox.checked = true;
-                    metalIssuanceFields.classList.remove('hidden');
-                    
-                    issueMetalTypeSelect.value = item.issued_metal_type;
-                    populatePurities(item.issued_metal_type); // Populate purities first
-                    issuePuritySelect.value = item.issued_purity;
-                    document.getElementById(`issueWeight_${index}`).value = item.issued_weight;
-                }
-            }
         });
 
     } else {
-        // Switch back to view mode - refresh the item display
+        // Switch back to view mode
         populateEditForm(editingOrder);
     }
 }
 
+// Add new functions for image management
+function addItemImage(itemIndex, input) {
+    const file = input.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            if (!editingOrder.items[itemIndex].reference_images) {
+                editingOrder.items[itemIndex].reference_images = [];
+            }
+            editingOrder.items[itemIndex].reference_images.push(e.target.result);
+            toggleItemEdit(itemIndex); // Refresh the view
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeItemImage(itemIndex, imageIndex) {
+    if (editingOrder.items[itemIndex].reference_images) {
+        editingOrder.items[itemIndex].reference_images.splice(imageIndex, 1);
+        toggleItemEdit(itemIndex); // Refresh the view
+    }
+}
+
+// Add function to view item history
+function viewItemHistory(itemIndex) {
+    const history = itemEditHistory[itemIndex];
+    if (!history) return;
+
+    const historyModal = document.createElement('div');
+    historyModal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+    historyModal.innerHTML = `
+        <div class="bg-white rounded-lg w-full max-w-lg p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Item Edit History</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                ${history.changes.map(change => `
+                    <div class="border-l-2 border-blue-500 pl-4 py-2">
+                        <div class="text-sm text-gray-600">${new Date(change.timestamp).toLocaleString()}</div>
+                        <div class="text-sm">
+                            ${Object.entries(change.changes).map(([field, values]) => `
+                                <div class="mt-1">
+                                    <span class="font-medium">${field}:</span>
+                                    <span class="text-gray-600">${values.old} → ${values.new}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(historyModal);
+}
+
+// Modify saveItemEdit to track changes
 function saveItemEdit(index) {
     console.log('Saving changes for item:', index);
     
@@ -2822,52 +2875,65 @@ function saveItemEdit(index) {
     }
 
     // Get all the edited values
-    const itemName = document.getElementById(`editItemName_${index}`).value;
-    const karigarId = document.getElementById(`editKarigar_${index}`).value;
-    const status = document.getElementById(`editItemStatus_${index}`).value;
-    const weight = parseFloat(document.getElementById(`editWeight_${index}`).value) || 0;
-    const makingCharges = parseFloat(document.getElementById(`editMakingCharges_${index}`).value) || 0;
-    const notes = document.getElementById(`editNotes_${index}`).value;
+    const newValues = {
+        item_name: document.getElementById(`editItemName_${index}`).value,
+        product_type: document.getElementById(`editProductType_${index}`).value,
+        design_reference: document.getElementById(`editDesignRef_${index}`).value,
+        metal_type: document.getElementById(`editMetalType_${index}`).value,
+        purity: document.getElementById(`editPurity_${index}`).value,
+        karigar_id: document.getElementById(`editKarigar_${index}`).value,
+        status: document.getElementById(`editItemStatus_${index}`).value,
+        net_weight: parseFloat(document.getElementById(`editWeight_${index}`).value) || 0,
+        making_charges: parseFloat(document.getElementById(`editMakingCharges_${index}`).value) || 0,
+        design_customization: document.getElementById(`editDesignCustomization_${index}`).value,
+        reference_images: item.reference_images || []
+    };
 
-    // Get metal issuance details
-    const issueMetalCheckbox = document.getElementById(`issueMetalCheckbox_${index}`);
-    let issuedMetalData = null;
-    if (issueMetalCheckbox && issueMetalCheckbox.checked) {
-        const issuedMetalType = document.getElementById(`issueMetalType_${index}`).value;
-        const issuedPurity = parseFloat(document.getElementById(`issuePurity_${index}`).value) || 0;
-        const issuedWeight = parseFloat(document.getElementById(`issueWeight_${index}`).value) || 0;
-
-        // Basic validation for issued metal
-        if (issuedMetalType && issuedPurity > 0 && issuedWeight > 0) {
-            issuedMetalData = {
-                metal_type: issuedMetalType,
-                purity: issuedPurity,
-                weight: issuedWeight
+    // Track changes
+    const changes = {};
+    Object.entries(newValues).forEach(([field, newValue]) => {
+        if (JSON.stringify(item[field]) !== JSON.stringify(newValue)) {
+            changes[field] = {
+                old: item[field],
+                new: newValue
             };
-        } else if (issueMetalType || issuedPurity > 0 || issuedWeight > 0) {
-            // If some fields are filled but not all, show warning
-            showToast('Please complete all metal issuance fields (Type, Purity, Weight) or uncheck the option.', 'warning');
-            return; // Prevent saving if incomplete
         }
+    });
+
+    if (Object.keys(changes).length > 0) {
+        if (!itemEditHistory[index]) {
+            itemEditHistory[index] = {
+                original: { ...item },
+                changes: []
+            };
+        }
+        itemEditHistory[index].changes.push({
+            timestamp: new Date().toISOString(),
+            changes: changes
+        });
     }
 
-    // Update the item in editingOrder
-    editingOrder.items[index] = {
-        ...item,
-        item_name: itemName,
-        karigar_id: karigarId,
-        status: status,
-        net_weight: weight,
-        making_charges: makingCharges,
-        design_customization: notes,
-        issued_metal_data: issuedMetalData // Add issued metal data to the item
-    };
+    // Update the item
+    Object.assign(item, newValues);
 
     // Exit edit mode and refresh display
     editingItems[index] = false;
     populateEditForm(editingOrder);
     showToast('Item updated successfully');
 }
+
+// Add function to cancel item edit
+function cancelItemEdit(index) {
+    if (confirm('Are you sure you want to cancel editing? Any unsaved changes will be lost.')) {
+        // Restore original values if needed
+        if (itemEditHistory[index]) {
+            Object.assign(editingOrder.items[index], itemEditHistory[index].original);
+        }
+        editingItems[index] = false;
+        populateEditForm(editingOrder);
+    }
+}
+
 // Add to order.js file
 let editingOrder = null;
 
@@ -3050,3 +3116,6 @@ function saveOrderChanges() {
         showToast('Error updating order', 'error');
     });
 }
+
+// Add item edit history tracking
+let itemEditHistory = {};

@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Kolkata');
 require 'config/config.php';
 
 // Enable comprehensive error logging
@@ -7,6 +8,12 @@ error_reporting(E_ALL);
 ini_set('log_errors', 1);
 ini_set('error_log', 'payment_errors.log');
 ini_set('display_errors', 0); // Suppress direct output of errors to the browser for JSON responses
+
+// Detect AJAX/fetch request
+$isAjax = (
+    (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')
+    || (isset($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'multipart/form-data') !== false)
+);
 
 function logDebug($message, $data = null) {
     $timestamp = date('Y-m-d H:i:s');
@@ -36,8 +43,15 @@ logDebug("Session Data", [
 // Check if user is logged in and firm ID is set
 if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
     logError("Authentication failed - missing session data");
-    header("Location: login.php");
-    exit();
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Session expired. Please login again.']);
+        exit();
+    } else {
+        header("Location: login.php");
+        exit();
+    }
 }
 
 $firm_id = $_SESSION['firmID'];
@@ -47,8 +61,14 @@ logDebug("Authentication successful", ['user_id' => $user_id, 'firm_id' => $firm
 // Check if the form was submitted via POST
 if ($_SERVER["REQUEST_METHOD"] != "POST") {
     logError("Invalid request method", ['method' => $_SERVER["REQUEST_METHOD"]]);
-    header("Location: customer.php");
-    exit();
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+        exit();
+    } else {
+        header("Location: customer.php");
+        exit();
+    }
 }
 
 // Collect and validate input data
@@ -95,8 +115,14 @@ if (empty($payment_type_form)) {
 if (!empty($validation_errors)) {
     logError("Validation failed", $validation_errors);
     $error_message = implode(", ", $validation_errors);
-    header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode($error_message));
-    exit();
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => $error_message]);
+        exit();
+    } else {
+        header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode($error_message));
+        exit();
+    }
 }
 
 logDebug("Validation passed successfully");
@@ -113,8 +139,14 @@ $conn = new mysqli($servername, $username, $password, $dbname);
 
 if ($conn->connect_error) {
     logError("Database connection failed", ['error' => $conn->connect_error]);
-    header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode("Database connection failed. Please try again."));
-    exit();
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Database connection failed. Please try again.']);
+        exit();
+    } else {
+        header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode("Database connection failed. Please try again."));
+        exit();
+    }
 }
 
 // Set charset for proper handling of special characters
@@ -125,8 +157,14 @@ logDebug("Database connected successfully");
 if (!$conn->begin_transaction()) {
     logError("Failed to start transaction", ['error' => $conn->error]);
     $conn->close();
-    header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode("Transaction initialization failed"));
-    exit();
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Transaction initialization failed']);
+        exit();
+    } else {
+        header("Location: customer_details.php?id=" . $customer_id . "&error=" . urlencode("Transaction initialization failed"));
+        exit();
+    }
 }
 
 logDebug("Database transaction started");
@@ -331,6 +369,8 @@ try {
             $customer_plan_id = $parts[0];
             $installment_number = $parts[1];
             $installment_date = $parts[2];
+            // Ensure date is in Y-m-d format
+            $installment_date = date('Y-m-d', strtotime($installment_date));
 
             // Get scheme details
             $schemeQuery = "SELECT cgp.*, gp.plan_name, gp.min_amount_per_installment, gp.bonus_percentage 
@@ -473,6 +513,47 @@ try {
             
             $paymentRecordIds[] = $insertPaymentStmt->insert_id;
             $insertPaymentStmt->close();
+
+            logDebug('Updating gold_plan_installments', [
+                'customer_plan_id' => $customer_plan_id,
+                'installment_date' => $installment_date,
+                'allocated_amount' => $allocated_amount
+            ]);
+            // Update the gold_plan_installments table for this installment
+            $updateInstallmentStmt = $conn->prepare(
+                "UPDATE gold_plan_installments 
+                 SET amount_paid = ?, 
+                     gold_credited_g = ?, 
+                     payment_method = ?, 
+                     receipt_number = ?, 
+                     notes = ?, 
+                     created_by = ?, 
+                     created_at = NOW() 
+                 WHERE customer_plan_id = ? 
+                   AND payment_date = ?"
+            );
+            $receipt_number = $reference_no; // Or generate as needed
+            $updateInstallmentStmt->bind_param(
+                "dssssiss",
+                $allocated_amount,           // amount_paid
+                $goldAccrued,                // gold_credited_g
+                $payment_method_form,        // payment_method
+                $receipt_number,             // receipt_number
+                $notes,                      // notes
+                $user_id,                    // created_by
+                $customer_plan_id,           // customer_plan_id
+                $installment_date            // payment_date
+            );
+            $updateInstallmentStmt->execute();
+            if ($updateInstallmentStmt->affected_rows === 0) {
+                logError("Failed to update gold_plan_installments for paid installment", [
+                    'customer_plan_id' => $customer_plan_id,
+                    'installment_date' => $installment_date,
+                    'allocated_amount' => $allocated_amount
+                ]);
+                // Optionally: throw new Exception("Failed to update gold_plan_installments for paid installment");
+            }
+            $updateInstallmentStmt->close();
 
             $processedAllocations[] = [
                 'customer_plan_id' => $customer_plan_id,

@@ -1,3 +1,6 @@
+<?php
+session_start();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -194,7 +197,17 @@
             </div>
         </div>
 
-        <form id="registerForm">
+        <form id="registerForm" action="process_registration.php" method="POST">
+            <?php
+            if (isset($_SESSION['registration_errors']) && !empty($_SESSION['registration_errors'])) {
+                echo '<div class="error-message mb-4">';
+                foreach ($_SESSION['registration_errors'] as $error) {
+                    echo '<p>' . htmlspecialchars($error) . '</p>';
+                }
+                echo '</div>';
+                unset($_SESSION['registration_errors']); // Clear errors after displaying
+            }
+            ?>
             <div class="form-group">
                 <label for="fullName" class="form-label">Full Name</label>
                 <div class="relative">
@@ -257,8 +270,6 @@
             </button>
         </form>
 
-        <div id="errorMessageContainer"></div>
-
         <div class="text-center mt-5">
             <p class="text-sm text-gray-600">
                 Already have an account? 
@@ -295,41 +306,44 @@
             }
         }
 
+        // Handle form submission with AJAX
         document.getElementById('registerForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const fullName = document.getElementById('fullName').value.trim();
-            const mobile = document.getElementById('mobile').value.trim();
-            const email = document.getElementById('email').value.trim();
-            const firmName = document.getElementById('firmName').value.trim();
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
+            e.preventDefault(); // Prevent default form submission
 
-            // Basic validation
-            if (password !== confirmPassword) {
-                showError('Passwords do not match');
-                return;
+            const form = e.target;
+            const formData = new FormData(form);
+            const errorMessageDiv = document.querySelector('.error-message');
+
+            // Clear previous error messages
+            if (errorMessageDiv) {
+                errorMessageDiv.remove();
             }
 
-            // Here you would typically send the data to your server
-            // For now, we'll just show a success message
-            const errorContainer = document.getElementById('errorMessageContainer');
-            errorContainer.innerHTML = `
-                <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded relative mt-4" role="alert">
-                    <strong class="font-bold">Success!</strong>
-                    <span class="block sm:inline"> Account created successfully.</span>
-                </div>
-            `;
+            fetch(form.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Redirect to home page on success
+                    window.location.href = data.redirect;
+                } else {
+                    // Display error message
+                    const newErrorMessageDiv = document.createElement('div');
+                    newErrorMessageDiv.classList.add('error-message', 'mb-4');
+                    newErrorMessageDiv.innerHTML = `<p>${data.message}</p>`;
+                    form.prepend(newErrorMessageDiv);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                const newErrorMessageDiv = document.createElement('div');
+                newErrorMessageDiv.classList.add('error-message', 'mb-4');
+                newErrorMessageDiv.innerHTML = `<p>An unexpected error occurred. Please try again.</p>`;
+                form.prepend(newErrorMessageDiv);
+            });
         });
-
-        function showError(message) {
-            const errorContainer = document.getElementById('errorMessageContainer');
-            errorContainer.innerHTML = `
-                <div class="error-message">
-                    ${message}
-                </div>
-            `;
-        }
     </script>
 </body>
 </html>

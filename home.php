@@ -703,7 +703,7 @@ if (empty(trim($marqueeText))) {
                     }
                 ?>
                 <!-- Lucky Draw Scheme Card -->
-                <div class="min-w-[200px] rounded-xl p-2.5 shadow-md flex flex-col justify-between scheme-gradient-lottery text-yellow-800 <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
+                <a href="schemes.php" class="min-w-[200px] rounded-xl p-2.5 shadow-md flex flex-col justify-between scheme-gradient-lottery text-yellow-800 <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
                     <div class="flex items-center space-x-2 mb-1">
                         <div class="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0">
                             <i class="<?php echo $iconClass; ?> text-base text-<?php echo $statusColor; ?>-500"></i>
@@ -727,7 +727,7 @@ if (empty(trim($marqueeText))) {
                             <?php endif; ?>
                          </p>
                     </div>
-                </div>
+                </a>
                 <?php endforeach; ?>
 
                 <?php foreach ($goldSaverPlans as $plan): ?>
@@ -950,13 +950,8 @@ if (empty(trim($marqueeText))) {
                 </div>
 
                 <!-- Bookings Module -->
-                <div class="menu-card menu-gradient-indigo rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
-                     data-module-id="bookings" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
-                    <?php if (!$hasFeatureAccess): ?>
-                        <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
-                            <i class="fas fa-lock text-white text-lg"></i>
-                        </div>
-                    <?php endif; ?>
+                <?php if ($hasFeatureAccess): ?>
+                <a href="order.php" class="menu-card menu-gradient-indigo rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -964,8 +959,23 @@ if (empty(trim($marqueeText))) {
                         <i class="fas fa-calendar-check text-indigo-600 text-xs"></i>
                     </div>
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Bookings</h3>
-                    <p class="text-xs mt-1"><span class="text-indigo-600 font-bold"><?php echo $hasFeatureAccess ? $totalBookings : '**'; ?> Orders</span></p>
+                    <p class="text-xs mt-1"><span class="text-indigo-600 font-bold"><?php echo $totalBookings; ?> Orders</span></p>
+                </a>
+                <?php else: ?>
+                <div class="menu-card menu-gradient-indigo rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
+                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                        <i class="fas fa-lock text-white text-lg"></i>
+                    </div>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-calendar-check text-indigo-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Bookings</h3>
+                    <p class="text-xs mt-1"><span class="text-indigo-600 font-bold">** Orders</span></p>
                 </div>
+                <?php endif; ?>
 
                 <!-- Suppliers Module -->
                 <div class="menu-card menu-gradient-orange rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
@@ -1004,13 +1014,23 @@ if (empty(trim($marqueeText))) {
                 </div>
 
                 <!-- Reports Module -->
-                <div class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
-                     data-module-id="reports" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
-                    <?php if (!$hasFeatureAccess): ?>
-                        <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
-                            <i class="fas fa-lock text-white text-lg"></i>
-                        </div>
-                    <?php endif; ?>
+                <?php if ($hasFeatureAccess): ?>
+                <a href="reports.php" class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20" onclick="event.preventDefault(); event.stopPropagation(); /* Handle favorite logic */">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-chart-bar text-cyan-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Reports</h3>
+                    <p class="text-xs mt-1"><span class="text-cyan-600 font-bold">Analytics</span></p>
+                </a>
+                <?php else: ?>
+                <div class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" 
+                     data-module-id="reports" onclick="showFeatureLockedModal()">
+                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                        <i class="fas fa-lock text-white text-lg"></i>
+                    </div>
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1020,6 +1040,7 @@ if (empty(trim($marqueeText))) {
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Reports</h3>
                     <p class="text-xs mt-1"><span class="text-cyan-600 font-bold">Analytics</span></p>
                 </div>
+                <?php endif; ?>
 
                 <!-- Settings Module -->
                 <div class="menu-card menu-gradient-gray rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
@@ -1054,7 +1075,7 @@ if (empty(trim($marqueeText))) {
             <div class="grid grid-cols-3 gap-3">
                 <!-- Schemes Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="schemes.php" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="lucky_draw.php" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1082,7 +1103,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Lucky Draw Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="lucky_draw.php" class="menu-card menu-gradient-red rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="schemes.php" class="menu-card menu-gradient-red rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>

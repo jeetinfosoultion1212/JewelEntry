@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Kolkata');
 // Start session
 session_start();
 
@@ -329,6 +330,42 @@ function addStock($data) {
         }
 
         $purchaseId = $conn->insert_id;
+
+        // Insert payment log for purchase if paidAmount > 0
+        if ($paidAmount > 0) {
+            $insertPaymentQuery = "INSERT INTO jewellery_payments (
+                reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)";
+            $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
+            if (!$insertPaymentStmt) {
+                throw new Exception('Payment log insert preparation failed: ' . $conn->error);
+            }
+            $reference_type = 'purchase';
+            $party_type = 'supplier';
+            $sale_id = 0;
+            $payment_notes = 'Purchase payment for invoice ' . $invoiceNumber;
+            $remarks = 'Auto-logged with stock addition';
+            $transctions_type = 'debit';
+            $insertPaymentStmt->bind_param(
+                'issiisdssssi',
+                $purchaseId,         // reference_id
+                $reference_type,     // reference_type
+                $party_type,         // party_type
+                $supplierId,         // party_id
+                $sale_id,            // sale_id
+                $paymentMode,        // payment_type
+                $paidAmount,         // amount
+                $payment_notes,      // payment_notes
+                $invoiceNumber,      // reference_no
+                $remarks,            // remarks
+                $transctions_type,   // transctions_type
+                $firmId              // Firm_id
+            );
+            if (!$insertPaymentStmt->execute()) {
+                throw new Exception('Failed to insert payment log: ' . $insertPaymentStmt->error);
+            }
+            $insertPaymentStmt->close();
+        }
 
         // Update inventory record with source_id
         $updateStmt = $conn->prepare(

@@ -1,539 +1,1110 @@
+<?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Start session and include database config
+session_start();
+require 'config/config.php';
+date_default_timezone_set('Asia/Kolkata');
+
+// Check if user is logged in
+if (!isset($_SESSION['id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+// Get user details
+$user_id = $_SESSION['id'];
+$firm_id = $_SESSION['firmID'];
+
+// Establish database connection
+$conn = new mysqli($servername, $username, $password, $dbname);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// Handle different URL parameter scenarios
+if (isset($_GET['invoice_no'])) {
+    $invoice_no = $_GET['invoice_no'];
+    
+    if (isset($_GET['id'])) {
+        $invoice_id = $_GET['id'];
+        
+        $invoice_query = "SELECT js.*, c.FirstName, c.LastName, c.Address, c.City, c.State, c.PostalCode, 
+                        c.PANNumber, c.GSTNumber, c.IsGSTRegistered, c.PhoneNumber, c.Email,
+                        f.FirmName, f.Address AS FirmAddress, f.City AS FirmCity, f.State AS FirmState, 
+                        f.PostalCode AS FirmPostalCode, f.PANNumber AS FirmPANNumber, 
+                        f.GSTNumber AS FirmGSTNumber, f.IsGSTRegistered AS FirmIsGSTRegistered,
+                        f.PhoneNumber AS FirmPhoneNumber, f.Email AS FirmEmail, f.Logo AS FirmLogo,
+                        f.BankAccountNumber, f.BankName, f.IFSCCode, f.AccountType,
+                        jsi.stone_type, jsi.stone_weight, jsi.stone_price
+                    FROM jewellery_sales js
+                    JOIN customer c ON js.customer_id = c.id
+                    JOIN Firm f ON js.firm_id = f.id
+                    LEFT JOIN Jewellery_sales_items jsi ON js.id = jsi.sale_id
+                    WHERE js.id = ? AND js.invoice_no = ? AND js.firm_id = ?";
+        
+        $stmt = $conn->prepare($invoice_query);
+        $stmt->bind_param("isi", $invoice_id, $invoice_no, $firm_id);
+    } else {
+        $invoice_query = "SELECT js.*, c.FirstName, c.LastName, c.Address, c.City, c.State, c.PostalCode, 
+                        c.PANNumber, c.GSTNumber, c.IsGSTRegistered, c.PhoneNumber, c.Email,
+                        f.FirmName, f.Address AS FirmAddress, f.City AS FirmCity, f.State AS FirmState, 
+                        f.PostalCode AS FirmPostalCode, f.PANNumber AS FirmPANNumber, 
+                        f.GSTNumber AS FirmGSTNumber, f.IsGSTRegistered AS FirmIsGSTRegistered,
+                        f.PhoneNumber AS FirmPhoneNumber, f.Email AS FirmEmail, f.Logo AS FirmLogo,
+                        f.BankAccountNumber, f.BankName, f.IFSCCode, f.AccountType,
+                        jsi.stone_type, jsi.stone_weight, jsi.stone_price
+                    FROM jewellery_sales js
+                    JOIN customer c ON js.customer_id = c.id
+                    JOIN Firm f ON js.firm_id = f.id
+                    LEFT JOIN Jewellery_sales_items jsi ON js.id = jsi.sale_id
+                    WHERE js.invoice_no = ? AND js.firm_id = ?";
+        
+        $stmt = $conn->prepare($invoice_query);
+        $stmt->bind_param("si", $invoice_no, $firm_id);
+    }
+} else if (isset($_GET['id'])) {
+    $invoice_id = $_GET['id'];
+    
+    $invoice_query = "SELECT js.*, c.FirstName, c.LastName, c.Address, c.City, c.State, c.PostalCode, 
+                    c.PANNumber, c.GSTNumber, c.IsGSTRegistered, c.PhoneNumber, c.Email,
+                    f.FirmName, f.Address AS FirmAddress, f.City AS FirmCity, f.State AS FirmState, 
+                    f.PostalCode AS FirmPostalCode, f.PANNumber AS FirmPANNumber, 
+                    f.GSTNumber AS FirmGSTNumber, f.IsGSTRegistered AS FirmIsGSTRegistered,
+                    f.PhoneNumber AS FirmPhoneNumber, f.Email AS FirmEmail, f.Logo AS FirmLogo,
+                    f.BankAccountNumber, f.BankName, f.IFSCCode, f.AccountType,
+                    jsi.stone_type, jsi.stone_weight, jsi.stone_price
+                FROM jewellery_sales js
+                JOIN customer c ON js.customer_id = c.id
+                JOIN Firm f ON js.firm_id = f.id
+                LEFT JOIN Jewellery_sales_items jsi ON js.id = jsi.sale_id
+                WHERE js.id = ? AND js.firm_id = ?";
+    
+    $stmt = $conn->prepare($invoice_query);
+    $stmt->bind_param("ii", $invoice_id, $firm_id);
+} else {
+    echo "<div style='background: #fee; color: #c33; padding: 20px; text-align: center; border-radius: 8px; margin: 20px;'>
+            <h2>Invoice Information Missing</h2>
+            <p>Please provide a valid invoice number or ID.</p>
+            <a href='dashboard.php' style='display: inline-block; margin-top: 10px; background: #1a365d; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;'>
+                Return to Dashboard
+            </a>
+          </div>";
+    exit();
+}
+
+// Execute the query
+$stmt->execute();
+$invoice_result = $stmt->get_result();
+
+if (!isset($invoice_id) && $invoice_result->num_rows > 0) {
+    $temp = $invoice_result->fetch_assoc();
+    $invoice_id = $temp['id'];
+    $invoice_no = $temp['invoice_no'];
+    $invoice_result->data_seek(0);
+}
+
+if ($invoice_result->num_rows == 0) {
+    echo "<div style='background: #fee; color: #c33; padding: 20px; text-align: center; border-radius: 8px; margin: 20px;'>
+            <h2>Invoice Not Found</h2>
+            <p>The requested invoice was not found or you don't have permission to view it.</p>
+            <a href='dashboard.php' style='display: inline-block; margin-top: 10px; background: #1a365d; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;'>
+                Return to Dashboard
+            </a>
+          </div>";
+    exit();
+}
+
+$invoice = $invoice_result->fetch_assoc();
+
+// Get invoice items
+$items_query = "SELECT * FROM Jewellery_sales_items WHERE sale_id = ?";
+$stmt = $conn->prepare($items_query);
+$stmt->bind_param("i", $invoice_id);
+$stmt->execute();
+$items_result = $stmt->get_result();
+$items = [];
+while ($item = $items_result->fetch_assoc()) {
+    $items[] = $item;
+}
+
+// Safe function to handle null values
+function safeHtml($value, $default = '') {
+    return htmlspecialchars($value ?? $default, ENT_QUOTES, 'UTF-8');
+}
+
+// Format the numbers for display
+function formatIndianRupee($num) {
+    return '₹' . number_format(floatval($num ?? 0), 2);
+}
+
+// Format date
+function formatDate($date) {
+    return $date ? date("M d, Y", strtotime($date)) : '';
+}
+
+// Fixed Convert number to words function
+function numberToWords($num) {
+    $ones = array(
+        '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+        'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+        'Seventeen', 'Eighteen', 'Nineteen'
+    );
+    
+    $tens = array(
+        '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'
+    );
+    
+    if ($num == 0) return 'Zero Rupees Only';
+    
+    $num = floatval($num);
+    $rupees = floor($num);
+    $paise = round(($num - $rupees) * 100);
+    
+    $result = '';
+    
+    // Convert rupees
+    if ($rupees >= 10000000) { // Crores
+        $crores = floor($rupees / 10000000);
+        $result .= convertHundreds($crores) . ' Crore ';
+        $rupees %= 10000000;
+    }
+    
+    if ($rupees >= 100000) { // Lakhs
+        $lakhs = floor($rupees / 100000);
+        $result .= convertHundreds($lakhs) . ' Lakh ';
+        $rupees %= 100000;
+    }
+    
+    if ($rupees >= 1000) { // Thousands
+        $thousands = floor($rupees / 1000);
+        $result .= convertHundreds($thousands) . ' Thousand ';
+        $rupees %= 1000;
+    }
+    
+    if ($rupees > 0) {
+        $result .= convertHundreds($rupees);
+    }
+    
+    $result = trim($result) . ' Rupees';
+    
+    if ($paise > 0) {
+        $result .= ' and ' . convertHundreds($paise) . ' Paise';
+    }
+    
+    return $result . ' Only';
+}
+
+function convertHundreds($num) {
+    $ones = array(
+        '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+        'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+        'Seventeen', 'Eighteen', 'Nineteen'
+    );
+    
+    $tens = array(
+        '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'
+    );
+    
+    $result = '';
+    
+    if ($num >= 100) {
+        $result .= $ones[floor($num / 100)] . ' Hundred ';
+        $num %= 100;
+    }
+    
+    if ($num >= 20) {
+        $result .= $tens[floor($num / 10)] . ' ';
+        $num %= 10;
+    }
+    
+    if ($num > 0) {
+        $result .= $ones[$num] . ' ';
+    }
+    
+    return trim($result);
+}
+
+// Calculate old gold exchange values if needed
+$hasOldGoldExchange = !empty($invoice['urd_amount']) && floatval($invoice['urd_amount']) > 0;
+$oldGoldItems = [];
+if ($hasOldGoldExchange) {
+    $old_gold_query = "SELECT * FROM urd_items WHERE sale_id = ? AND status = 'exchanged'";
+    $stmt = $conn->prepare($old_gold_query);
+    $stmt->bind_param("i", $invoice_id);
+    $stmt->execute();
+    $old_gold_result = $stmt->get_result();
+    while ($old_item = $old_gold_result->fetch_assoc()) {
+        $oldGoldItems[] = $old_item;
+    }
+}
+
+$conn->close();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jewellery Invoice</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title><?php echo safeHtml($invoice['FirmName']); ?> - Invoice #<?php echo safeHtml($invoice['invoice_no']); ?></title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        @media print {
-            body { 
-                -webkit-print-color-adjust: exact; 
-                print-color-adjust: exact;
-                margin: 0;
-                padding: 0;
-                font-size: 12px;
-            }
-            .print-hide { display: none !important; }
-            .page-break { page-break-after: always; }
-            @page { 
-                size: A4; 
-                margin: 0.4in; 
-            }
-            .invoice-container {
-                box-shadow: none !important;
-                margin: 0 !important;
-                max-width: none !important;
-            }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
         
-        .watermark {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 8rem;
-            font-weight: 900;
-            color: rgba(0, 0, 0, 0.02);
-            z-index: 0;
-            pointer-events: none;
-            user-select: none;
-            letter-spacing: 0.3rem;
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            line-height: 1.3;
+            color: #374151;
+            background: #f9fafb;
         }
         
-        .content-layer {
-            position: relative;
-            z-index: 1;
+        .invoice-container {
+            max-width: 210mm;
+            margin: 10px auto;
             background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
         }
         
-        .logo-placeholder {
-            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-            border: 2px dashed #d1d5db;
+        /* Compact Header */
+        .invoice-header {
+            background: white;
+            padding: 15px 20px 10px 20px;
+            border-bottom: 1px solid #e5e7eb;
         }
         
-        .bis-logo {
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .company-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .company-logo {
+            width: 40px;
+            height: 40px;
+            background: #1f2937;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        
+        .company-logo img {
+            max-width: 35px;
+            max-height: 35px;
+            border-radius: 4px;
+        }
+        
+        .company-details h1 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 2px;
+        }
+        
+        .company-details p {
+            color: #6b7280;
+            font-size: 10px;
+        }
+        
+        .invoice-title {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .invoice-title h2 {
+            font-size: 24px;
+            font-weight: 300;
+            color: #10b981;
+            margin-bottom: 5px;
+        }
+        
+        .invoice-meta {
+            text-align: right;
+            min-width: 150px;
+        }
+        
+        .invoice-meta-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        
+        .invoice-meta-item .label {
+            color: #6b7280;
+            margin-right: 15px;
+        }
+        
+        .invoice-meta-item .value {
+            color: #1f2937;
+            font-weight: 600;
+        }
+        
+        .bis-badge {
+            background: #10b981;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+        
+        /* Compact Content */
+        .invoice-content {
+            padding: 0 20px 20px 20px;
+        }
+        
+        /* Compact Billing Section */
+        .billing-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .billing-card {
+            flex: 1;
+            background: #ecfdf5;
+            border: 1px solid #d1fae5;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        
+        .billing-card h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: #10b981;
+            margin-bottom: 8px;
+        }
+        
+        .billing-info {
+            font-size: 10px;
+            line-height: 1.4;
+        }
+        
+        .billing-info .company-name {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        
+        .billing-info .address-line {
+            color: #4b5563;
+            margin-bottom: 2px;
+        }
+        
+        .tax-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #d1fae5;
+            font-size: 9px;
+        }
+        
+        .tax-details .label {
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .tax-details .value {
+            color: #1f2937;
+        }
+        
+        /* Compact Supply Info */
+        .supply-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 8px 12px;
+            background: #f9fafb;
+            border-radius: 4px;
+            font-size: 10px;
+        }
+        
+        .supply-info .label {
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .supply-info .value {
+            color: #1f2937;
+            font-weight: 600;
+        }
+        
+        /* Compact Items Table */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .items-table th {
+            background: #10b981;
+            color: white;
+            padding: 8px 6px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 9px;
+        }
+        
+        .items-table td {
+            padding: 6px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 10px;
+        }
+        
+        .items-table tbody tr:nth-child(even) {
+            background: #f9fafb;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .font-medium {
+            font-weight: 500;
+        }
+        
+        /* Compact Summary Section */
+        .summary-section {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        
+        .summary-left {
+            flex: 1;
+        }
+        
+        .summary-right {
+            flex: 1;
+            max-width: 300px;
+        }
+        
+        /* Compact Bank Details */
+        .bank-section {
+            background: #ecfdf5;
+            border: 1px solid #d1fae5;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+        
+        .bank-section h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: #10b981;
+            margin-bottom: 8px;
+        }
+        
+        .bank-details {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .bank-info {
+            flex: 2;
+        }
+        
+        .bank-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 4px;
+            font-size: 9px;
+        }
+        
+        .bank-info-grid .label {
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .bank-info-grid .value {
+            color: #1f2937;
+        }
+        
+        .qr-section {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .qr-code {
+            width: 60px;
+            height: 60px;
+            background: #f3f4f6;
+            border: 2px dashed #9ca3af;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 5px auto;
+            font-size: 8px;
+            color: #6b7280;
+        }
+        
+        .qr-label {
+            font-size: 8px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        /* Compact Payment Summary */
+        .payment-summary {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            font-size: 10px;
+        }
+        
+        .summary-row.total {
+            border-top: 2px solid #10b981;
+            margin-top: 8px;
+            padding-top: 8px;
+            font-weight: 700;
+            font-size: 12px;
+            color: #1f2937;
+        }
+        
+        .summary-row .label {
+            color: #374151;
+        }
+        
+        .summary-row .value {
+            color: #1f2937;
+            font-weight: 500;
+        }
+        
+        .summary-row .value.negative {
+            color: #ef4444;
+        }
+        
+        /* Compact Amount in Words */
+        .amount-words {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 9px;
+        }
+        
+        .amount-words .label {
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 3px;
+        }
+        
+        .amount-words .value {
+            color: #1f2937;
+            font-style: italic;
+        }
+        
+        /* Compact Terms */
+        .terms-section {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 4px;
+        }
+        
+        .terms-section h3 {
+            font-size: 11px;
+            font-weight: 600;
+            color: #10b981;
+            margin-bottom: 6px;
+        }
+        
+        .terms-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .terms-list li {
+            margin-bottom: 3px;
+            font-size: 9px;
+            color: #4b5563;
+            position: relative;
+            padding-left: 12px;
+        }
+        
+        .terms-list li:before {
+            content: "•";
+            color: #10b981;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        /* Compact Signature Section */
+        .signature-section {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .signature-box {
+            text-align: center;
+            flex: 1;
+            margin: 0 10px;
+        }
+        
+        .signature-line {
+            height: 40px;
+            border-bottom: 1px solid #9ca3af;
+            margin-bottom: 5px;
+        }
+        
+        .signature-label {
+            font-size: 9px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .signature-sublabel {
+            font-size: 8px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        
+        /* Compact Footer */
+        .invoice-footer {
+            background: #f9fafb;
+            padding: 10px 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 8px;
+            color: #6b7280;
+        }
+        
+        .footer-contact {
+            margin-bottom: 5px;
+        }
+        
+        .footer-contact span {
+            margin: 0 10px;
+        }
+        
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+                font-size: 10px;
+            }
+            
+            .invoice-container {
+                box-shadow: none;
+                max-width: none;
+                width: 100%;
+                margin: 0;
+                border-radius: 0;
+            }
+            
+            .print-hidden {
+                display: none !important;
+            }
+            
+            .invoice-header,
+            .invoice-content {
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+        }
+        
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+        
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+            padding: 15px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #059669;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .btn-outline {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        
+        .btn-outline:hover {
+            background: #f9fafb;
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
-    <!-- Watermark -->
-    <div class="watermark">CERTIFIED</div>
-
-    <!-- Control Panel (Hidden in Print) -->
-    <div class="print-hide bg-white shadow-sm border-b p-4 sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto flex flex-wrap gap-3 items-center justify-between">
-            <div class="flex gap-3">
-                <button onclick="loadSampleData()" 
-                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                    Load Sample Data
-                </button>
-                <button onclick="window.print()" 
-                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                    🖨️ Print Invoice
-                </button>
-                <button onclick="generatePDF()" 
-                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                    📄 Generate PDF
-                </button>
+<body>
+    <div class="invoice-container">
+        <!-- New Header Layout -->
+        <div class="invoice-header">
+            <!-- Centered Firm Info -->
+            <div class="firm-header-center" style="text-align:center; margin-bottom:10px;">
+                <div class="company-logo" style="margin:0 auto;">
+                    <?php if (!empty($invoice['FirmLogo'])): ?>
+                        <img src="<?php echo safeHtml($invoice['FirmLogo']); ?>" alt="Logo">
+                    <?php else: ?>
+                        <?php echo strtoupper(substr($invoice['FirmName'] ?? 'JW', 0, 2)); ?>
+                    <?php endif; ?>
+                </div>
+                <div class="company-details">
+                    <h1><?php echo safeHtml($invoice['FirmName'], 'JEWELLERY STORE'); ?></h1>
+                    <p>Premium Jewellery Collection</p>
+                </div>
             </div>
-            <div class="text-sm text-gray-600">
-                <span id="invoice-status" class="font-medium">Ready to Print</span>
+            <!-- Flex row: Invoice meta left, Billing right -->
+            <div class="header-flex-row" style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px;">
+                <!-- Invoice Meta Info -->
+                <div class="invoice-meta" style="min-width:180px;">
+                    <div class="invoice-meta-item">
+                        <span class="label">Invoice #</span>
+                        <span class="value"><?php echo safeHtml($invoice['invoice_no'], 'NG08'); ?></span>
+                    </div>
+                    <div class="invoice-meta-item">
+                        <span class="label">Invoice Date</span>
+                        <span class="value"><?php echo formatDate($invoice['sale_date']); ?></span>
+                    </div>
+                    <div class="invoice-meta-item">
+                        <span class="label">Due Date</span>
+                        <span class="value"><?php echo formatDate(date('Y-m-d', strtotime(($invoice['sale_date'] ?? date('Y-m-d')) . ' + 7 days'))); ?></span>
+                    </div>
+                    <div class="bis-badge">BIS</div>
+                </div>
+                <!-- Billing Section Side by Side -->
+                <div class="billing-section" style="flex:1; display:flex; gap:15px;">
+                    <div class="billing-card">
+                        <h3>Billed by</h3>
+                        <div class="billing-info">
+                            <div class="company-name"><?php echo safeHtml($invoice['FirmName'], 'N/A'); ?></div>
+                            <div class="address-line"><?php echo safeHtml($invoice['FirmAddress'], 'Address not available'); ?></div>
+                            <div class="address-line">
+                                <?php 
+                                $firmLocation = trim(
+                                    safeHtml($invoice['FirmCity'], '') . 
+                                    ($invoice['FirmCity'] ? ', ' : '') . 
+                                    safeHtml($invoice['FirmState'], '') . 
+                                    ($invoice['FirmPostalCode'] ? ' - ' . safeHtml($invoice['FirmPostalCode']) : '')
+                                );
+                                echo $firmLocation ?: 'Location not available';
+                                ?>
+                            </div>
+                            <div class="tax-details">
+                                <span class="label">GSTIN</span>
+                                <span class="value"><?php echo safeHtml($invoice['FirmGSTNumber'], 'N/A'); ?></span>
+                                <span class="label">PAN</span>
+                                <span class="value"><?php echo safeHtml($invoice['FirmPANNumber'], 'N/A'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="billing-card">
+                        <h3>Billed to</h3>
+                        <div class="billing-info">
+                            <div class="company-name">
+                                <?php echo trim(safeHtml($invoice['FirstName'], '') . ' ' . safeHtml($invoice['LastName'], '')) ?: 'demo'; ?>
+                            </div>
+                            <div class="address-line"><?php echo safeHtml($invoice['Address'], 'Address not available'); ?></div>
+                            <div class="address-line">
+                                <?php 
+                                $customerLocation = trim(
+                                    safeHtml($invoice['City'], '') . 
+                                    ($invoice['City'] ? ', ' : '') . 
+                                    safeHtml($invoice['State'], '') . 
+                                    ($invoice['PostalCode'] ? ' - ' . safeHtml($invoice['PostalCode']) : '')
+                                );
+                                echo $customerLocation ?: 'Location not available';
+                                ?>
+                            </div>
+                            <div class="tax-details">
+                                <span class="label">GSTIN</span>
+                                <span class="value"><?php echo safeHtml($invoice['GSTNumber'], 'N/A'); ?></span>
+                                <span class="label">PAN</span>
+                                <span class="value"><?php echo safeHtml($invoice['PANNumber'], 'N/A'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-
-    <!-- Invoice Container -->
-    <div class="content-layer invoice-container max-w-5xl mx-auto bg-white shadow-lg my-4 print:my-0 print:shadow-none">
-        <!-- Header Section -->
-        <div class="border-b-4 border-gray-800 p-6 print:p-4">
-            <div class="flex items-start justify-between mb-4">
-                <!-- Firm Logo -->
-                <div class="flex-shrink-0">
-                    <div id="firm-logo-container" class="logo-placeholder w-24 h-24 flex items-center justify-center rounded-lg">
-                        <span class="text-gray-500 text-xs font-medium">LOGO</span>
+        
+        <!-- Compact Content -->
+        <div class="invoice-content">
+            <!-- Compact Place of Supply -->
+            <div class="supply-info">
+                <div>
+                    <span class="label">Place of Supply</span>
+                    <span class="value"><?php echo safeHtml($invoice['FirmState'], 'N/A'); ?></span>
+                </div>
+                <div>
+                    <span class="label">Country of Supply</span>
+                    <span class="value">India</span>
+                </div>
+            </div>
+            
+            <!-- Compact Items Table -->
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Item #/Item description</th>
+                        <th>HSN</th>
+                        <th>Qty.</th>
+                        <th>Purity</th>
+                        <th>Rate/Gm</th>
+                        <th>Net Wt</th>
+                        <th>Labour</th>
+                        <th>Stone</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $count = 1;
+                    foreach ($items as $item): 
+                    ?>
+                    <tr>
+                        <td><?php echo $count . '. ' . safeHtml($item['product_name'], 'RING'); ?></td>
+                        <td class="text-center">7113</td>
+                        <td class="text-center">1</td>
+                        <td class="text-center"><?php echo safeHtml($item['purity'], '92.00'); ?>kt</td>
+                        <td class="text-right">₹<?php echo number_format(floatval($item['purity_rate'] ?? 9192.18), 2); ?></td>
+                        <td class="text-right"><?php echo safeHtml($item['net_weight'], '3.600'); ?>g</td>
+                        <td class="text-right">₹<?php echo number_format(floatval($item['making_charges'] ?? 3309.18), 2); ?></td>
+                        <td class="text-right">₹<?php echo number_format(floatval($item['stone_price'] ?? 0), 2); ?></td>
+                        <td class="text-right font-medium">₹<?php echo number_format(floatval($item['total'] ?? 36436.03), 2); ?></td>
+                    </tr>
+                    <?php 
+                        $count++;
+                    endforeach; 
+                    
+                    if (empty($items)): 
+                    ?>
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">No items found</td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            
+            <!-- Compact Summary Section -->
+            <div class="summary-section">
+                <!-- Left Side - Bank Details -->
+                <div class="summary-left">
+                    <div class="bank-section">
+                        <h3>Bank & Payment Details</h3>
+                        <div class="bank-details">
+                            <div class="bank-info">
+                                <div class="bank-info-grid">
+                                    <span class="label">Account Holder Name</span>
+                                    <span class="value"><?php echo safeHtml($invoice['FirmName'], 'Mahalaxmi HM'); ?></span>
+                                    <span class="label">Account Number</span>
+                                    <span class="value"><?php echo safeHtml($invoice['BankAccountNumber'], 'N/A'); ?></span>
+                                    <span class="label">IFSC</span>
+                                    <span class="value"><?php echo safeHtml($invoice['IFSCCode'], 'N/A'); ?></span>
+                                    <span class="label">Account Type</span>
+                                    <span class="value"><?php echo safeHtml($invoice['AccountType'], 'Current'); ?></span>
+                                    <span class="label">Bank</span>
+                                    <span class="value"><?php echo safeHtml($invoice['BankName'], 'N/A'); ?></span>
+                                    <span class="label">UPI</span>
+                                    <span class="value">mahalaxmihm@upi</span>
+                                </div>
+                            </div>
+                            <div class="qr-section">
+                                <div class="qr-label">UPI - Scan to Pay</div>
+                                <div class="qr-code">QR CODE</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
-                <!-- Invoice Title & Details -->
-                <div class="text-center flex-1 mx-8">
-                    <h1 id="invoice-title" class="text-4xl print:text-3xl font-bold text-gray-900 mb-2">TAX INVOICE</h1>
-                    <div class="bg-gray-100 inline-block px-4 py-2 rounded-lg">
-                        <p class="text-sm font-semibold">Invoice No: <span id="invoice-no" class="text-blue-600">INV-2024-001</span></p>
-                        <p class="text-sm">Date: <span id="sale-date" class="font-medium">05-Jun-2024</span></p>
-                    </div>
-                </div>
-                
-                <!-- BIS Logo -->
-                <div class="flex-shrink-0">
-                    <div class="bis-logo w-20 h-20 rounded-full flex items-center justify-center text-white">
-                        <div class="text-center">
-                            <div class="text-lg font-bold">BIS</div>
-                            <div class="text-xs">CERTIFIED</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Company & Customer Details -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 print:p-4 bg-gray-50 print:bg-white">
-            <!-- Firm Details -->
-            <div class="bg-white rounded-lg border border-gray-200 p-4">
-                <div class="flex items-center mb-3">
-                    <div class="w-3 h-6 bg-blue-600 rounded-r mr-3"></div>
-                    <h3 class="text-lg font-bold text-gray-900">From</h3>
-                </div>
-                <div id="firm-details" class="space-y-1">
-                    <p class="text-xl font-bold text-gray-900" id="firm-name">Shree Jewellers Pvt Ltd</p>
-                    <p class="text-sm text-gray-600" id="firm-address">123 Gold Street, Zaveri Bazaar, Mumbai - 400001</p>
-                    <p class="text-sm text-gray-600" id="firm-phone">📞 +91 9876543210</p>
-                    <p class="text-sm text-gray-600" id="firm-gst">🏢 GST: 27ABCDE1234F1Z5</p>
-                </div>
-            </div>
-            
-            <!-- Customer Details -->
-            <div class="bg-white rounded-lg border border-gray-200 p-4">
-                <div class="flex items-center mb-3">
-                    <div class="w-3 h-6 bg-green-600 rounded-r mr-3"></div>
-                    <h3 class="text-lg font-bold text-gray-900">Bill To</h3>
-                </div>
-                <div id="customer-details" class="space-y-1">
-                    <p class="text-xl font-bold text-gray-900" id="customer-name">Mr. Rajesh Kumar</p>
-                    <p class="text-sm text-gray-600" id="customer-address">456 Silver Lane, Andheri West, Mumbai - 400058</p>
-                    <p class="text-sm text-gray-600" id="customer-phone">📞 +91 9123456789</p>
-                    <p class="text-sm text-gray-600" id="customer-gst">🏢 GST: 27FGHIJ5678K2L9</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Items Table -->
-        <div class="p-6 print:p-4">
-            <div class="flex items-center mb-4">
-                <div class="w-4 h-6 bg-purple-600 rounded-r mr-3"></div>
-                <h3 class="text-xl font-bold text-gray-900">Item Details</h3>
-            </div>
-            
-            <div class="overflow-x-auto border border-gray-200 rounded-lg">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-800 text-white">
-                        <tr>
-                            <th class="px-3 py-3 text-left font-semibold border-r border-gray-600">S.No</th>
-                            <th class="px-3 py-3 text-left font-semibold border-r border-gray-600">Product Description</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">HUID</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">Purity</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">Gross Wt.</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">Net Wt.</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">Rate/gm</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">Stone Details</th>
-                            <th class="px-3 py-3 text-center font-semibold border-r border-gray-600">Making</th>
-                            <th class="px-3 py-3 text-right font-semibold">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody id="items-table-body" class="bg-white">
-                        <!-- Items will be populated dynamically -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Summary Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 print:p-4 bg-gray-50 print:bg-white">
-            <!-- Payment Information -->
-            <div class="lg:col-span-1">
-                <div class="bg-white rounded-lg border border-gray-200 p-4 h-full">
-                    <h4 class="font-bold text-gray-900 mb-3 flex items-center">
-                        <div class="w-2 h-4 bg-yellow-500 rounded-r mr-2"></div>
-                        Payment Info
-                    </h4>
-                    <div class="space-y-2 text-sm">
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Method:</span>
-                            <span id="payment-method" class="font-medium">Cash</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Status:</span>
-                            <span id="payment-status" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800 font-medium">Paid</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Type:</span>
-                            <span id="transaction-type" class="font-medium">Sale</span>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-4 pt-3 border-t border-gray-200" id="notes-section">
-                        <h5 class="text-sm font-semibold text-gray-700 mb-2">Notes:</h5>
-                        <p id="notes" class="text-xs text-gray-600 bg-gray-50 p-2 rounded">Thank you for choosing us!</p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Amount Summary -->
-            <div class="lg:col-span-2">
-                <div class="bg-white rounded-lg border border-gray-200 p-4">
-                    <h4 class="font-bold text-gray-900 mb-4 flex items-center">
-                        <div class="w-2 h-4 bg-indigo-500 rounded-r mr-2"></div>
-                        Amount Summary
-                    </h4>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Breakdown -->
-                        <div class="space-y-2 text-sm">
-                            <div class="flex justify-between py-1">
-                                <span class="text-gray-600">Metal Amount:</span>
-                                <span id="total-metal-amount" class="font-medium">₹50,000.00</span>
-                            </div>
-                            <div class="flex justify-between py-1">
-                                <span class="text-gray-600">Stone Amount:</span>
-                                <span id="total-stone-amount" class="font-medium">₹15,000.00</span>
-                            </div>
-                            <div class="flex justify-between py-1">
-                                <span class="text-gray-600">Making Charges:</span>
-                                <span id="total-making-charges" class="font-medium">₹8,000.00</span>
-                            </div>
-                            <div class="flex justify-between py-1">
-                                <span class="text-gray-600">Other Charges:</span>
-                                <span id="total-other-charges" class="font-medium">₹1,000.00</span>
-                            </div>
-                            <div class="flex justify-between py-1 border-t border-gray-200 pt-2">
-                                <span class="font-medium">Subtotal:</span>
-                                <span id="subtotal" class="font-bold">₹74,000.00</span>
-                            </div>
+                <!-- Right Side - Payment Summary -->
+                <div class="summary-right">
+                    <div class="payment-summary">
+                        <div class="summary-row">
+                            <span class="label">Sub Total</span>
+                            <span class="value">₹<?php echo number_format(floatval($invoice['subtotal'] ?? 36436.03), 2); ?></span>
                         </div>
                         
-                        <!-- Final Amount -->
-                        <div class="space-y-2 text-sm">
-                            <div class="flex justify-between py-1" id="discount-row">
-                                <span class="text-red-600">Total Discount:</span>
-                                <span id="discount" class="text-red-600 font-medium">-₹2,000.00</span>
-                            </div>
-                            <div class="flex justify-between py-1" id="gst-row">
-                                <span class="text-gray-600">GST (3%):</span>
-                                <span id="gst-amount" class="font-medium">₹2,160.00</span>
-                            </div>
-                            <div class="flex justify-between py-2 border-t-2 border-gray-800 mt-2 pt-2">
-                                <span class="text-lg font-bold">Grand Total:</span>
-                                <span id="grand-total" class="text-lg font-bold text-indigo-600">₹74,160.00</span>
-                            </div>
-                            <div class="flex justify-between py-1 bg-green-50 px-2 rounded">
-                                <span class="text-green-700 font-medium">Paid Amount:</span>
-                                <span id="total-paid-amount" class="text-green-700 font-bold">₹74,160.00</span>
-                            </div>
-                            <div class="flex justify-between py-1 bg-red-50 px-2 rounded" id="due-row">
-                                <span class="text-red-700 font-medium">Due Amount:</span>
-                                <span id="due-amount" class="text-red-700 font-bold">₹0.00</span>
-                            </div>
+                        <div class="summary-row">
+                            <span class="label">Making Charges</span>
+                            <span class="value">₹<?php echo number_format(floatval($invoice['total_making_charges'] ?? 3309.18), 2); ?></span>
                         </div>
+                        
+                        <div class="summary-row">
+                            <span class="label">Discount(0.0%)</span>
+                            <span class="value negative">- ₹0.00</span>
+                        </div>
+                        
+                        <div class="summary-row">
+                            <span class="label">Taxable Amount</span>
+                            <span class="value">₹<?php echo number_format(floatval($invoice['grand_total'] ?? 36436.03) * 0.85, 2); ?></span>
+                        </div>
+                        
+                        <div class="summary-row">
+                            <span class="label">CGST</span>
+                            <span class="value">₹<?php echo number_format(floatval($invoice['grand_total'] ?? 36436.03) * 0.075, 2); ?></span>
+                        </div>
+                        
+                        <div class="summary-row">
+                            <span class="label">SGST</span>
+                            <span class="value">₹<?php echo number_format(floatval($invoice['grand_total'] ?? 36436.03) * 0.075, 2); ?></span>
+                        </div>
+                        
+                        <div class="summary-row total">
+                            <span class="label">Total</span>
+                            <span class="value">₹<?php echo number_format(floatval($invoice['grand_total'] ?? 36436.03), 2); ?></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Compact Amount in Words -->
+                    <div class="amount-words">
+                        <div class="label">Invoice Total (in words)</div>
+                        <div class="value"><?php echo numberToWords(floatval($invoice['grand_total'] ?? 36436.03)); ?></div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="border-t-2 border-gray-800 p-6 print:p-4 text-center bg-gray-50 print:bg-white">
-            <div class="space-y-2">
-                <p class="text-sm font-semibold text-gray-700">This is a computer-generated invoice. No signature required.</p>
-                <p class="text-xs text-gray-500">Thank you for choosing us for your precious jewelry needs!</p>
-                <div class="flex justify-center items-center space-x-4 text-xs text-gray-400 mt-3">
-                    <span>💎 Premium Quality</span>
-                    <span>✓ BIS Certified</span>
-                    <span>🛡️ Lifetime Guarantee</span>
+            
+            <!-- Compact Terms and Conditions -->
+            <div class="terms-section">
+                <h3>Terms and Conditions</h3>
+                <ul class="terms-list">
+                    <li>Please pay within 15 days from the date of invoice, overdue interest @ 14% will be charged on delayed payments.</li>
+                    <li>Please quote invoice number when remitting funds.</li>
+                    <li>All disputes are subject to local jurisdiction only.</li>
+                </ul>
+            </div>
+            
+            <!-- Compact Signature Section -->
+            <div class="signature-section">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">
+                        <?php echo trim(safeHtml($invoice['FirstName'], '') . ' ' . safeHtml($invoice['LastName'], '')) ?: 'demo'; ?>
+                    </div>
+                    <div class="signature-sublabel">Customer Signature</div>
+                </div>
+                
+                <div class="signature-box">
+                    <div class="signature-line" style="border: 2px dashed #9ca3af; border-bottom: none; border-radius: 50%; width: 50px; height: 40px; margin: 0 auto;"></div>
+                    <div class="signature-label">Official Seal</div>
+                </div>
+                
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">For <?php echo safeHtml($invoice['FirmName'], 'Mahalaxmi HM'); ?></div>
+                    <div class="signature-sublabel">Authorized Signatory</div>
                 </div>
             </div>
         </div>
+        
+        <!-- Compact Footer -->
+        <div class="invoice-footer">
+            <div class="footer-contact">
+                <span>For any enquiries, email us on <?php echo safeHtml($invoice['FirmEmail'], 'info@mahalaxmihm.com'); ?></span>
+                <span>or call us on <?php echo safeHtml($invoice['FirmPhoneNumber'], '+91 98103 59334'); ?></span>
+            </div>
+        </div>
     </div>
-
+    
+    <!-- Action Buttons -->
+    <div class="action-buttons print-hidden">
+        <button onclick="window.print()" class="btn btn-primary">
+            🖨️ Print Invoice
+        </button>
+        <button onclick="window.history.back()" class="btn btn-secondary">
+            ← Back
+        </button>
+        <a href="download_invoice.php?id=<?php echo $invoice_id ?? ''; ?>&invoice_no=<?php echo urlencode($invoice_no ?? ''); ?>" class="btn btn-outline">
+            📥 Download PDF
+        </a>
+    </div>
+    
     <script>
-        // Comprehensive sample data matching your database structure
-        const sampleInvoiceData = {
-            sale: {
-                id: 1,
-                invoice_no: "INV-2024-001",
-                firm_id: 1,
-                customer_id: 1,
-                sale_date: "2024-06-05",
-                total_metal_amount: 50000.00,
-                total_stone_amount: 15000.00,
-                total_making_charges: 8000.00,
-                total_other_charges: 1000.00,
-                discount: 2000.00,
-                urd_amount: 0.00,
-                subtotal: 72000.00,
-                gst_amount: 2160.00,
-                grand_total: 74160.00,
-                total_paid_amount: 74160.00,
-                advance_amount: 0.00,
-                due_amount: 0.00,
-                payment_status: "Paid",
-                payment_method: "Cash",
-                is_gst_applicable: 1,
-                notes: "Premium quality 22K gold jewelry with certified diamonds. Thank you for your business!",
-                user_id: 1,
-                coupon_discount: 500.00,
-                loyalty_discount: 1000.00,
-                manual_discount: 500.00,
-                coupon_code: "GOLD20",
-                transaction_type: "Sale"
-            },
-            firm: {
-                id: 1,
-                name: "Shree Jewellers Pvt Ltd",
-                address: "123 Gold Street, Zaveri Bazaar, Mumbai - 400001, Maharashtra, India",
-                phone: "+91 9876543210",
-                gst_number: "27ABCDE1234F1Z5",
-                logo_path: "/images/firm-logo.png"
-            },
-            customer: {
-                id: 1,
-                name: "Mr. Rajesh Kumar",
-                address: "456 Silver Lane, Andheri West, Mumbai - 400058, Maharashtra, India",
-                phone: "+91 9123456789",
-                gst_number: "27FGHIJ5678K2L9"
-            },
-            items: [
-                {
-                    id: 1,
-                    sale_id: 1,
-                    product_id: 101,
-                    product_name: "22K Gold Traditional Necklace Set with Diamonds",
-                    huid_code: "HUID123456789",
-                    rate_24k: 6800.00,
-                    purity: "22K",
-                    purity_rate: 6200.00,
-                    gross_weight: 28.50,
-                    less_weight: 2.50,
-                    net_weight: 26.00,
-                    metal_amount: 35000.00,
-                    stone_type: "Diamond",
-                    stone_weight: 3.25,
-                    stone_price: 12000.00,
-                    making_type: "Handmade",
-                    making_rate: 280.00,
-                    making_charges: 7000.00,
-                    hm_charges: 650.00,
-                    other_charges: 350.00,
-                    total_charges: 8000.00,
-                    total: 55000.00
-                },
-                {
-                    id: 2,
-                    sale_id: 1,
-                    product_id: 102,
-                    product_name: "22K Gold Designer Earrings with Ruby",
-                    huid_code: "HUID987654321",
-                    rate_24k: 6800.00,
-                    purity: "22K",
-                    purity_rate: 6200.00,
-                    gross_weight: 12.80,
-                    less_weight: 0.80,
-                    net_weight: 12.00,
-                    metal_amount: 15000.00,
-                    stone_type: "Ruby",
-                    stone_weight: 1.50,
-                    stone_price: 3000.00,
-                    making_type: "Machine",
-                    making_rate: 150.00,
-                    making_charges: 1000.00,
-                    hm_charges: 120.00,
-                    other_charges: 40.00,
-                    total_charges: 1160.00,
-                    total: 19160.00
-                }
-            ]
-        };
-
-        // Utility function for currency formatting
-        function formatCurrency(amount) {
-            return new Intl.NumberFormat('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(amount || 0);
-        }
-
-        // Format date for display
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric'
-            });
-        }
-
-        // Main function to populate invoice data
-        function populateInvoiceData(data) {
-            try {
-                // Update header information
-                document.getElementById('invoice-title').textContent = 
-                    data.sale.is_gst_applicable ? 'TAX INVOICE' : 'PROFORMA INVOICE';
-                document.getElementById('invoice-no').textContent = data.sale.invoice_no;
-                document.getElementById('sale-date').textContent = formatDate(data.sale.sale_date);
-
-                // Populate firm details
-                document.getElementById('firm-name').textContent = data.firm.name;
-                document.getElementById('firm-address').textContent = data.firm.address;
-                document.getElementById('firm-phone').textContent = `📞 ${data.firm.phone}`;
-                document.getElementById('firm-gst').textContent = `🏢 GST: ${data.firm.gst_number}`;
-
-                // Populate customer details
-                document.getElementById('customer-name').textContent = data.customer.name;
-                document.getElementById('customer-address').textContent = data.customer.address;
-                document.getElementById('customer-phone').textContent = `📞 ${data.customer.phone}`;
-                document.getElementById('customer-gst').textContent = `🏢 GST: ${data.customer.gst_number}`;
-
-                // Populate items table
-                populateItemsTable(data.items);
-
-                // Update payment information
-                document.getElementById('payment-method').textContent = data.sale.payment_method;
-                document.getElementById('payment-status').textContent = data.sale.payment_status;
-                document.getElementById('transaction-type').textContent = data.sale.transaction_type;
-                document.getElementById('notes').textContent = data.sale.notes;
-
-                // Update payment status styling
-                const statusElement = document.getElementById('payment-status');
-                statusElement.className = `px-2 py-1 rounded text-xs font-medium ${
-                    data.sale.payment_status === 'Paid' ? 'bg-green-100 text-green-800' : 
-                    data.sale.payment_status === 'Partial' ? 'bg-yellow-100 text-yellow-800' : 
-                    'bg-red-100 text-red-800'
-                }`;
-
-                // Update amounts
-                document.getElementById('total-metal-amount').textContent = formatCurrency(data.sale.total_metal_amount);
-                document.getElementById('total-stone-amount').textContent = formatCurrency(data.sale.total_stone_amount);
-                document.getElementById('total-making-charges').textContent = formatCurrency(data.sale.total_making_charges);
-                document.getElementById('total-other-charges').textContent = formatCurrency(data.sale.total_other_charges);
-                document.getElementById('subtotal').textContent = formatCurrency(data.sale.subtotal);
-                document.getElementById('discount').textContent = `-${formatCurrency(data.sale.discount)}`;
-                document.getElementById('gst-amount').textContent = formatCurrency(data.sale.gst_amount);
-                document.getElementById('grand-total').textContent = formatCurrency(data.sale.grand_total);
-                document.getElementById('total-paid-amount').textContent = formatCurrency(data.sale.total_paid_amount);
-                document.getElementById('due-amount').textContent = formatCurrency(data.sale.due_amount);
-
-                // Conditional display of rows
-                document.getElementById('gst-row').style.display = data.sale.is_gst_applicable ? 'flex' : 'none';
-                document.getElementById('discount-row').style.display = data.sale.discount > 0 ? 'flex' : 'none';
-                document.getElementById('due-row').style.display = data.sale.due_amount > 0 ? 'flex' : 'none';
-
-                // Update status
-                document.getElementById('invoice-status').textContent = 'Invoice Loaded Successfully';
-
-            } catch (error) {
-                console.error('Error populating invoice data:', error);
-                document.getElementById('invoice-status').textContent = 'Error Loading Data';
-            }
-        }
-
-        // Function to populate items table
-        function populateItemsTable(items) {
-            const tbody = document.getElementById('items-table-body');
-            tbody.innerHTML = '';
-
-            items.forEach((item, index) => {
-                const row = document.createElement('tr');
-                row.className = `border-b border-gray-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`;
-                
-                // Stone details formatting
-                const stoneDetails = item.stone_type && item.stone_weight ? 
-                    `${item.stone_type}<br><span class="text-xs text-gray-500">${item.stone_weight}g @ ${formatCurrency(item.stone_price)}</span>` : 
-                    '<span class="text-gray-400 text-xs">N/A</span>';
-                
-                // Making details formatting
-                const makingDetails = `${item.making_type}<br><span class="text-xs text-gray-500">${formatCurrency(item.making_charges)}</span>`;
-                
-                row.innerHTML = `
-                    <td class="px-3 py-3 text-center font-medium border-r border-gray-200">${index + 1}</td>
-                    <td class="px-3 py-3 border-r border-gray-200">
-                        <div class="font-medium text-gray-900">${item.product_name}</div>
-                        <div class="text-xs text-gray-500 mt-1">Product ID: ${item.product_id}</div>
-                    </td>
-                    <td class="px-3 py-3 text-center text-xs font-mono border-r border-gray-200">${item.huid_code}</td>
-                    <td class="px-3 py-3 text-center font-medium border-r border-gray-200">${item.purity}</td>
-                    <td class="px-3 py-3 text-center border-r border-gray-200">${item.gross_weight}g</td>
-                    <td class="px-3 py-3 text-center font-semibold border-r border-gray-200">${item.net_weight}g</td>
-                    <td class="px-3 py-3 text-center border-r border-gray-200">${formatCurrency(item.rate_24k)}</td>
-                    <td class="px-3 py-3 text-center text-xs border-r border-gray-200">${stoneDetails}</td>
-                    <td class="px-3 py-3 text-center text-xs border-r border-gray-200">${makingDetails}</td>
-                    <td class="px-3 py-3 text-right font-bold text-indigo-600">${formatCurrency(item.total)}</td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        // Function to load sample data
-        function loadSampleData() {
-            populateInvoiceData(sampleInvoiceData);
-        }
-
-        // Public function to load real database data
-        function loadInvoiceData(saleData, firmData, customerData, itemsData) {
-            const invoiceData = {
-                sale: saleData,
-                firm: firmData,
-                customer: customerData,
-                items: itemsData
-            };
-            populateInvoiceData(invoiceData);
-        }
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadSampleData();
+        // Print optimization
+        window.addEventListener('beforeprint', function() {
+            document.body.style.fontSize = '9px';
         });
-
-        // Export function for external use
-        window.loadInvoiceData = loadInvoiceData;
-
-        function generatePDF() {
-            const invoiceNo = document.getElementById('invoice-no').textContent;
-            // Extract just the number part from the invoice number
-            const invoiceId = invoiceNo.replace(/[^0-9]/g, '');
-            console.log('Generating PDF for invoice ID:', invoiceId);
-            window.open(`generate_pdf_invoice.php?invoice_id=${invoiceId}`, '_blank');
-        }
+        
+        window.addEventListener('afterprint', function() {
+            document.body.style.fontSize = '11px';
+        });
+        
+        // Auto-focus print dialog on Ctrl+P
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'p') {
+                e.preventDefault();
+                window.print();
+            }
+        });
     </script>
 </body>
 </html>

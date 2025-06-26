@@ -74,32 +74,46 @@ function generateProductId($conn, $jewelryType) {
 }
 
 // Function to update inventory
-function updateInventory($conn, $materialType, $purity, $weight, $firm_id, $reference_type = null, $reference_id = null) {
+function updateInventory($conn, $inventoryId, $materialType, $purity, $weight, $firm_id, $reference_type = null, $reference_id = null) {
   try {
-      // Check if there's enough inventory
-      $sql = "SELECT inventory_id, remaining_stock, stock_name FROM inventory_metals 
-              WHERE material_type = ? AND purity = ? AND remaining_stock >= ?";
+      debug_log("Attempting to update inventory.", [
+          'inventoryId' => $inventoryId,
+          'materialType' => $materialType,
+          'purity' => $purity,
+          'weight' => $weight,
+          'firm_id' => $firm_id
+      ]);
+
+      // Check if there's enough inventory for the specific inventory ID
+      $sql = "SELECT remaining_stock, stock_name FROM inventory_metals 
+              WHERE inventory_id = ? AND firm_id = ? AND remaining_stock >= ?";
       $stmt = $conn->prepare($sql);
-      $stmt->bind_param("ssd", $materialType, $purity, $weight);
+      $stmt->bind_param("iid", $inventoryId, $firm_id, $weight);
       $stmt->execute();
       $result = $stmt->get_result();
       
       if ($result->num_rows > 0) {
           $row = $result->fetch_assoc();
-          $inventoryId = $row['inventory_id'];
           $currentStock = $row['remaining_stock'];
           $stockName = $row['stock_name'];
           $newStock = $currentStock - $weight;
           
-          // Update the inventory
+          debug_log("Inventory check passed.", [
+              'currentStock' => $currentStock,
+              'deducting' => $weight,
+              'newStock' => $newStock
+          ]);
+          
+          // Update the specific inventory item
           $updateSql = "UPDATE inventory_metals SET remaining_stock = ?, last_updated = NOW() 
                         WHERE inventory_id = ?";
           $updateStmt = $conn->prepare($updateSql);
           $updateStmt->bind_param("di", $newStock, $inventoryId);
           $success = $updateStmt->execute();
-          $updateStmt->close();
           
           if ($success) {
+              debug_log("Inventory table updated successfully.");
+              
               // Add stock log entry
               $logSql = "INSERT INTO jewellery_stock_log (
                   firm_id, inventory_id, material_type, stock_name, purity,
@@ -109,7 +123,7 @@ function updateInventory($conn, $materialType, $purity, $weight, $firm_id, $refe
               
               $logStmt = $conn->prepare($logSql);
               $userId = $_SESSION['id'] ?? 0;
-              $notes = "Stock adjusted for " . ($reference_type ?? 'jewelry item');
+              $notes = "Stock adjusted for " . ($reference_type ?? 'jewelry item') . " (ID: " . ($reference_id ?? 'N/A') . ")";
               
               $logStmt->bind_param(
                   "iissddddssis",
@@ -127,14 +141,19 @@ function updateInventory($conn, $materialType, $purity, $weight, $firm_id, $refe
                   $notes
               );
               
-              if (!$logStmt->execute()) {
+              if ($logStmt->execute()) {
+                  debug_log("Stock log created successfully.");
+                  return true;
+              } else {
                   throw new Exception("Failed to create stock log entry: " . $logStmt->error);
               }
-              
-              return true;
+          } else {
+              throw new Exception("Failed to execute inventory update statement: " . $updateStmt->error);
           }
+      } else {
+          debug_log("Inventory check failed. Not enough stock or item not found.");
+          return false; // Not enough inventory or item not found
       }
-      return false; // Not enough inventory or update failed
   } catch (Exception $e) {
       debug_log("Error in updateInventory", $e->getMessage());
       return false;
@@ -408,8 +427,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
               // Set supplier_id or karigar_id based on source type
               $supplierId = null;
               $karigarId = 0; // Set default value to 0
+              $purchaseIdForSource = null;
+              $manufacturingOrderIdForSource = null;
               
               if ($sourceType === 'Purchase') {
+                  $purchaseIdForSource = $sourceId;
                   // For Purchase, get supplier_id from metal_purchases
                   $supplierSql = "SELECT source_id FROM metal_purchases WHERE purchase_id = ?";
                   $supplierStmt = $conn->prepare($supplierSql);
@@ -421,6 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   }
                   $karigarId = 0;
               } elseif ($sourceType === 'Manufacturing Order') {
+                  $manufacturingOrderIdForSource = $sourceId;
                   // For Manufacturing Order, get karigar_id from manufacturing_orders
                   $karigarSql = "SELECT karigar_id FROM manufacturing_orders WHERE id = ?";
                   $karigarStmt = $conn->prepare($karigarSql);
@@ -443,20 +466,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   purity, Tray_no, huid_code, gross_weight, less_weight, net_weight, 
                   stone_type, stone_weight, stone_unit, stone_color, stone_clarity, stone_quality, stone_price,
                   making_charge, making_charge_type, description, status, 
-                  quantity, supplier_id, karigar_id, created_at
+                  quantity, supplier_id, karigar_id, created_at, source_type, source_id
               ) VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?
               )";
               
               $stmt = $conn->prepare($sql);
               
               $stmt->bind_param(
-                  "issssssddddssssssdssssiis",
+                  "issssssddddssssssdssssiissi",
                   $firm_id, $product_id, $jewelryType, $productName, $materialType,
                   $purity, $trayNo, $huidCode, $grossWeight, $lessWeight, $netWeight,
                   $stoneType, $stoneWeight, $stoneUnit, $stoneColor, $stoneClarity, $stoneQuality, $stonePrice,
                   $makingCharge, $makingChargeType, $description, $status,
-                  $quantity, $supplierId, $karigarId
+                  $quantity, $supplierId, $karigarId, $sourceType, $purchaseIdForSource
               );
               
               $stmt->execute();
@@ -475,9 +498,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                       $remainingStock = $checkStockResult->fetch_assoc()['remaining_stock'];
                       
                       if ($remainingStock >= $netWeight) {
+                          $debug_data = [
+                              'inventoryId' => $inventoryId,
+                              'materialType' => $materialType,
+                              'purity' => $purity,
+                              'netWeight' => $netWeight,
+                              'firm_id' => $firm_id,
+                              'jewelryItemId' => $jewelryItemId
+                          ];
+                          $response['debug'][] = "Calling updateInventory with: " . json_encode($debug_data);
+
                           // Update inventory with reference information
                           $success = updateInventory(
                               $conn,
+                              $inventoryId,
                               $materialType,
                               $purity,
                               $netWeight,
@@ -559,6 +593,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
               // Rollback transaction on error
               $conn->rollback();
               $response['message'] = "Error: " . $e->getMessage();
+              $response['debug'][] = "Error in add_item: " . $e->getMessage();
               debug_log("Error in add_item", $e->getMessage());
           }
           
@@ -1343,17 +1378,33 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
               </div>
             </div>
             
-            <!-- Source Info Display (read-only) - Compact View -->
+            <!-- Source Info Display (read-only) - Collapsible -->
             <div id="sourceInfoDisplay" class="bg-gradient-to-br from-white via-blue-50 to-blue-100 p-2 rounded-xl border-2 border-dashed border-blue-300 shadow-sm mt-2 hidden">
-              <div class="text-sm font-semibold text-blue-700 mb-1 flex items-center gap-2">
-                <i class="fas fa-info-circle text-blue-500"></i>
-                <span>Source Info</span>
+              <div class="flex justify-between items-center mb-1">
+                <div class="text-sm font-semibold text-blue-700 flex items-center gap-2">
+                  <i class="fas fa-info-circle text-blue-500"></i>
+                  <span>Source Info</span>
+                </div>
+                <button id="minimizeSourceInfoBtn" type="button" class="text-blue-500 hover:text-blue-700 focus:outline-none" title="Minimize Source Info">
+                  <i class="fas fa-chevron-up"></i>
+                </button>
               </div>
               <div class="grid grid-cols-2 gap-2 text-sm text-gray-700">
                 <div><span class="text-gray-500">Name:</span> <span id="sourceNameDisplay" class="font-medium ml-1">-</span></div>
                 <div><span class="text-gray-500">Weight:</span> <span id="sourceWeightDisplay" class="font-medium ml-1">-</span></div>
                 <div><span class="text-gray-500">Purity:</span> <span id="sourcePurityDisplay" class="font-medium ml-1">-</span></div>
               </div>
+            </div>
+            <!-- Source Info Minimized Bar -->
+            <div id="sourceInfoMinimizedBar" class="bg-blue-100 border-2 border-blue-300 rounded-xl shadow-sm mt-2 px-3 py-1 flex items-center justify-between cursor-pointer hidden">
+              <div class="text-blue-800 font-semibold text-sm">
+                <i class="fas fa-balance-scale mr-1"></i>
+                <span id="sourceWeightMinimizedLabel">Weight Left:</span>
+                <span id="sourceWeightMinimizedValue">-</span>
+              </div>
+              <button id="expandSourceInfoBtn" type="button" class="text-blue-500 hover:text-blue-700 focus:outline-none ml-2" title="Expand Source Info">
+                <i class="fas fa-chevron-down"></i>
+              </button>
             </div>
             
             <!-- Hidden fields to store source data -->
@@ -1363,7 +1414,7 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
             <input type="hidden" id="sourceMaterialType" name="sourceMaterialType" value="">
             <input type="hidden" id="sourcePurity" name="sourcePurity" value="">
             <input type="hidden" id="sourceWeight" name="sourceWeight" value="">
-            <input type="hidden" id="sourceInventoryId" name="sourceInventoryId" value="">
+            <input type="hidden" id="sourceInventoryId" name="inventoryId" value="">
           </div>
           
           <!-- Form Grid Layout -->

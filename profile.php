@@ -4,7 +4,7 @@ require 'config/config.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
-    header("Location: login.php");
+    header("Location: default.php");
     exit();
 }
 
@@ -259,7 +259,7 @@ $conn->close();
                         <div id="userDropdownMenu" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none hidden" role="menu" aria-orientation="vertical" aria-labelledby="userDropdownToggle">
                             <div class="py-1" role="none">
                                 <!-- Add more profile options here if needed -->
-                                <a href="logout.php" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
+                                <a href="logout.php?redirect=default.php" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
                                     <i class="fas fa-sign-out-alt mr-2"></i> Logout
                                 </a>
                             </div>
