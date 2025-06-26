@@ -4,12 +4,10 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
 // Start session and include database config
-
 error_log("POST data: " . print_r($_POST, true));
 
 session_start();
 require 'config/config.php';
-date_default_timezone_set('Asia/Kolkata');
 
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
@@ -21,11 +19,8 @@ if (!isset($_SESSION['id'])) {
 $user_id = $_SESSION['id'];
 $firm_id = $_SESSION['firmID'];
 
-// Establish database connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-   die("Connection failed: " . $conn->connect_error);
-}
+// Database connection is now handled in config.php
+// The $conn variable is already available from config.php
 
 // Enhanced subscription status check
 $subscriptionQuery = "SELECT fs.*, sp.name as plan_name, sp.price, sp.duration_in_days, sp.features 
@@ -783,7 +778,7 @@ if (isset($_GET['action'])) {
                is_gst_applicable, notes, total_paid_amount, due_amount,
                payment_method, user_id, coupon_discount, loyalty_discount,
                manual_discount, coupon_code, advance_amount
-           ) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";        
+           ) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
            $stmt = $conn->prepare($sql);
            if (!$stmt) {
