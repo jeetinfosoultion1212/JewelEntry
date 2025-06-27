@@ -1792,287 +1792,328 @@
     }
     
     // Function to display advance payments in checkout modal
-    function displayAdvancePayments() {
-      const advanceSection = document.getElementById("customerAdvanceSection")
-      const advanceList = document.getElementById("advancePaymentsList")
-      const totalAdvanceAmountEl = document.getElementById("totalAdvanceAmount")
-    
-      selectedAdvancePayments = []
-    
-      if (
-        !advanceSection ||
-        !advanceList ||
-        !totalAdvanceAmountEl ||
-        !availableAdvancePayments ||
-        availableAdvancePayments.length === 0
-      ) {
-        if (advanceSection) advanceSection.classList.add("hidden")
-        updateSelectedAdvanceAmount()
-        return
-      }
-    
-      advanceSection.classList.remove("hidden")
-      const totalAdvance = availableAdvancePayments.reduce(
-        (sum, payment) => sum + Number.parseFloat(payment.available_amount),
-        0,
-      )
-      totalAdvanceAmountEl.textContent = formatCurrency(totalAdvance)
-      advanceList.innerHTML = ""
-    
-      availableAdvancePayments.forEach((payment) => {
-        const paymentItem = document.createElement("div")
-        paymentItem.className = "bg-white p-2 rounded-lg border border-green-100 text-xs"
-        const availableAmount = Number.parseFloat(payment.available_amount)
-        const orderDate = new Date(payment.created_at).toLocaleDateString()
-        paymentItem.innerHTML = `
-                <div class="flex justify-between items-center">
-                    <div>
-                        <div class="font-medium">${payment.order_no} - ${payment.item_name}</div>
-                        <div class="text-gray-500 text-[10px]">Date: ${orderDate}</div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-green-600 font-medium">${formatCurrency(availableAmount)}</span>
-                        <input type="checkbox" 
-                            data-order-id="${payment.id}" 
-                            data-amount="${availableAmount}" 
-                            class="advance-payment-checkbox h-4 w-4 text-green-600 rounded border-green-300"
-                            onchange="toggleAdvancePayment(this)">
-                    </div>
-                </div>`
-        advanceList.appendChild(paymentItem)
-      })
-      updateSelectedAdvanceAmount()
+  // Function to display advance payments in checkout modal
+function displayAdvancePayments() {
+  const advanceSection = document.getElementById("customerAdvanceSection")
+  const advanceList = document.getElementById("advancePaymentsList")
+  const totalAdvanceAmountEl = document.getElementById("totalAdvanceAmount")
+
+  selectedAdvancePayments = []
+
+  if (
+    !advanceSection ||
+    !advanceList ||
+    !totalAdvanceAmountEl ||
+    !availableAdvancePayments ||
+    availableAdvancePayments.length === 0
+  ) {
+    if (advanceSection) advanceSection.classList.add("hidden")
+    updateSelectedAdvanceAmount()
+    return
+  }
+
+  advanceSection.classList.remove("hidden")
+  const totalAdvance = availableAdvancePayments.reduce(
+    (sum, payment) => sum + Number.parseFloat(payment.available_amount),
+    0,
+  )
+  totalAdvanceAmountEl.textContent = formatCurrency(totalAdvance)
+  advanceList.innerHTML = ""
+
+  availableAdvancePayments.forEach((payment) => {
+    const paymentItem = document.createElement("div")
+    paymentItem.className = "bg-white p-2 rounded-lg border border-green-100 text-xs"
+    const availableAmount = Number.parseFloat(payment.available_amount)
+    const orderDate = new Date(payment.created_at).toLocaleDateString()
+    paymentItem.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="font-medium">${payment.order_no} - ${payment.item_name || ''}</div>
+                    <div class="text-gray-500 text-[10px]">Date: ${orderDate}</div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-green-600 font-medium">${formatCurrency(availableAmount)}</span>
+                    <input type="checkbox" 
+                        data-order-id="${payment.id}" 
+                        data-amount="${availableAmount}" 
+                        class="advance-payment-checkbox h-4 w-4 text-green-600 rounded border-green-300"
+                        onchange="toggleAdvancePayment(this)">
+                </div>
+            </div>`
+    advanceList.appendChild(paymentItem)
+  })
+  updateSelectedAdvanceAmount()
+}
+
+function toggleAdvancePayment(checkbox) {
+  const orderId = checkbox.dataset.orderId;
+  const amount = Number.parseFloat(checkbox.dataset.amount);
+  const orderNumber = checkbox.dataset.orderNumber || "";
+  const itemName = checkbox.dataset.itemName || "";
+
+  if (checkbox.checked) {
+    if (!selectedAdvancePayments.some(p => p.id === orderId)) {
+      selectedAdvancePayments.push({
+        id: orderId,
+        amount: amount,
+        order_number: orderNumber,
+        item_name: itemName
+      });
     }
-    
-    function toggleAdvancePayment(checkbox) {
-      const orderId = checkbox.dataset.orderId
-      const amount = Number.parseFloat(checkbox.dataset.amount)
-    
-      if (checkbox.checked) {
-        selectedAdvancePayments.push({ id: orderId, amount: amount })
-      } else {
-        selectedAdvancePayments = selectedAdvancePayments.filter((payment) => payment.id !== orderId)
-      }
-    
-      updateSelectedAdvanceAmount()
-      updatePaymentMethodsWithAdvance()
+  } else {
+    selectedAdvancePayments = selectedAdvancePayments.filter(p => p.id !== orderId);
+  }
+  updatePaymentMethodsWithAdvance();
+}
+
+function updateSelectedAdvanceAmount() {
+  const selectedAmount = selectedAdvancePayments.reduce((sum, payment) => sum + payment.amount, 0)
+  const el = document.getElementById("selectedAdvanceAmount")
+  if (el) el.textContent = formatCurrency(selectedAmount)
+}
+
+// Track if the user has manually edited the main payment method
+let mainPaymentManuallyEdited = false;
+
+function updatePaymentMethodsWithAdvance() {
+  // Remove all previous advance adjustments
+  paymentMethods = paymentMethods.filter(pm => pm.type !== "advance_adjustment");
+
+  // Add all selected advances as payment methods
+  selectedAdvancePayments.forEach(advance => {
+    paymentMethods.push({
+      id: `adv-${advance.id}`,
+      type: "advance_adjustment",
+      amount: advance.amount,
+      orderId: advance.id,
+      orderNo: advance.order_number || "",
+      itemName: advance.item_name || ""
+    });
+  });
+
+  // Removed auto-add of main payment method with remaining amount
+
+  renderPaymentMethods();
+  updatePaymentSummary();
+}
+
+async function proceedToCheckout() {
+  if (cartItems.length === 0) {
+    showToast("Your cart is empty", "error")
+    return
+  }
+  if (!selectedCustomer) {
+    showToast("Please select a customer", "error")
+    return
+  }
+
+  try {
+    updateCartTotals()
+
+    const grandTotal = Math.round(cart.grandTotal) // Round to nearest integer
+
+    const lastInvoiceNo = await getLastInvoiceNumber(cart.gstEnabled)
+    currentInvoiceNo = generateNextInvoiceNumber(lastInvoiceNo, cart.gstEnabled)
+
+    try {
+      await fetchCustomerAdvancePayments(selectedCustomer.id)
+    } catch (error) {
+      console.error("Error fetching advance payments:", error)
     }
-    
-    function updateSelectedAdvanceAmount() {
-      const selectedAmount = selectedAdvancePayments.reduce((sum, payment) => sum + payment.amount, 0)
-      const el = document.getElementById("selectedAdvanceAmount")
-      if (el) el.textContent = formatCurrency(selectedAmount)
+
+    const checkoutModal = document.getElementById("checkoutModal")
+    if (!checkoutModal) return
+
+    const today = new Date().toLocaleDateString()
+
+    const checkoutTotalAmountEl = document.getElementById("checkoutTotalAmount")
+    const checkoutGstAmountEl = document.getElementById("checkoutGstAmount")
+    const checkoutDiscountEl = document.getElementById("checkoutDiscount")
+    const checkoutUrdAmountEl = document.getElementById("checkoutUrdAmount")
+    const grandTotalElement = document.getElementById("checkoutGrandTotal")
+    const invoiceDateEl = document.getElementById("invoiceDate")
+    const customerDetailsEl = document.getElementById("customerDetails")
+    const invoiceNumberEl = document.getElementById("invoiceNumber")
+
+    if (invoiceDateEl) invoiceDateEl.textContent = today
+    if (customerDetailsEl) customerDetailsEl.textContent = `${selectedCustomer.FirstName} ${selectedCustomer.LastName}`
+    if (invoiceNumberEl) invoiceNumberEl.textContent = currentInvoiceNo
+
+    if (checkoutTotalAmountEl)
+      checkoutTotalAmountEl.textContent = formatCurrency(cartItems.reduce((sum, item) => sum + item.total, 0))
+    if (checkoutGstAmountEl) checkoutGstAmountEl.textContent = formatCurrency(cart.gstAmount)
+    if (checkoutDiscountEl) checkoutDiscountEl.textContent = formatCurrency(cart.discount)
+    if (checkoutUrdAmountEl) checkoutUrdAmountEl.textContent = formatCurrency(cart.urdAmount)
+
+    if (grandTotalElement) {
+      grandTotalElement.textContent = formatCurrency(grandTotal)
+      grandTotalElement.setAttribute("data-original-total", grandTotal)
     }
-    
-    function updatePaymentMethodsWithAdvance() {
-      paymentMethods = paymentMethods.filter((payment) => payment.type !== "advance_adjustment")
-    
-      selectedAdvancePayments.forEach((advance) => {
-        const advancePaymentDetail = availableAdvancePayments.find((p) => p.id === advance.id)
-        if (advancePaymentDetail && advance.amount > 0) {
-          paymentMethods.push({
-            id: `adv-${advance.id}-${Date.now()}`,
-            type: "advance_adjustment",
-            amount: advance.amount,
-            reference: advancePaymentDetail.order_no,
-            orderId: advance.id,
-            orderNo: advancePaymentDetail.order_no,
-            itemName: advancePaymentDetail.item_name,
-            isAdvance: true,
-          })
-        }
-      })
-      renderPaymentMethods()
+
+    // Reset advance payments display
+    displayAdvancePayments()
+
+    // --- Payment Methods Initialization ---
+    paymentMethods = []
+    currentTransactionTotal = grandTotal
+    mainPaymentManuallyEdited = false
+
+    // Always add a default Cash payment method
+    paymentMethods.push({
+      id: `main-${Date.now()}`,
+      type: "cash",
+      amount: 0,
+      reference: ""
+    });
+
+    renderPaymentMethods();
+    updatePaymentSummary();
+    if (checkoutModal) checkoutModal.style.display = "flex";
+  } catch (error) {
+    console.error("Error in checkout process:", error)
+    showToast("Error preparing checkout", "error")
+  }
+}
+
+// --- Update Payment Methods With Advance ---
+function updatePaymentMethodsWithAdvance() {
+  // Remove all previous advance adjustments
+  paymentMethods = paymentMethods.filter(pm => pm.type !== "advance_adjustment");
+
+  // Add all selected advances as payment methods
+  selectedAdvancePayments.forEach(advance => {
+    paymentMethods.push({
+      id: `adv-${advance.id}`,
+      type: "advance_adjustment",
+      amount: advance.amount,
+      orderId: advance.id,
+      orderNo: advance.order_number || "",
+      itemName: advance.item_name || ""
+    });
+  });
+
+  // Calculate remaining due
+  const totalAdvance = selectedAdvancePayments.reduce((sum, adv) => sum + adv.amount, 0);
+  let totalOtherPayments = paymentMethods.filter(pm => pm.type !== "advance_adjustment").reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0);
+  let remainingDue = Math.max(0, currentTransactionTotal - totalAdvance - totalOtherPayments);
+
+  // If user hasn't manually edited the main payment, auto-fill it
+  let mainPayment = paymentMethods.find(pm => pm.type !== "advance_adjustment");
+  if (mainPayment && !mainPaymentManuallyEdited) {
+    mainPayment.amount = remainingDue;
+  }
+
+  renderPaymentMethods();
+  updatePaymentSummary();
+}
+
+// --- Add Payment Method ---
+function addPaymentMethod(amount = null) {
+  // Calculate current due
+  const totalAdvance = paymentMethods.filter(pm => pm.type === "advance_adjustment").reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0);
+  const totalOtherPayments = paymentMethods.filter(pm => pm.type !== "advance_adjustment").reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0);
+  const remainingDue = Math.max(0, currentTransactionTotal - totalAdvance - totalOtherPayments);
+
+  const newPayment = {
+    id: `pm-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type: "cash",
+    amount: amount !== null ? amount : remainingDue,
+    reference: "",
+  };
+  paymentMethods.push(newPayment);
+  renderPaymentMethods();
+}
+
+// --- Update Payment Method ---
+function updatePaymentMethod(id, field, value, shouldRerender = false) {
+  const paymentIndex = paymentMethods.findIndex((p) => p.id === id)
+  if (paymentIndex === -1) return
+
+  if (field === "amount") {
+    // Validation: Cap the amount so total does not exceed currentTransactionTotal
+    const totalAdvance = paymentMethods.filter((p) => p.type === "advance_adjustment").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const otherPayments = paymentMethods.filter((p, idx) => p.type !== "advance_adjustment" && idx !== paymentIndex).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    let maxAllowed = Math.max(0, currentTransactionTotal - totalAdvance - otherPayments);
+    let newValue = Math.max(0, Math.min(Number(value) || 0, maxAllowed));
+    paymentMethods[paymentIndex][field] = newValue;
+    if (paymentIndex === 0) mainPaymentManuallyEdited = true;
+  } else {
+    paymentMethods[paymentIndex][field] = value
+    if (field === "type" && value === "cash") {
+      paymentMethods[paymentIndex].reference = ""
     }
-    
-    async function proceedToCheckout() {
-      if (cartItems.length === 0) {
-        showToast("Your cart is empty", "error")
-        return
-      }
-      if (!selectedCustomer) {
-        showToast("Please select a customer", "error")
-        return
-      }
-    
-      try {
-        updateCartTotals()
-    
-        const grandTotal = cart.grandTotal
-    
-        const lastInvoiceNo = await getLastInvoiceNumber(cart.gstEnabled)
-        currentInvoiceNo = generateNextInvoiceNumber(lastInvoiceNo, cart.gstEnabled)
-    
-        try {
-          await fetchCustomerAdvancePayments(selectedCustomer.id)
-        } catch (error) {
-          console.error("Error fetching advance payments:", error)
-        }
-    
-        const checkoutModal = document.getElementById("checkoutModal")
-        if (!checkoutModal) return
-    
-        const today = new Date().toLocaleDateString()
-    
-        const checkoutTotalAmountEl = document.getElementById("checkoutTotalAmount")
-        const checkoutGstAmountEl = document.getElementById("checkoutGstAmount")
-        const checkoutDiscountEl = document.getElementById("checkoutDiscount")
-        const checkoutUrdAmountEl = document.getElementById("checkoutUrdAmount")
-        const grandTotalElement = document.getElementById("checkoutGrandTotal")
-        const invoiceDateEl = document.getElementById("invoiceDate")
-        const customerDetailsEl = document.getElementById("customerDetails")
-        const invoiceNumberEl = document.getElementById("invoiceNumber")
-    
-        if (invoiceDateEl) invoiceDateEl.textContent = today
-        if (customerDetailsEl) customerDetailsEl.textContent = `${selectedCustomer.FirstName} ${selectedCustomer.LastName}`
-        if (invoiceNumberEl) invoiceNumberEl.textContent = currentInvoiceNo
-    
-        if (checkoutTotalAmountEl)
-          checkoutTotalAmountEl.textContent = formatCurrency(cartItems.reduce((sum, item) => sum + item.total, 0))
-        if (checkoutGstAmountEl) checkoutGstAmountEl.textContent = formatCurrency(cart.gstAmount)
-        if (checkoutDiscountEl) checkoutDiscountEl.textContent = formatCurrency(cart.discount)
-        if (checkoutUrdAmountEl) checkoutUrdAmountEl.textContent = formatCurrency(cart.urdAmount)
-    
-        if (grandTotalElement) {
-          grandTotalElement.textContent = formatCurrency(grandTotal)
-          grandTotalElement.setAttribute("data-original-total", grandTotal)
-        }
-    
-        displayAdvancePayments()
-    
-        paymentMethods = paymentMethods.filter((pm) => pm.type === "advance_adjustment")
-        if (paymentMethods.filter((pm) => pm.type !== "advance_adjustment" && pm.amount > 0).length === 0) {
-          const remainingAfterAdvance = grandTotal - paymentMethods.reduce((sum, pm) => sum + (pm.amount || 0), 0)
-          if (remainingAfterAdvance > 0) {
-            addPaymentMethod(Math.max(0, remainingAfterAdvance))
-          } else if (paymentMethods.length === 0) {
-            addPaymentMethod(0)
-          }
-        }
-    
-        checkoutModal.style.display = "flex"
-        currentTransactionTotal = grandTotal
-        updatePaymentSummary()
-      } catch (error) {
-        console.error("Error in checkout process:", error)
-        showToast("Error preparing checkout", "error")
-      }
+  }
+  if (shouldRerender) {
+    renderPaymentMethods()
+  }
+  updatePaymentSummary();
+}
+
+// --- Remove Payment Method ---
+function removePaymentMethod(idToRemove) {
+  const paymentToRemove = paymentMethods.find((p) => p.id === idToRemove)
+  paymentMethods = paymentMethods.filter((p) => p.id !== idToRemove)
+
+  if (paymentToRemove && paymentToRemove.type === "advance_adjustment") {
+    const advanceCheckbox = document.querySelector(
+      `.advance-payment-checkbox[data-order-id='${paymentToRemove.orderId}']`,
+    )
+    if (advanceCheckbox) {
+      advanceCheckbox.checked = false
     }
-    
-    function renderPaymentMethods() {
-      const container = document.getElementById("paymentMethodsContainer")
-      if (!container) return
-      container.innerHTML = ""
-    
-      paymentMethods.forEach((payment) => {
-        const methodDiv = document.createElement("div")
-    
-        if (payment.type === "advance_adjustment") {
-          methodDiv.className = "bg-green-50 p-2 rounded-lg border border-green-200 relative mb-2"
-          methodDiv.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="text-xs font-medium text-green-700">Advance Payment</div>
-                            <div class="text-[10px] text-gray-600 mt-0.5">${payment.orderNo || "Order"} - ${payment.itemName || "Item"}</div>
-                        </div>
-                        <div class="text-xs font-bold text-green-700">${formatCurrency(payment.amount)}</div>
-                    </div>
-                    <button onclick="removePaymentMethod('${payment.id}')" 
-                            class="absolute top-1 right-1 text-red-400 hover:text-red-600 p-1 rounded-full text-xs leading-none"
-                            aria-label="Remove advance payment">
-                        <i class="fas fa-times-circle"></i>
-                    </button>`
-        } else {
-          methodDiv.className = "bg-gray-50 p-2 rounded-lg border border-gray-200 relative mb-2"
-          const removeButtonHTML =
-            paymentMethods.filter((pm) => pm.type !== "advance_adjustment").length > 1 ||
-            paymentMethods.find((pm) => pm.type === "advance_adjustment")
-              ? `<button onclick="removePaymentMethod('${payment.id}')" 
-                               class="absolute top-1 right-1 text-red-400 hover:text-red-600 p-1 rounded-full text-xs leading-none"
-                               aria-label="Remove payment method">
-                           <i class="fas fa-times-circle"></i>
-                       </button>`
-              : ""
-    
-          methodDiv.innerHTML = `
-                    ${removeButtonHTML}
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="text-xs font-medium text-gray-600 mb-1 block">Payment Method</label>
-                            <select onchange="updatePaymentMethod('${payment.id}', 'type', this.value)" 
-                                    class="w-full h-8 pl-2 pr-8 rounded-md border border-gray-200 text-xs">
-                                <option value="cash" ${payment.type === "cash" ? "selected" : ""}>Cash</option>
-                                <option value="card" ${payment.type === "card" ? "selected" : ""}>Card</option>
-                                <option value="upi" ${payment.type === "upi" ? "selected" : ""}>UPI</option>
-                                <option value="bank_transfer" ${payment.type === "bank_transfer" ? "selected" : ""}>Bank Transfer</option>
-                                <option value="cheque" ${payment.type === "cheque" ? "selected" : ""}>Cheque</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-600 mb-1 block">Amount</label>
-                            <input type="number" value="${payment.amount || 0}" 
-                                   onchange="updatePaymentMethod('${payment.id}', 'amount', this.value)" 
-                                   class="w-full h-8 pl-2 pr-2 rounded-md border border-gray-200 text-xs" placeholder="Enter amount" />
-                        </div>
-                    </div>
-                    <div class="mt-2 ${payment.type === "cash" || payment.type === "advance_adjustment" ? "hidden" : ""}">
-                        <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Number</label>
-                        <input type="text" value="${payment.reference || ""}" 
-                               onchange="updatePaymentMethod('${payment.id}', 'reference', this.value)" 
-                               class="w-full h-8 pl-2 pr-2 rounded-md border border-gray-200 text-xs" placeholder="Enter reference number" />
-                    </div>`
-        }
-        container.appendChild(methodDiv)
-      })
-      updatePaymentSummary()
+    selectedAdvancePayments = selectedAdvancePayments.filter((adv) => adv.id !== paymentToRemove.orderId)
+    updateSelectedAdvanceAmount()
+  }
+
+  // After removal, auto-fill remaining due in the first available method if not manually edited
+  const totalAdvance = paymentMethods.filter(pm => pm.type === "advance_adjustment").reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0);
+  let totalOtherPayments = paymentMethods.filter(pm => pm.type !== "advance_adjustment").reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0);
+  let remainingDue = Math.max(0, currentTransactionTotal - totalAdvance - totalOtherPayments);
+  let mainPayment = paymentMethods.find(pm => pm.type !== "advance_adjustment");
+  if (mainPayment && !mainPaymentManuallyEdited) {
+    mainPayment.amount = remainingDue;
+  }
+
+  renderPaymentMethods()
+  updatePaymentSummary() // Ensure summary is updated after removing a payment method
+}
+
+// --- Update Payment Summary ---
+function updatePaymentSummary() {
+  const totalPaidElement = document.getElementById("totalPaidAmount");
+  const remainingElement = document.getElementById("remainingAmount");
+
+  // Always sum all payment methods (including advances)
+  const totalPaid = paymentMethods.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const dueAmount = Math.max(0, currentTransactionTotal - totalPaid);
+
+  if (totalPaidElement) totalPaidElement.textContent = formatCurrency(totalPaid);
+  if (remainingElement) remainingElement.textContent = formatCurrency(dueAmount);
+
+  // UI feedback for due
+  const dueMsg = document.getElementById("dueAmountMsg");
+  if (dueMsg) {
+    if (dueAmount > 0) {
+      dueMsg.textContent = "Will be added to customer dues";
+      dueMsg.classList.remove("hidden");
+    } else {
+      dueMsg.textContent = "";
+      dueMsg.classList.add("hidden");
     }
-    
-    function updatePaymentSummary() {
-      const totalPaidElement = document.getElementById("totalPaidAmount")
-      const remainingElement = document.getElementById("remainingAmount")
-      const paymentBreakdownElement = document.getElementById("paymentBreakdown")
-      const dueWarningIcon = document.getElementById("dueWarningIcon")
-      const completeBtn = document.getElementById("completeSaleBtn")
-      const noteElement = document.getElementById("paymentSummaryNote")
-    
-      if (
-        !totalPaidElement ||
-        !remainingElement ||
-        !paymentBreakdownElement ||
-        !dueWarningIcon ||
-        !completeBtn ||
-        !noteElement
-      )
-        return
-    
-      const totalPaid = paymentMethods.reduce((sum, payment) => sum + Number.parseFloat(payment.amount || 0), 0)
-      const remaining = Math.max(0, currentTransactionTotal - totalPaid)
-    
-      const paymentBreakdownText = paymentMethods
-        .filter((payment) => Number.parseFloat(payment.amount || 0) > 0)
-        .map((payment) => {
-          const typeDisplay =
-            payment.type === "advance_adjustment"
-              ? "Advance Adj."
-              : payment.type.charAt(0).toUpperCase() + payment.type.slice(1)
-          return `${typeDisplay}: ${formatCurrency(payment.amount)}`
-        })
-        .join(", ")
-    
-      totalPaidElement.textContent = formatCurrency(totalPaid)
-      remainingElement.textContent = formatCurrency(remaining)
-      paymentBreakdownElement.textContent = paymentBreakdownText || "No payments yet"
-      dueWarningIcon.style.display = remaining > 0.009 ? "inline" : "none"
-    
-      if (remaining > 0.009) {
-        noteElement.textContent = `Note: ${formatCurrency(remaining)} will be added to customer's due amount.`
-        noteElement.className = "text-xs text-red-500 mt-1"
-      } else {
-        noteElement.textContent = "All paid. No dues from this transaction."
-        noteElement.className = "text-xs text-green-500 mt-1"
-      }
-      completeBtn.disabled = false
-    }
+  }
+
+  // Validation: Prevent overpayment
+  if (totalPaid > currentTransactionTotal) {
+    showToast("Total paid cannot exceed the bill amount!", "error");
+  }
+}
+
+// --- Fix Total Selected for Advances ---
+function updateSelectedAdvanceAmount() {
+  const selectedAmount = selectedAdvancePayments.reduce((sum, payment) => sum + payment.amount, 0)
+  const el = document.getElementById("selectedAdvanceAmount")
+  if (el) el.textContent = formatCurrency(selectedAmount)
+}
     
     // Function to edit a cart item
     function editCartItem(index) {
@@ -2353,15 +2394,32 @@
     }
     
     // Function to update a payment method
-    function updatePaymentMethod(id, field, value) {
+    function updatePaymentMethod(id, field, value, shouldRerender = false) {
       const paymentIndex = paymentMethods.findIndex((p) => p.id === id)
       if (paymentIndex === -1) return
     
-      paymentMethods[paymentIndex][field] = field === "amount" ? Number.parseFloat(value) || 0 : value
-      if (field === "type" && value === "cash") {
-        paymentMethods[paymentIndex].reference = ""
+      if (field === "amount") {
+        const totalAdvance = paymentMethods.filter((p) => p.type === "advance_adjustment").reduce((sum, p) => sum + (p.amount || 0), 0);
+        const maxAllowed = Math.max(0, currentTransactionTotal - totalAdvance);
+        paymentMethods[paymentIndex][field] = Math.max(0, Math.min(Number.parseFloat(value) || 0, maxAllowed));
+        mainPaymentManuallyEdited = true;
+        console.log('[DEBUG] updatePaymentMethod (manual edit):', {
+          id,
+          value,
+          currentTransactionTotal,
+          totalAdvance,
+          maxAllowed,
+          paymentMethods: JSON.parse(JSON.stringify(paymentMethods)),
+        });
+      } else {
+        paymentMethods[paymentIndex][field] = value
+        if (field === "type" && value === "cash") {
+          paymentMethods[paymentIndex].reference = ""
+        }
       }
-      renderPaymentMethods()
+      if (shouldRerender) {
+        renderPaymentMethods()
+      }
     }
     
     // Function to remove a payment method
@@ -2396,6 +2454,7 @@
       }
     
       renderPaymentMethods()
+      updatePaymentSummary() // Ensure summary is updated after removing a payment method
     }
     // NEW: Enhanced processSale function with success modal instead of immediate redirect
     function processSale() {
@@ -2892,4 +2951,80 @@
     
     if (typeof cart === "undefined") {
       console.warn("cart is not defined. Ensure the cart object is properly initialized.")
+    }
+
+    function renderPaymentMethods() {
+      const container = document.getElementById("paymentMethodsContainer");
+      if (!container) return;
+      container.innerHTML = "";
+
+      paymentMethods.forEach((payment, idx) => {
+        const methodDiv = document.createElement("div");
+        if (payment.type === "advance_adjustment") {
+          methodDiv.className = "bg-green-50 p-2 rounded-lg border border-green-200 relative mb-2";
+          methodDiv.innerHTML = `
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="text-xs font-medium text-green-700">Advance Payment</div>
+                <div class="text-[10px] text-gray-600 mt-0.5">${payment.orderNo || "Order"} - ${payment.itemName || "Item"}</div>
+              </div>
+              <div class="text-xs font-bold text-green-700">${formatCurrency(payment.amount)}</div>
+            </div>
+            <button onclick="removePaymentMethod('${payment.id}')" 
+                    class="absolute top-1 right-1 text-red-400 hover:text-red-600 p-1 rounded-full text-xs leading-none"
+                    aria-label="Remove advance payment">
+                <i class="fas fa-times-circle"></i>
+            </button>`;
+        } else {
+          methodDiv.className = "bg-gray-50 p-2 rounded-lg border border-gray-200 relative mb-2";
+          const removeButtonHTML =
+            paymentMethods.filter((pm) => pm.type !== "advance_adjustment").length > 1 ||
+            paymentMethods.find((pm) => pm.type === "advance_adjustment")
+              ? `<button onclick="removePaymentMethod('${payment.id}')" 
+                           class="absolute top-1 right-1 text-red-400 hover:text-red-600 p-1 rounded-full text-xs leading-none"
+                           aria-label="Remove payment method">
+                       <i class="fas fa-times-circle"></i>
+                   </button>`
+              : "";
+
+          methodDiv.innerHTML = `
+            ${removeButtonHTML}
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Payment Method</label>
+                <select onchange="updatePaymentMethod('${payment.id}', 'type', this.value)" 
+                        class="w-full h-8 pl-2 pr-8 rounded-md border border-gray-200 text-xs">
+                  <option value="cash" ${payment.type === "cash" ? "selected" : ""}>Cash</option>
+                  <option value="card" ${payment.type === "card" ? "selected" : ""}>Card</option>
+                  <option value="upi" ${payment.type === "upi" ? "selected" : ""}>UPI</option>
+                  <option value="bank_transfer" ${payment.type === "bank_transfer" ? "selected" : ""}>Bank Transfer</option>
+                  <option value="cheque" ${payment.type === "cheque" ? "selected" : ""}>Cheque</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Amount</label>
+                <input type="number" 
+                       value="${payment.amount || 0}" 
+                       step="0.01"
+                       onchange="updatePaymentMethod('${payment.id}', 'amount', this.value, true);updatePaymentSummary();" 
+                       oninput="updatePaymentMethod('${payment.id}', 'amount', this.value, false);updatePaymentSummary();"
+                       class="w-full h-8 pl-2 pr-2 rounded-md border border-gray-200 text-xs" 
+                       placeholder="Enter amount" />
+              </div>
+            </div>
+            <div class="mt-2 ${payment.type === "cash" || payment.type === "advance_adjustment" ? "hidden" : ""}">
+              <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Number</label>
+              <input type="text" 
+                     value="${payment.reference || ""}" 
+                     onchange="updatePaymentMethod('${payment.id}', 'reference', this.value)" 
+                     class="w-full h-8 pl-2 pr-2 rounded-md border border-gray-200 text-xs" 
+                     placeholder="Enter reference number" />
+            </div>`;
+        }
+        container.appendChild(methodDiv);
+      });
+
+      setTimeout(() => {
+        updatePaymentSummary();
+      }, 5);
     }

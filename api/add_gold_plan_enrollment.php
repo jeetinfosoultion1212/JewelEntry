@@ -45,20 +45,29 @@ try {
     $planQ->close();
     $duration = (int)$duration;
 
-    // Calculate installment due dates
+    // Calculate installment due dates (robust logic)
     $dates = [];
     $date = new DateTime($enrollment_date);
+    $normalized_frequency = strtolower(trim($frequency));
     for ($i = 0; $i < $duration; $i++) {
+        if ($i > 0) {
+            if ($normalized_frequency == 'monthly') {
+                $date->modify('+1 month');
+            } elseif ($normalized_frequency == 'weekly') {
+                $date->modify('+1 week');
+            } elseif ($normalized_frequency == 'quarterly') {
+                $date->modify('+3 months');
+            }
+        }
         $dates[] = $date->format('Y-m-d');
-        if ($frequency == 'Monthly') $date->modify('+1 month');
-        elseif ($frequency == 'Weekly') $date->modify('+1 week');
-        elseif ($frequency == 'Quarterly') $date->modify('+3 months');
     }
 
-    // Insert installments (default: unpaid, 0 amount/gold)
-    $stmt2 = $conn->prepare("INSERT INTO gold_plan_installments (customer_plan_id, payment_date, amount_paid, gold_credited_g, receipt_number, payment_method, notes, created_by, created_at) VALUES (?, ?, 0, 0, '', '', '', ?, NOW())");
+    // Insert installments (default: unpaid, 0 amount/gold, payment_status Due, payment_date NULL, due_date set)
+    $stmt2 = $conn->prepare("INSERT INTO gold_plan_installments (
+        customer_plan_id, payment_date, amount_paid, payment_status, due_date, gold_credited_g, receipt_number, payment_method, notes, created_by, created_at
+    ) VALUES (?, NULL, 0, 'Due', ?, 0, '', '', '', ?, NOW())");
     foreach ($dates as $due_date) {
-        $stmt2->bind_param("isi", $customer_plan_id, $due_date, $created_by);
+        $stmt2->bind_param("iss", $customer_plan_id, $due_date, $created_by);
         $stmt2->execute();
     }
     $stmt2->close();

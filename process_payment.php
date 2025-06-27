@@ -565,52 +565,151 @@ try {
             ];
         }
     } else if ($payment_type_form === 'Loan EMI') {
-        logDebug("Processing Loan EMI payment", [
+        logDebug("Processing Loan EMI payment (FIFO allocation, loan_emi)", [
             'customer_id' => $customer_id,
             'payment_amount' => $total_payment_amount,
             'notes' => $notes
         ]);
 
-        // Handle other payment types (Loan EMI, Scheme Installment, etc.)
-        $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
-        if (!$insertPaymentStmt) {
-            throw new Exception("Payment insert preparation failed: " . $conn->error);
+        // Fetch all unpaid/partial/overdue EMIs for this customer from loan_emi (FIFO)
+        $emiQuery = "SELECT le.id, le.loan_id, le.amount, IFNULL(lp.amount_paid, 0) as amount_paid, le.status
+                     FROM loan_emi le
+                     JOIN loans l ON le.loan_id = l.id
+                     LEFT JOIN (
+                        SELECT emi_id, SUM(amount) as amount_paid
+                        FROM loan_emi_payments
+                        GROUP BY emi_id
+                     ) lp ON le.id = lp.emi_id
+                     WHERE l.customer_id = ? AND le.status IN ('PENDING', 'PARTIAL', 'OVERDUE')
+                     ORDER BY le.due_date ASC, le.id ASC FOR UPDATE";
+        $emiStmt = $conn->prepare($emiQuery);
+        if (!$emiStmt) {
+            throw new Exception("EMI fetch query preparation failed: " . $conn->error);
+        }
+        $emiStmt->bind_param("i", $customer_id);
+        $emiStmt->execute();
+        $emiResult = $emiStmt->get_result();
+        $emis = [];
+        while ($row = $emiResult->fetch_assoc()) {
+            $emis[] = $row;
+        }
+        $emiStmt->close();
+
+        $remaining = $total_payment_amount;
+        $totalAllocated = 0;
+        $processedAllocations = [];
+        $loanOutstandingUpdates = [];
+        $paymentRecordIds = [];
+
+        foreach ($emis as $emi) {
+            if ($remaining <= 0) break;
+            $emi_id = $emi['id'];
+            $loan_id = $emi['loan_id'];
+            $amount = floatval($emi['amount']);
+            $amount_paid = floatval($emi['amount_paid']);
+            $due = $amount - $amount_paid;
+            if ($due < 0.01) continue;
+            $pay = min($due, $remaining);
+            $new_amount_paid = $amount_paid + $pay;
+            $new_status = ($new_amount_paid >= $amount - 0.01) ? 'PAID' : 'PARTIAL';
+
+            // Update EMI record in loan_emi
+            $updateEmiStmt = $conn->prepare("UPDATE loan_emi SET status = ?, remaining_principal = GREATEST(remaining_principal - ?, 0) WHERE id = ?");
+            if (!$updateEmiStmt) {
+                throw new Exception("EMI update preparation failed: " . $conn->error);
+            }
+            $updateEmiStmt->bind_param("sdi", $new_status, $pay, $emi_id);
+            $updateEmiStmt->execute();
+            if ($updateEmiStmt->affected_rows === 0) {
+                throw new Exception("Failed to update EMI #$emi_id");
+            }
+            $updateEmiStmt->close();
+
+            // Insert payment record for this EMI in loan_emi_payments
+            $insertEmiPaymentQuery = "INSERT INTO loan_emi_payments (emi_id, amount, paid_at, payment_method, notes, created_by) VALUES (?, ?, NOW(), ?, ?, ?)";
+            $insertEmiPaymentStmt = $conn->prepare($insertEmiPaymentQuery);
+            if (!$insertEmiPaymentStmt) {
+                throw new Exception("EMI payment insert preparation failed: " . $conn->error);
+            }
+            $insertEmiPaymentStmt->bind_param("idssi", $emi_id, $pay, $payment_method_form, $notes, $user_id);
+            $insertEmiPaymentStmt->execute();
+            if ($insertEmiPaymentStmt->affected_rows === 0) {
+                throw new Exception("Failed to insert EMI payment record for EMI #$emi_id");
+            }
+            $insertEmiPaymentStmt->close();
+
+            // Insert payment record in jewellery_payments for traceability
+            $insertPaymentQuery = "INSERT INTO jewellery_payments (reference_id, reference_type, party_type, party_id, sale_id, payment_type, amount, payment_notes, reference_no, remarks, created_at, transctions_type, Firm_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $insertPaymentStmt = $conn->prepare($insertPaymentQuery);
+            if (!$insertPaymentStmt) {
+                throw new Exception("Payment insert preparation failed: " . $conn->error);
+            }
+            $reference_type = 'loan_emi';
+            $payment_remarks = "EMI Payment for Loan #$loan_id, EMI #$emi_id";
+            $insertPaymentStmt->bind_param("issiisdsssssi",
+                $emi_id,                // reference_id
+                $reference_type,        // reference_type
+                $party_type,            // party_type
+                $customer_id,           // party_id
+                $loan_id,               // sale_id (use as loan reference)
+                $payment_method_form,   // payment_type
+                $pay,                   // amount
+                $notes,                 // payment_notes
+                $reference_no,          // reference_no
+                $payment_remarks,       // remarks
+                $created_at,            // created_at
+                $transactions_type,     // transctions_type
+                $firm_id                // Firm_id
+            );
+            $insertPaymentStmt->execute();
+            if ($insertPaymentStmt->affected_rows === 0) {
+                throw new Exception("Failed to insert payment record for EMI #$emi_id");
+            }
+            $paymentRecordIds[] = $insertPaymentStmt->insert_id;
+            $insertPaymentStmt->close();
+
+            // Track for updating loan outstanding
+            if (!isset($loanOutstandingUpdates[$loan_id])) {
+                $loanOutstandingUpdates[$loan_id] = 0;
+            }
+            $loanOutstandingUpdates[$loan_id] += $pay;
+
+            $processedAllocations[] = [
+                'emi_id' => $emi_id,
+                'loan_id' => $loan_id,
+                'allocated_amount' => $pay,
+                'new_amount_paid' => $new_amount_paid,
+                'new_status' => $new_status
+            ];
+            $totalAllocated += $pay;
+            $remaining -= $pay;
         }
 
-        $reference_id = NULL;
-        $sale_id = 0;
-        $payment_remarks_general = "General payment - " . $payment_type_form; // New variable for general remarks
-        $transactions_type_general = $transactions_type; // New variable for general transactions_type
+        // Update loan outstanding_amount for each loan
+        foreach ($loanOutstandingUpdates as $loan_id => $paid) {
+            $updateLoanStmt = $conn->prepare("UPDATE loans SET outstanding_amount = GREATEST(outstanding_amount - ?, 0), updated_at = NOW() WHERE id = ?");
+            if (!$updateLoanStmt) {
+                throw new Exception("Loan update preparation failed: " . $conn->error);
+            }
+            $updateLoanStmt->bind_param("di", $paid, $loan_id);
+            $updateLoanStmt->execute();
+            if ($updateLoanStmt->affected_rows === 0) {
+                throw new Exception("Failed to update outstanding for Loan #$loan_id");
+            }
+            $updateLoanStmt->close();
+        }
 
-        $insertPaymentStmt->bind_param("issisdsssssii",
-            $reference_id,
-            $payment_type_form,
-            $party_type,
-            $customer_id,
-            $sale_id,
-            $payment_method_form,
-            $total_payment_amount,
-            $notes,
-            $reference_no,
-            $payment_remarks_general, // Use new remarks variable
-            $created_at,
-            $transactions_type_general, // Use new transactions_type variable
-            $firm_id
-        );
-        
-        $insertPaymentStmt->execute();
-        
-        logDebug("General payment record inserted", [
-            'affected_rows' => $insertPaymentStmt->affected_rows,
-            'insert_id' => $insertPaymentStmt->insert_id,
-            'amount' => $total_payment_amount
+        logDebug("Loan EMI FIFO allocation completed (loan_emi)", [
+            'total_allocated' => $totalAllocated,
+            'payment_amount' => $total_payment_amount,
+            'processed_count' => count($processedAllocations),
+            'payment_record_ids' => $paymentRecordIds
         ]);
-        
-        if ($insertPaymentStmt->affected_rows === 0) {
-            throw new Exception("Failed to insert payment record");
+
+        // Final validation
+        if (abs($totalAllocated - $total_payment_amount) > 0.01) {
+            throw new Exception("Total allocated amount ₹" . number_format($totalAllocated, 2) . " doesn't match payment amount ₹" . number_format($total_payment_amount, 2));
         }
-        $insertPaymentStmt->close();
     } else {
         logDebug("Processing non-Sale Due payment or no allocations");
         

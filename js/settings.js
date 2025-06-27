@@ -19,7 +19,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await response.json();
 
             if (result.success) {
-                showNotification('Settings updated successfully', 'success');
+                showNotification(result.message, 'success');
+                if (result.coupon_action === 'inserted') {
+                    alert('Welcome coupon was not found in the coupons table, so a new record has been created.');
+                }
             } else {
                 showNotification(result.message || 'Failed to update settings', 'error');
             }

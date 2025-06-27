@@ -62,16 +62,15 @@ while ($row = $enrollResult->fetch_assoc()) {
 }
 $enrollStmt->close();
 
-// Fetch Recent Installments
+// Fetch Recent Installments (PAID ONLY)
 $installments = [];
-$instQuery = "SELECT gpi.*, cgp.customer_id, cgp.plan_id, c.FirstName, c.LastName, c.PhoneNumber, gsp.plan_name,
-              cgp.enrollment_date, cgp.maturity_date
+$instQuery = "SELECT gpi.*, cgp.customer_id, cgp.plan_id, c.FirstName, c.LastName, c.PhoneNumber, gsp.plan_name, gsp.min_amount_per_installment, cgp.enrollment_date, cgp.maturity_date
               FROM gold_plan_installments gpi 
               JOIN customer_gold_plans cgp ON gpi.customer_plan_id = cgp.id 
               JOIN customer c ON cgp.customer_id = c.id 
               JOIN gold_saving_plans gsp ON cgp.plan_id = gsp.id 
-              WHERE cgp.firm_id = ? 
-              ORDER BY gpi.created_at DESC LIMIT 50";
+              WHERE cgp.firm_id = ? AND gpi.amount_paid >= gsp.min_amount_per_installment
+              ORDER BY gpi.payment_date DESC LIMIT 50";
 $instStmt = $conn->prepare($instQuery);
 $instStmt->bind_param("i", $firm_id);
 $instStmt->execute();
@@ -81,52 +80,41 @@ while ($row = $instResult->fetch_assoc()) {
 }
 $instStmt->close();
 
-// Calculate Due Installments
-$dueInstallments = [];
-$dueQuery = "SELECT cgp.*, c.FirstName, c.LastName, c.PhoneNumber, c.Email, gsp.plan_name, gsp.min_amount_per_installment,
-             gsp.installment_frequency, gsp.duration_months,
-             DATEDIFF(CURDATE(), cgp.enrollment_date) as days_since_enrollment,
-             DATEDIFF(cgp.maturity_date, CURDATE()) as days_to_maturity,
-             (SELECT MAX(payment_date) FROM gold_plan_installments gpi WHERE gpi.customer_plan_id = cgp.id) as last_payment_date,
-             (SELECT COUNT(*) FROM gold_plan_installments gpi WHERE gpi.customer_plan_id = cgp.id) as installments_paid
-             FROM customer_gold_plans cgp 
-             JOIN customer c ON cgp.customer_id = c.id 
-             JOIN gold_saving_plans gsp ON cgp.plan_id = gsp.id 
-             WHERE cgp.firm_id = ? AND cgp.current_status = 'active'
-             ORDER BY cgp.enrollment_date ASC";
+// Fetch all DUE/UNPAID installments for categorization
+$dueInstallmentsRaw = [];
+$dueQuery = "SELECT gpi.*, cgp.customer_id, cgp.plan_id, c.FirstName, c.LastName, c.PhoneNumber, gsp.plan_name, gsp.min_amount_per_installment
+             FROM gold_plan_installments gpi
+             JOIN customer_gold_plans cgp ON gpi.customer_plan_id = cgp.id
+             JOIN customer c ON cgp.customer_id = c.id
+             JOIN gold_saving_plans gsp ON cgp.plan_id = gsp.id
+             WHERE cgp.firm_id = ? AND cgp.current_status = 'active' AND (gpi.amount_paid IS NULL OR gpi.amount_paid < gsp.min_amount_per_installment)
+             ORDER BY gpi.payment_date ASC";
 $dueStmt = $conn->prepare($dueQuery);
 $dueStmt->bind_param("i", $firm_id);
 $dueStmt->execute();
 $dueResult = $dueStmt->get_result();
-
 while ($row = $dueResult->fetch_assoc()) {
-    $isDue = false;
-    $daysSinceLastPayment = 0;
-    
-    if ($row['last_payment_date']) {
-        $daysSinceLastPayment = (new DateTime())->diff(new DateTime($row['last_payment_date']))->days;
-    } else {
-        $daysSinceLastPayment = $row['days_since_enrollment'];
-    }
-    
-    switch ($row['installment_frequency']) {
-        case 'Monthly':
-            $isDue = $daysSinceLastPayment >= 30;
-            break;
-        case 'Weekly':
-            $isDue = $daysSinceLastPayment >= 7;
-            break;
-        case 'Quarterly':
-            $isDue = $daysSinceLastPayment >= 90;
-            break;
-    }
-    
-    if ($isDue && $row['days_to_maturity'] > 0) {
-        $row['days_overdue'] = max(0, $daysSinceLastPayment - 30);
-        $dueInstallments[] = $row;
-    }
+    $dueInstallmentsRaw[] = $row;
 }
 $dueStmt->close();
+
+// Categorize due installments
+$overdue = [];
+$currentMonth = [];
+$upcoming = [];
+$today = new DateTime();
+$firstOfMonth = new DateTime('first day of this month');
+$lastOfMonth = new DateTime('last day of this month');
+foreach ($dueInstallmentsRaw as $inst) {
+    $dueDate = new DateTime($inst['payment_date']);
+    if ($dueDate < $today) {
+        $overdue[] = $inst;
+    } elseif ($dueDate >= $firstOfMonth && $dueDate <= $lastOfMonth) {
+        $currentMonth[] = $inst;
+    } else {
+        $upcoming[] = $inst;
+    }
+}
 
 // Get summary statistics
 $totalPlans = count($plans);
@@ -134,7 +122,7 @@ $activePlans = count(array_filter($plans, fn($p) => strtolower($p['status']) ===
 $totalCustomers = count($enrollments);
 $activeCustomers = count(array_filter($enrollments, fn($e) => $e['current_status'] === 'active'));
 $totalRevenue = array_sum(array_column($plans, 'total_revenue'));
-$totalDueInstallments = count($dueInstallments);
+$totalDueInstallments = count($overdue) + count($currentMonth) + count($upcoming);
 
 $conn->close();
 ?>
@@ -285,9 +273,6 @@ $conn->close();
                 </button>
                 <button class="tab-button flex-1 py-2 px-3 rounded-md text-xs font-medium" onclick="switchTab('due')" id="tab-due">
                     <i class="fas fa-clock mr-1"></i>Due
-                    <?php if ($totalDueInstallments > 0): ?>
-                    <span class="ml-1 bg-red-500 text-white text-xs px-1 py-0.5 rounded-full"><?php echo $totalDueInstallments; ?></span>
-                    <?php endif; ?>
                 </button>
                 <button class="tab-button flex-1 py-2 px-3 rounded-md text-xs font-medium" onclick="switchTab('installments')" id="tab-installments">
                     <i class="fas fa-receipt mr-1"></i>Paid
@@ -416,49 +401,130 @@ $conn->close();
             <div class="flex items-center justify-between mb-3">
                 <h2 class="text-sm font-semibold text-gray-800 flex items-center">
                     <i class="fas fa-clock mr-2 text-red-500"></i>Due Installments
-                    <?php if ($totalDueInstallments > 0): ?>
-                    <span class="ml-2 bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
-                        <?php echo $totalDueInstallments; ?>
-                    </span>
-                    <?php endif; ?>
                 </h2>
                 <button onclick="sendReminders()" class="bg-red-500 text-white px-3 py-1.5 rounded-md text-xs font-semibold">
                     <i class="fas fa-bell mr-1"></i>Remind
                 </button>
             </div>
-            
-            <div class="space-y-2">
-                <?php foreach ($dueInstallments as $due): ?>
-                <div class="bg-white rounded-lg p-3 shadow-sm compact-card border-l-4 border-red-400">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                                <span class="text-red-600 font-semibold text-xs">
-                                    <?php echo strtoupper(substr($due['FirstName'], 0, 1) . substr($due['LastName'], 0, 1)); ?>
-                                </span>
+            <div class="space-y-4">
+                <?php if (!empty($overdue)): ?>
+                <div>
+                    <h3 class="text-xs font-bold text-red-700 mb-2">Overdue</h3>
+                    <div class="space-y-2">
+                    <?php foreach ($overdue as $due): ?>
+                        <div class="bg-white rounded-lg p-3 shadow-sm compact-card border-l-4 border-red-400">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                        <span class="text-red-600 font-semibold text-xs">
+                                            <?php echo strtoupper(substr($due['FirstName'], 0, 1) . substr($due['LastName'], 0, 1)); ?>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($due['FirstName'] . ' ' . $due['LastName']); ?></h3>
+                                        <p class="text-xs text-gray-600"><?php echo htmlspecialchars($due['plan_name']); ?></p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-semibold text-red-600">₹<?php echo number_format($due['min_amount_per_installment']); ?></p>
+                                    <p class="text-xs text-red-600">Overdue</p>
+                                    <p class="text-xs text-gray-500">Due Date: <?php echo htmlspecialchars(date('d M, Y', strtotime($due['due_date'] ?? $due['payment_date']))); ?></p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($due['FirstName'] . ' ' . $due['LastName']); ?></h3>
-                                <p class="text-xs text-gray-600"><?php echo htmlspecialchars($due['plan_name']); ?></p>
+                            <div class="flex space-x-2 mt-2">
+                                <button 
+                                    onclick="collectPayment(<?php echo $due['customer_plan_id']; ?>, '<?php echo $due['due_date'] ?? $due['payment_date']; ?>')" 
+                                    class="flex-1 bg-green-500 text-white py-1.5 rounded-md text-xs hover:bg-green-600">
+                                    <i class="fas fa-money-bill mr-1"></i>Collect
+                                </button>
+                                <button onclick="callCustomer('<?php echo $due['PhoneNumber']; ?>')" class="flex-1 bg-blue-500 text-white py-1.5 rounded-md text-xs hover:bg-blue-600">
+                                    <i class="fas fa-phone mr-1"></i>Call
+                                </button>
                             </div>
                         </div>
-                        <div class="text-right">
-                            <p class="text-sm font-semibold text-red-600">₹<?php echo number_format($due['min_amount_per_installment']); ?></p>
-                            <p class="text-xs text-red-600">Due</p>
-                        </div>
-                    </div>
-                    <div class="flex space-x-2 mt-2">
-                        <button onclick="collectPayment(<?php echo $due['id']; ?>)" class="flex-1 bg-green-500 text-white py-1.5 rounded-md text-xs hover:bg-green-600">
-                            <i class="fas fa-money-bill mr-1"></i>Collect
-                        </button>
-                        <button onclick="callCustomer('<?php echo $due['PhoneNumber']; ?>')" class="flex-1 bg-blue-500 text-white py-1.5 rounded-md text-xs hover:bg-blue-600">
-                            <i class="fas fa-phone mr-1"></i>Call
-                        </button>
+                    <?php endforeach; ?>
                     </div>
                 </div>
-                <?php endforeach; ?>
-                
-                <?php if (empty($dueInstallments)): ?>
+                <?php endif; ?>
+                <?php if (!empty($currentMonth)): ?>
+                <div>
+                    <h3 class="text-xs font-bold text-yellow-700 mb-2">Current Month Due</h3>
+                    <div class="space-y-2">
+                    <?php foreach ($currentMonth as $due): ?>
+                        <div class="bg-white rounded-lg p-3 shadow-sm compact-card border-l-4 border-yellow-400">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                        <span class="text-yellow-600 font-semibold text-xs">
+                                            <?php echo strtoupper(substr($due['FirstName'], 0, 1) . substr($due['LastName'], 0, 1)); ?>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($due['FirstName'] . ' ' . $due['LastName']); ?></h3>
+                                        <p class="text-xs text-gray-600"><?php echo htmlspecialchars($due['plan_name']); ?></p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-semibold text-yellow-600">₹<?php echo number_format($due['min_amount_per_installment']); ?></p>
+                                    <p class="text-xs text-yellow-600">Due</p>
+                                    <p class="text-xs text-gray-500">Due Date: <?php echo htmlspecialchars(date('d M, Y', strtotime($due['due_date'] ?? $due['payment_date']))); ?></p>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2 mt-2">
+                                <button 
+                                    onclick="collectPayment(<?php echo $due['customer_plan_id']; ?>, '<?php echo $due['due_date'] ?? $due['payment_date']; ?>')" 
+                                    class="flex-1 bg-green-500 text-white py-1.5 rounded-md text-xs hover:bg-green-600">
+                                    <i class="fas fa-money-bill mr-1"></i>Collect
+                                </button>
+                                <button onclick="callCustomer('<?php echo $due['PhoneNumber']; ?>')" class="flex-1 bg-blue-500 text-white py-1.5 rounded-md text-xs hover:bg-blue-600">
+                                    <i class="fas fa-phone mr-1"></i>Call
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($upcoming)): ?>
+                <div>
+                    <h3 class="text-xs font-bold text-blue-700 mb-2">Upcoming</h3>
+                    <div class="space-y-2">
+                    <?php foreach ($upcoming as $due): ?>
+                        <div class="bg-white rounded-lg p-3 shadow-sm compact-card border-l-4 border-blue-400">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <span class="text-blue-600 font-semibold text-xs">
+                                            <?php echo strtoupper(substr($due['FirstName'], 0, 1) . substr($due['LastName'], 0, 1)); ?>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($due['FirstName'] . ' ' . $due['LastName']); ?></h3>
+                                        <p class="text-xs text-gray-600"><?php echo htmlspecialchars($due['plan_name']); ?></p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-semibold text-blue-600">₹<?php echo number_format($due['min_amount_per_installment']); ?></p>
+                                    <p class="text-xs text-blue-600">Upcoming</p>
+                                    <p class="text-xs text-gray-500">Due Date: <?php echo htmlspecialchars(date('d M, Y', strtotime($due['due_date'] ?? $due['payment_date']))); ?></p>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2 mt-2">
+                                <button 
+                                    onclick="collectPayment(<?php echo $due['customer_plan_id']; ?>, '<?php echo $due['due_date'] ?? $due['payment_date']; ?>')" 
+                                    class="flex-1 bg-green-500 text-white py-1.5 rounded-md text-xs hover:bg-green-600">
+                                    <i class="fas fa-money-bill mr-1"></i>Collect
+                                </button>
+                                <button onclick="callCustomer('<?php echo $due['PhoneNumber']; ?>')" class="flex-1 bg-blue-500 text-white py-1.5 rounded-md text-xs hover:bg-blue-600">
+                                    <i class="fas fa-phone mr-1"></i>Call
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if (empty($overdue) && empty($currentMonth) && empty($upcoming)): ?>
                 <div class="bg-white rounded-lg p-6 shadow-sm text-center">
                     <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                         <i class="fas fa-check-circle text-green-500 text-xl"></i>
@@ -635,6 +701,7 @@ $conn->close();
             
             <form id="installmentForm" class="space-y-3">
                 <input type="hidden" name="customer_plan_id" id="installmentCustomerPlanId">
+                <input type="hidden" name="created_by" value="<?php echo htmlspecialchars($user_id); ?>">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Amount Paid</label>
@@ -647,8 +714,8 @@ $conn->close();
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Payment Date</label>
-                        <input type="date" name="payment_date" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" value="<?php echo date('Y-m-d'); ?>">
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                        <input type="date" name="due_date" required class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" value="<?php echo date('Y-m-d'); ?>">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
@@ -802,8 +869,49 @@ $conn->close();
             document.getElementById('enrollModal').classList.add('hidden');
         }
 
-        function showInstallmentModal(customerPlanId) {
+        function showInstallmentModal(customerPlanId, dueDate) {
             document.getElementById('installmentCustomerPlanId').value = customerPlanId;
+            const dueDateInput = document.querySelector('#installmentModal input[name="due_date"]');
+            if (dueDateInput) {
+                if (dueDate) {
+                    dueDateInput.value = dueDate;
+                    dueDateInput.readOnly = true;
+                } else {
+                    dueDateInput.value = '';
+                    dueDateInput.readOnly = false;
+                }
+            }
+            // Ensure amount field is always editable
+            const amountInput = document.querySelector('#installmentModal input[name="amount_paid"]');
+            if (amountInput) {
+                amountInput.readOnly = false;
+            }
+            // Auto-load gold rate for Gold 22
+            const goldRateInput = document.querySelector('#installmentModal input[name="gold_rate_per_gram"]');
+            if (goldRateInput) {
+                goldRateInput.value = '';
+                goldRateInput.placeholder = 'Loading...';
+                fetch('api/get_price_config.php')
+                    .then(res => res.json())
+                    .then(data => {
+                        let rate = '';
+                        if (data.Gold && data.Gold['22']) {
+                            rate = data.Gold['22'].rate;
+                        } else if (data.Gold && data.Gold['24']) {
+                            rate = data.Gold['24'].rate;
+                        } else if (data.Gold) {
+                            const keys = Object.keys(data.Gold);
+                            if (keys.length > 0) rate = data.Gold[keys[0]].rate;
+                        }
+                        if (rate) {
+                            goldRateInput.value = rate;
+                        }
+                        goldRateInput.placeholder = 'Gold Rate (per gram)';
+                    })
+                    .catch(() => {
+                        goldRateInput.placeholder = 'Gold Rate (per gram)';
+                    });
+            }
             document.getElementById('installmentModal').classList.remove('hidden');
         }
 
@@ -845,15 +953,15 @@ $conn->close();
         }
 
         function addInstallment(customerPlanId) {
-            showInstallmentModal(customerPlanId);
+            showInstallmentModal(customerPlanId, null);
         }
 
         function viewCustomer(customerId) {
             alert('View customer functionality will be implemented for customer ID: ' + customerId);
         }
 
-        function collectPayment(customerPlanId) {
-            showInstallmentModal(customerPlanId);
+        function collectPayment(customerPlanId, dueDate) {
+            showInstallmentModal(customerPlanId, dueDate);
         }
 
         function callCustomer(phoneNumber) {
@@ -1030,6 +1138,31 @@ $conn->close();
             .catch(error => {
                 console.error('Error:', error);
                 alert('Error enrolling customer');
+            });
+        });
+
+        // Add Installment form submission
+        const installmentForm = document.getElementById('installmentForm');
+        installmentForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('api/add_gold_plan_installment.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Installment added successfully!');
+                    closeInstallmentModal();
+                    window.location.reload(); // Refresh the page to update due/paid lists
+                } else {
+                    alert(data.message || 'Error adding installment');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error adding installment');
             });
         });
     </script>

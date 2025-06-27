@@ -59,9 +59,9 @@ $stmt->close();
 $conn->close();
 
 if ($success) {
-    header('Location: customer.php?msg=Customer+added+successfully');
+    header('Location: customers.php?msg=Customer+added+successfully');
     exit();
 } else {
-    header('Location: customer.php?msg=Failed+to+add+customer');
+    header('Location: customers.php?msg=Failed+to+add+customer');
     exit();
 } 

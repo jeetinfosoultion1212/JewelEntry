@@ -78,7 +78,7 @@ if (isset($_GET['action'])) {
         }
         
         // Insert new customer
-        $sql = "INSERT INTO Customer (firm_id, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
+        $sql = "INSERT INTO customer (firm_id, FirstName, LastName, PhoneNumber, Email, Address, City, State, PostalCode, Country, IsGSTRegistered, GSTNumber, CreatedAt) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         
         $stmt = $conn->prepare($sql);
@@ -155,7 +155,7 @@ if (isset($_GET['action'])) {
                               c.FirstName, c.LastName, c.PhoneNumber, c.Email, c.Address,
                               k.name as karigar_name, k.phone_number as karigar_phone
                       FROM jewellery_customer_order o 
-                      LEFT JOIN Customer c ON o.customer_id = c.id 
+                      LEFT JOIN customer c ON o.customer_id = c.id 
                       LEFT JOIN karigars k ON o.karigar_id = k.id
                       WHERE o.id = ? AND o.FirmID = ?";
         
@@ -457,7 +457,7 @@ if ($action == 'getKarigars') {
     if ($action == 'searchCustomers') {
         $search = $_GET['term'] ?? '';
         $sql = "SELECT c.id, c.FirstName, c.LastName, c.PhoneNumber, c.Email, c.Address 
-                FROM Customer c
+                FROM customer c
                 WHERE c.firm_id = ? AND (c.FirstName LIKE ? OR c.LastName LIKE ? OR c.PhoneNumber LIKE ?)
                 LIMIT 10";
         
@@ -525,11 +525,27 @@ if ($action == 'getKarigars') {
         $conn->begin_transaction();
 
         try {
-            // Generate a simple order number (can be improved for uniqueness and format)
-            $orderNumber = 'ORD-' . date('YmdHis') . rand(10, 99);
+            // Generate a serial order number in the format OD-01, OD-02, ...
+            $latestOrderNumber = null;
+            $latestNumber = 0;
+            $fetchOrderNumberSql = "SELECT order_number FROM jewellery_customer_order WHERE FirmID = ? AND order_number LIKE 'OD-%' ORDER BY id DESC LIMIT 1";
+            $fetchOrderNumberStmt = $conn->prepare($fetchOrderNumberSql);
+            $fetchOrderNumberStmt->bind_param("i", $firm_id);
+            $fetchOrderNumberStmt->execute();
+            $fetchOrderNumberStmt->bind_result($latestOrderNumber);
+            if ($fetchOrderNumberStmt->fetch() && $latestOrderNumber) {
+                // Extract the numeric part
+                $matches = [];
+                if (preg_match('/OD-(\\d+)/', $latestOrderNumber, $matches)) {
+                    $latestNumber = (int)$matches[1];
+                }
+            }
+            $fetchOrderNumberStmt->close();
+            $nextNumber = $latestNumber + 1;
+            $orderNumber = 'OD-' . str_pad($nextNumber, 2, '0', STR_PAD_LEFT);
 
             // Fetch customer name for the response
-            $customerNameQuery = "SELECT FirstName, LastName FROM Customer WHERE id = ?";
+            $customerNameQuery = "SELECT FirstName, LastName FROM customer WHERE id = ?";
             $customerNameStmt = $conn->prepare($customerNameQuery);
             $customerNameStmt->bind_param("i", $customerId);
             $customerNameStmt->execute();
@@ -700,25 +716,26 @@ if ($action == 'getKarigars') {
 
             // 3. Insert into jewellery_payments if advance > 0
             if ($advanceAmount > 0) {
-                $insertPaymentSql = "INSERT INTO Jewellery_Payments_Details
+                $insertPaymentSql = "INSERT INTO jewellery_payments
                                      (Firm_id, reference_type, reference_id, party_type, party_id, sale_id, payment_type, amount,  reference_no, remarks, created_at )
                                      VALUES (?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, NOW())";
 
                 $stmtPayment = $conn->prepare($insertPaymentSql);
 
-                // Payment details for the universal payments table
-                $paymentReferenceType = 'order'; // Linking to an order
-                $paymentReferenceId = $orderId; // The new order ID
-                $paymentPartyType = 'customer'; // Paid by customer
-                $paymentPartyId = $customerId; // The customer ID
-                $paymentSaleId = $orderId; // Link to the sale/order
-                $paymentType = 'credit'; // It's a credit for the business
-                $paymentNotes = 'Advance payment for Order #' . $orderNumber;
-                $paymentReferenceNo = ''; // Optional transaction reference
-                $paymentRemarks = ''; // Optional remarks
-                $paymentTransactionType = 'credit'; // Type of transaction - using correct enum value
+                $paymentReferenceType = 'customer_order'; // Linking to an order
+$paymentReferenceId = $orderId;           // The new order ID
+$paymentPartyType = 'customer';           // Paid by customer
+$paymentPartyId = $customerId;            // The customer ID
+$paymentSaleId = $orderId;                // Link to the sale/order
+$paymentType = 'credit';                  // It's a credit for the business
+$paymentTransactionType = 'credit';       // Type of transaction - using correct enum value
+$paymentReferenceNo = '';                 // Optional transaction reference
 
-                $stmtPayment->bind_param("isiiiisdss",
+// Notes and remarks for clarity
+$paymentNotes = 'Advance payment for Order #' . $orderNumber;
+$paymentRemarks = 'Advance payment received against Order #' . $orderNumber;
+
+                $stmtPayment->bind_param("isssiisdss",
                     $firm_id,
                     $paymentReferenceType,
                     $paymentReferenceId,
@@ -734,7 +751,7 @@ if ($action == 'getKarigars') {
                 );
 
                 if (!$stmtPayment->execute()) {
-                    error_log("Error inserting payment (Jewellery_Payments_Details): " . $stmtPayment->error);
+                    error_log("Error inserting payment (jewellery_payments): " . $stmtPayment->error);
                     throw new Exception('Error inserting payment: ' . $stmtPayment->error);
                 }
             }
@@ -782,7 +799,7 @@ if ($action == 'getKarigars') {
                        c.FirstName, c.LastName, c.PhoneNumber,
                        k.name as karigar_name
                 FROM jewellery_customer_order o
-                LEFT JOIN Customer c ON o.customer_id = c.id
+                LEFT JOIN customer c ON o.customer_id = c.id
                 LEFT JOIN karigars k ON o.karigar_id = k.id
                 WHERE o.FirmID = ?";
         
@@ -1016,9 +1033,9 @@ if ($action == 'printOrder') {
                           f.Email as firm_email, f.GSTNumber as firm_gst, f.PANNumber as firm_pan,
                           f.BankAccountNumber, f.BankName, f.IFSCCode, f.AccountType
                   FROM jewellery_customer_order o 
-                  LEFT JOIN Customer c ON o.customer_id = c.id 
+                  LEFT JOIN customer c ON o.customer_id = c.id 
                   LEFT JOIN karigars k ON o.karigar_id = k.id
-                  LEFT JOIN firm f ON o.FirmID = f.id
+                  LEFT JOIN Firm f ON o.FirmID = f.id
                   WHERE o.id = ? AND o.FirmID = ?";
     
     $orderStmt = $conn->prepare($orderQuery);
@@ -2342,11 +2359,7 @@ function viewOrderDetails(orderId) {
    </div>
 
    <!-- Sales List -->
-   <a href="sale-list.php" class="nav-item">
-     <i class="nav-icon fas fa-clipboard-list"></i>
-     <span class="nav-text">Sales</span>
-   </a>
-
+  
    <!-- Reports -->
    <a href="reports.php" class="nav-item">
      <i class="nav-icon fas fa-chart-pie"></i>

@@ -15,7 +15,7 @@ $user_id = $_SESSION['id'];
 $customer_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 if ($customer_id <= 0) {
-    header("Location: customer.php?error=Invalid+customer+ID");
+    header("Location: customers.php?error=Invalid+customer+ID");
     exit();
 }
 
@@ -42,7 +42,7 @@ $customerResult = $customerStmt->get_result();
 if ($customerResult->num_rows > 0) {
     $customer = $customerResult->fetch_assoc();
 } else {
-    header("Location: customer.php?error=Customer+not+found");
+    header("Location: customers.php?error=Customer+not+found");
     exit();
 }
 $customerStmt->close();
@@ -333,7 +333,7 @@ $error_message = isset($_GET['error']) ? $_GET['error'] : '';
         <div class="px-4 py-3">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3">
-                    <a href="customer.php" class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors">
+                    <a href="customers.php" class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors">
                         <i data-feather="arrow-left" class="w-4 h-4 text-gray-600"></i>
                     </a>
                     <div>
@@ -936,7 +936,7 @@ $error_message = isset($_GET['error']) ? $_GET['error'] : '';
                     </div>
                     <span class="text-xs text-gray-500 font-medium">Alerts</span>
                 </button>
-                <a href="customer.php" class="flex flex-col items-center space-y-1 py-2 px-3 rounded-2xl transition-all">
+                <a href="customers.php" class="flex flex-col items-center space-y-1 py-2 px-3 rounded-2xl transition-all">
                     <div class="w-8 h-8 gradient-jewel rounded-xl flex items-center justify-center shadow-lg">
                         <i data-feather="users" class="w-4 h-4 text-white"></i>
                     </div>

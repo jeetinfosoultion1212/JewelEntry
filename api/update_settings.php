@@ -105,7 +105,52 @@ if ($result->num_rows > 0) {
 }
 
 if ($stmt->execute()) {
-    echo json_encode(['success' => true, 'message' => 'Settings updated successfully']);
+    // --- COUPON LOGIC START ---
+    $coupon_action = null;
+    $coupon_code = $data['welcome_coupon_code'];
+    $welcome_coupon_enabled = $data['welcome_coupon_enabled'];
+    $discount_type = 'percentage'; // Default, you can make this dynamic if needed
+    $discount_value = 10; // Default, you can make this dynamic if needed
+    $coupon_purpose = 'welcome';
+    $is_active = $welcome_coupon_enabled === '1' ? 1 : 0;
+    $description = 'Welcome coupon for new customers'; // You can make this dynamic if needed
+
+    // Check if a welcome coupon exists for this firm
+    $checkCouponQuery = "SELECT id FROM coupons WHERE firm_id = ? AND coupon_purpose = 'welcome' LIMIT 1";
+    $checkCouponStmt = $conn->prepare($checkCouponQuery);
+    $checkCouponStmt->bind_param("i", $firm_id);
+    $checkCouponStmt->execute();
+    $couponResult = $checkCouponStmt->get_result();
+
+    if ($couponResult && $couponResult->num_rows > 0) {
+        // Update existing coupon
+        $couponRow = $couponResult->fetch_assoc();
+        $updateCouponQuery = "UPDATE coupons SET coupon_code = ?, description = ?, discount_type = ?, discount_value = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        $updateCouponStmt = $conn->prepare($updateCouponQuery);
+        $updateCouponStmt->bind_param("sssdi i", $coupon_code, $description, $discount_type, $discount_value, $is_active, $couponRow['id']);
+        $updateCouponStmt->execute();
+        $coupon_action = 'updated';
+        $updateCouponStmt->close();
+    } else {
+        // Insert new coupon
+        $insertCouponQuery = "INSERT INTO coupons (firm_id, coupon_code, description, discount_type, discount_value, is_active, coupon_purpose, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+        $insertCouponStmt = $conn->prepare($insertCouponQuery);
+        $insertCouponStmt->bind_param("isssdis", $firm_id, $coupon_code, $description, $discount_type, $discount_value, $is_active, $coupon_purpose);
+        $insertCouponStmt->execute();
+        $coupon_action = 'inserted';
+        $insertCouponStmt->close();
+    }
+    $checkCouponStmt->close();
+    // --- COUPON LOGIC END ---
+
+    $response = ['success' => true, 'message' => 'Settings updated successfully'];
+    if ($coupon_action === 'inserted') {
+        $response['message'] = 'Settings updated. Welcome coupon was not found, so a new record has been created.';
+        $response['coupon_action'] = 'inserted';
+    } else if ($coupon_action === 'updated') {
+        $response['coupon_action'] = 'updated';
+    }
+    echo json_encode($response);
 } else {
     echo json_encode(['success' => false, 'message' => 'Failed to update settings']);
 }

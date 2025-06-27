@@ -239,28 +239,28 @@ document.addEventListener("DOMContentLoaded", () => {
     let weightLabel = "Weight Left:"
 
     if (type === "Manufacturing Order") {
-      // Use remaining_weight if available, else fallback to expected_weight
-      remaining = (typeof data.remaining_weight !== 'undefined') ? data.remaining_weight : data.expected_weight
+      // Use net_weight or gross_weight as appropriate
+      let weight = (typeof data.net_weight !== 'undefined') ? data.net_weight : data.gross_weight;
       // Update hidden fields
       if (sourceNameField) sourceNameField.value = data.karigar_name
       if (sourceLocationField) sourceLocationField.value = "Manufacturing"
-      if (sourceMaterialTypeField) sourceMaterialTypeField.value = "Gold" // Assuming gold, adjust if needed
-      if (sourcePurityField) sourcePurityField.value = data.purity_out
-      if (sourceWeightField) sourceWeightField.value = remaining
+      if (sourceMaterialTypeField) sourceMaterialTypeField.value = data.metal_type || "Gold" // Use actual metal_type if available
+      if (sourcePurityField) sourcePurityField.value = data.purity
+      if (sourceWeightField) sourceWeightField.value = weight
 
       // Update display
       if (sourceNameDisplay) sourceNameDisplay.textContent = data.karigar_name
       if (sourceTypeDisplay) sourceTypeDisplay.textContent = "Karigar"
-      if (sourceMaterialDisplay) sourceMaterialDisplay.textContent = "Gold"
-      if (sourcePurityDisplay) sourcePurityDisplay.textContent = data.purity_out + "%"
-      if (sourceWeightDisplay) sourceWeightDisplay.textContent = remaining + "g"
-      if (sourceStatusDisplay) sourceStatusDisplay.textContent = data.status
+      if (sourceMaterialDisplay) sourceMaterialDisplay.textContent = data.metal_type || "Gold"
+      if (sourcePurityDisplay) sourcePurityDisplay.textContent = (data.purity !== undefined ? data.purity + "%" : "-")
+      if (sourceWeightDisplay) sourceWeightDisplay.textContent = (weight !== undefined ? weight + "g" : "-")
+      if (sourceStatusDisplay) sourceStatusDisplay.textContent = data.status || data.item_status || "-"
 
       // Auto-fill material and purity fields
       const materialType = document.getElementById("materialType")
       const purity = document.getElementById("purity")
-      if (materialType) materialType.value = "Gold"
-      if (purity) purity.value = data.purity_out
+      if (materialType && data.metal_type) materialType.value = data.metal_type
+      if (purity && data.purity !== undefined) purity.value = data.purity
       
       // Set flags to keep these selections
       keepSourceSelection = true

@@ -14,18 +14,8 @@ if (!isset($_SESSION['firmID'])) {
 $current_firm_id = $_SESSION['firmID'];
 $search_term = isset($_GET['term']) ? $_GET['term'] : '';
 
-// Database Connection
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "jewelentrypro";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-    echo json_encode(['error' => 'Database connection failed: ' . $conn->connect_error]);
-    exit();
-}
+// Database Connection from config
+require_once __DIR__ . '/../config/db_connect.php';
 
 // Search customers by name (combining FirstName and LastName)
 $sql = "SELECT id, CONCAT(FirstName, ' ', LastName) as name, PhoneNumber as phone, 

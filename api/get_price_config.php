@@ -9,22 +9,12 @@ if (!isset($_SESSION['firmID'])) {
 
 $current_firm_id = $_SESSION['firmID'];
 
-// Database Connection
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "jewelentrypro"; // Updated database name
+// Database Connection from config
+require_once __DIR__ . '/../config/db_connect.php';
 
 // Prevent HTML errors from being displayed
 error_reporting(0);
 ini_set('display_errors', 0);
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-    echo json_encode(['error' => 'Database connection failed: ' . $conn->connect_error]);
-    exit();
-}
 
 $priceConfig = array();
 

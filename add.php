@@ -203,20 +203,20 @@ function updateInventoryStock($conn, $materialType, $purity, $weight, $action = 
 // Function to get manufacturing orders - FIXED THE SQL QUERY
 function getManufacturingOrders($conn, $search = '', $firm_id, $purity = null) {
   try {
-      $sql = "SELECT mo.id, mo.karigar_id, k.name as karigar_name, mo.expected_weight, mo.purity_out, mo.status
-              FROM manufacturing_orders mo
-              JOIN karigars k ON mo.karigar_id = k.id
-              WHERE mo.firm_id = ? AND (mo.purity_out LIKE ? OR k.name LIKE ?)";
+      $sql = "SELECT joi.id, joi.karigar_id, k.name as karigar_name, joi.item_name, joi.product_type, joi.metal_type, joi.purity, joi.gross_weight, joi.less_weight, joi.net_weight, joi.item_status as status
+              FROM jewellery_order_items joi
+              JOIN karigars k ON joi.karigar_id = k.id
+              WHERE joi.firm_id = ? AND (joi.purity LIKE ? OR k.name LIKE ?)";
       
       // Add purity filter if provided
       if ($purity !== null) {
-          $sql .= " AND mo.purity_out = ?";
+          $sql .= " AND joi.purity = ?";
       }
       
-      // Add status filter to show only pending or completed orders
-      $sql .= " AND (mo.status = 'Pending' OR mo.status = 'Completed')";
+      // Add status filter to show only pending or completed items
+      $sql .= " AND (joi.item_status = 'Pending' OR joi.item_status = 'Completed')";
       
-      $sql .= " ORDER BY mo.id DESC LIMIT 10";
+      $sql .= " ORDER BY joi.id DESC LIMIT 10";
       
       $stmt = $conn->prepare($sql);
       $searchParam = "%$search%";
@@ -1873,7 +1873,7 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
 
 
  <!-- Reports -->
- <a href="reports.php" class="nav-item">
+ <a href="stock_report.php" class="nav-item">
    <i class="nav-icon fas fa-chart-pie"></i>
    <span class="nav-text">Reports</span>
  </a>

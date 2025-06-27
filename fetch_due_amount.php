@@ -182,32 +182,47 @@ try {
             break;
             
         case 'Loan EMI':
-            logDebug("Processing Loan EMI request");
-            
-            // Fetch EMI due for current month
-            $query = "SELECT SUM(amount) as emi_due 
-                     FROM loan_emis 
-                     WHERE customer_id = ? 
-                     AND status = 'due' 
-                     AND MONTH(due_date) = MONTH(CURDATE()) 
-                     AND YEAR(due_date) = YEAR(CURDATE())";
-            
+            logDebug("Processing Loan EMI request (loan_emi join)");
+            // Fetch all EMIs for this customer from loan_emi, joining with loans
+            $query = "SELECT le.id, le.loan_id, le.emi_number, le.due_date, le.amount, le.principal_component, le.interest_component, le.remaining_principal, le.status, le.created_at, IFNULL(lp.amount_paid, 0) as amount_paid
+                      FROM loan_emi le
+                      JOIN loans l ON le.loan_id = l.id
+                      LEFT JOIN (
+                        SELECT emi_id, SUM(amount) as amount_paid
+                        FROM loan_emi_payments
+                        GROUP BY emi_id
+                      ) lp ON le.id = lp.emi_id
+                      WHERE l.customer_id = ? AND le.status IN ('PENDING', 'PARTIAL', 'OVERDUE')
+                      ORDER BY le.due_date ASC, le.id ASC";
             $stmt = $conn->prepare($query);
             if (!$stmt) {
-                throw new Exception("EMI query preparation failed: " . $conn->error);
+                throw new Exception("EMI list query preparation failed: " . $conn->error);
             }
-            
-            logDebug("EMI query prepared");
-            
             $stmt->bind_param("i", $customer_id);
             $stmt->execute();
             $result = $stmt->get_result();
-            
-            if ($row = $result->fetch_assoc()) {
-                $due_amount = floatval($row['emi_due'] ?? 0);
-                logDebug("EMI due amount calculated", ['due_amount' => $due_amount]);
+            while ($row = $result->fetch_assoc()) {
+                $due = floatval($row['amount']) - floatval($row['amount_paid']);
+                if ($due < 0.01) continue; // Skip if already paid
+                $outstanding_items[] = [
+                    'emi_id' => $row['id'],
+                    'loan_id' => $row['loan_id'],
+                    'emi_number' => $row['emi_number'],
+                    'due_date' => date('d M, Y', strtotime($row['due_date'])),
+                    'amount' => floatval($row['amount']),
+                    'principal_component' => floatval($row['principal_component']),
+                    'interest_component' => floatval($row['interest_component']),
+                    'amount_paid' => floatval($row['amount_paid']),
+                    'remaining_principal' => floatval($row['remaining_principal']),
+                    'due' => round($due, 2),
+                    'status' => $row['status'],
+                    'created_at' => $row['created_at']
+                ];
             }
             $stmt->close();
+            logDebug("Loan EMI list processing completed (loan_emi)", [
+                'total_items' => count($outstanding_items)
+            ]);
             break;
             
         case 'Scheme Installment':
