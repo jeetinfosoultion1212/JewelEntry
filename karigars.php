@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 require 'config/config.php';
@@ -106,8 +105,30 @@ function fetchKarigars($conn, $firm_id) {
     return $karigars;
 }
 
+// Fetch compact order items for Orders tab (with customer name)
+function fetchOrderItems($conn, $firm_id) {
+    $orders = [];
+    $sql = "SELECT joi.id, joi.karigar_id, k.name as karigar_name, joi.item_name, joi.product_type, joi.metal_type, joi.purity, joi.gross_weight, joi.net_weight, joi.item_status as status, joi.created_at, c.FirstName as customer_first, c.LastName as customer_last
+            FROM jewellery_order_items joi
+            LEFT JOIN karigars k ON joi.karigar_id = k.id
+            LEFT JOIN jewellery_customer_order o ON joi.order_id = o.id
+            LEFT JOIN customer c ON o.customer_id = c.id
+            WHERE joi.firm_id = ?
+            ORDER BY joi.created_at DESC LIMIT 30";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $firm_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $row['customer_name'] = trim(($row['customer_first'] ?? '') . ' ' . ($row['customer_last'] ?? ''));
+        $orders[] = $row;
+    }
+    return $orders;
+}
+
 $stats = fetchKarigarStats($conn, $firm_id);
 $karigars = fetchKarigars($conn, $firm_id);
+$orderItems = fetchOrderItems($conn, $firm_id);
 $conn->close();
 ?>
 
@@ -118,135 +139,112 @@ $conn->close();
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>Karigar Management - <?php echo htmlspecialchars($userInfo['FirmName']); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        'inter': ['Inter', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-        .gradient-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .card-hover { transition: all 0.2s ease; }
-        .card-hover:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
-        .status-active { background: #dcfce7; color: #166534; }
-        .status-inactive { background: #fef2f2; color: #dc2626; }
-        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .btn-secondary { background: #f3f4f6; color: #374151; }
-        .btn-success { background: #10b981; color: white; }
-        .btn-warning { background: #f59e0b; color: white; }
-    </style>
+    <link rel="stylesheet" href="css/home.css">
 </head>
-<body class="font-inter bg-gray-50 text-sm">
+<body class="font-poppins bg-gray-100">
     <!-- Header -->
-    <header class="gradient-header text-white sticky top-0 z-50">
-        <div class="px-4 py-3">
+    <header class="header-glass sticky top-0 z-50 shadow-md">
+        <div class="px-3 py-2">
             <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-3">
-                    <a href="home.php" class="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-arrow-left text-white text-sm"></i>
-                    </a>
+                <div class="flex items-center space-x-2">
+                    <div class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating">
+                        <?php if (!empty($userInfo['Logo'])): ?>
+                            <img src="<?php echo htmlspecialchars($userInfo['Logo']); ?>" alt="Firm Logo" class="w-full h-full object-cover rounded-xl">
+                        <?php else: ?>
+                            <i class="fas fa-gem text-white text-sm"></i>
+                        <?php endif; ?>
+                    </div>
                     <div>
-                        <h1 class="text-lg font-bold">Karigar Management</h1>
-                        <p class="text-xs text-white text-opacity-80"><?php echo strtoupper(htmlspecialchars($userInfo['FirmName'])); ?></p>
+                        <h1 class="text-sm font-bold text-gray-800">Karigar Management</h1>
+                        <p class="text-xs text-gray-600 font-medium"><?php echo strtoupper(htmlspecialchars($userInfo['FirmName'])); ?></p>
                     </div>
                 </div>
-                <div class="flex space-x-2">
-                    <button onclick="openAddKarigarModal()" class="bg-orange-500 text-white px-3 py-2 rounded-lg text-xs font-semibold flex items-center">
-                        <i class="fas fa-plus mr-1"></i>New Karigar
-                    </button>
-                    <button onclick="exportData()" class="bg-white bg-opacity-20 text-white px-3 py-2 rounded-lg text-xs font-semibold">
-                        <i class="fas fa-download mr-1"></i>Export
-                    </button>
-                    <button onclick="refreshData()" class="bg-white bg-opacity-20 text-white px-3 py-2 rounded-lg text-xs font-semibold">
-                        <i class="fas fa-sync-alt mr-1"></i>Refresh
-                    </button>
+                <div class="flex items-center space-x-2">
+                    <div class="text-right">
+                        <p id="headerUserName" class="text-xs font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
+                        <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
+                    </div>
+                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
+                        <?php 
+                        $defaultImage = 'public/uploads/user.png';
+                        if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
+                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="User Profile" class="w-full h-full object-cover">
+                        <?php elseif (file_exists($defaultImage)): ?>
+                            <img src="<?php echo htmlspecialchars($defaultImage); ?>" alt="Default User" class="w-full h-full object-cover">
+                        <?php else: ?>
+                            <i class="fas fa-user-crown text-white text-sm"></i>
+                        <?php endif; ?>
+                    </a>
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="px-4 py-4 pb-20">
-        <!-- Stats Grid -->
-        <div class="grid grid-cols-3 gap-3 mb-4">
-            <!-- Total Karigars -->
-            <div class="bg-white rounded-xl p-4 text-center card-hover">
-                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fas fa-users text-blue-600"></i>
+    <main class="px-2 pt-2 pb-20">
+        <!-- Compact Horizontal Scrollable Stats -->
+        <div class="overflow-x-auto hide-scrollbar mb-3">
+            <div class="flex space-x-2 min-w-max">
+                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
+                    <div class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-1">
+                        <i class="fas fa-users text-blue-600 text-base"></i>
+                    </div>
+                    <div class="font-bold text-base text-gray-800"><?php echo $stats['total']; ?></div>
+                    <div class="text-xs text-gray-500 font-medium">Total</div>
                 </div>
-                <p class="text-2xl font-bold text-gray-800"><?php echo $stats['total']; ?></p>
-                <p class="text-xs text-gray-600">Total Karigars</p>
+                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
+                    <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-1">
+                        <i class="fas fa-user-check text-green-600 text-base"></i>
             </div>
-
-            <!-- Active Karigars -->
-            <div class="bg-white rounded-xl p-4 text-center card-hover">
-                <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fas fa-user-check text-green-600"></i>
+                    <div class="font-bold text-base text-gray-800"><?php echo $stats['active']; ?></div>
+                    <div class="text-xs text-gray-500 font-medium">Active</div>
                 </div>
-                <p class="text-2xl font-bold text-gray-800"><?php echo $stats['active']; ?></p>
-                <p class="text-xs text-gray-600">Active</p>
+                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
+                    <div class="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-1">
+                        <i class="fas fa-clipboard-list text-purple-600 text-base"></i>
             </div>
-
-            <!-- Active Orders -->
-            <div class="bg-white rounded-xl p-4 text-center card-hover">
-                <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fas fa-clipboard-list text-purple-600"></i>
+                    <div class="font-bold text-base text-gray-800"><?php echo $stats['orders']; ?></div>
+                    <div class="text-xs text-gray-500 font-medium">Orders</div>
                 </div>
-                <p class="text-2xl font-bold text-gray-800"><?php echo $stats['orders']; ?></p>
-                <p class="text-xs text-gray-600">Orders</p>
+                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
+                    <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-1">
+                        <i class="fas fa-check-circle text-green-600 text-base"></i>
             </div>
-
-            <!-- Completed This Month -->
-            <div class="bg-white rounded-xl p-4 text-center card-hover">
-                <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fas fa-check-circle text-green-600"></i>
+                    <div class="font-bold text-base text-gray-800"><?php echo $stats['completed']; ?></div>
+                    <div class="text-xs text-gray-500 font-medium">Completed</div>
                 </div>
-                <p class="text-2xl font-bold text-gray-800"><?php echo $stats['completed']; ?></p>
-                <p class="text-xs text-gray-600">Completed</p>
+                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
+                    <div class="w-7 h-7 bg-yellow-100 rounded-lg flex items-center justify-center mx-auto mb-1">
+                        <i class="fas fa-rupee-sign text-yellow-600 text-base"></i>
             </div>
-
-            <!-- Monthly Revenue -->
-            <div class="bg-white rounded-xl p-4 text-center card-hover">
-                <div class="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fas fa-rupee-sign text-yellow-600"></i>
+                    <div class="font-bold text-base text-gray-800">₹<?php echo number_format($stats['revenue']); ?></div>
+                    <div class="text-xs text-gray-500 font-medium">Revenue</div>
                 </div>
-                <p class="text-lg font-bold text-gray-800">₹<?php echo number_format($stats['revenue']); ?></p>
-                <p class="text-xs text-gray-600">Revenue</p>
+                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
+                    <div class="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center mx-auto mb-1">
+                        <i class="fas fa-exclamation-triangle text-red-600 text-base"></i>
             </div>
-
-            <!-- Pending Payments -->
-            <div class="bg-white rounded-xl p-4 text-center card-hover">
-                <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fas fa-exclamation-triangle text-red-600"></i>
+                    <div class="font-bold text-base text-gray-800"><?php echo $stats['pending']; ?></div>
+                    <div class="text-xs text-gray-500 font-medium">Pending</div>
                 </div>
-                <p class="text-2xl font-bold text-gray-800"><?php echo $stats['pending']; ?></p>
-                <p class="text-xs text-gray-600">Pending</p>
             </div>
         </div>
 
-        <!-- Filter Tabs -->
-        <div class="bg-white rounded-xl p-1 mb-4 flex space-x-1">
-            <button onclick="filterKarigars('all')" class="filter-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium bg-blue-500 text-white">
+        <!-- Tab Navigation -->
+        <div class="bg-white rounded-xl p-1 mb-4 flex space-x-1 overflow-x-auto hide-scrollbar">
+            <button class="tab-btn active flex-1 py-2 px-3 rounded-lg text-xs font-medium" data-tab="karigars" onclick="switchKarigarTab('karigars', this)">
                 <i class="fas fa-users mr-1"></i>All Karigars
             </button>
-            <button onclick="filterKarigars('active')" class="filter-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium text-gray-600">
-                <i class="fas fa-user-check mr-1"></i>Active
-            </button>
-            <button onclick="filterKarigars('orders')" class="filter-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium text-gray-600">
+            <button class="tab-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium" data-tab="orders" onclick="switchKarigarTab('orders', this)">
                 <i class="fas fa-clipboard-list mr-1"></i>Orders
             </button>
-            <button onclick="filterKarigars('payments')" class="filter-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium text-gray-600">
+            <button class="tab-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium" data-tab="payments" onclick="switchKarigarTab('payments', this)">
                 <i class="fas fa-rupee-sign mr-1"></i>Payments
             </button>
         </div>
-
+        <!-- Tab Contents -->
+        <div id="tab-content-karigars" class="tab-content block">
         <!-- Karigars List -->
         <div class="bg-white rounded-xl">
             <div class="flex items-center justify-between p-4 border-b border-gray-100">
@@ -257,7 +255,6 @@ $conn->close();
                     + Add Karigar
                 </button>
             </div>
-
             <div class="divide-y divide-gray-100">
                 <?php foreach ($karigars as $karigar): ?>
                 <div class="p-4 karigar-item" data-status="<?php echo strtolower($karigar['status']); ?>">
@@ -299,7 +296,6 @@ $conn->close();
                     </div>
                 </div>
                 <?php endforeach; ?>
-
                 <?php if (empty($karigars)): ?>
                 <div class="p-8 text-center">
                     <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -312,43 +308,87 @@ $conn->close();
                     </button>
                 </div>
                 <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <div id="tab-content-orders" class="tab-content hidden">
+            <div class="bg-white rounded-xl">
+                <div class="flex items-center justify-between p-4 border-b border-gray-100">
+                    <h3 class="text-sm font-semibold text-gray-800 flex items-center">
+                        <i class="fas fa-clipboard-list mr-2 text-purple-500"></i>Orders
+                    </h3>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    <?php foreach ($orderItems as $order): ?>
+                    <div class="p-2 flex items-center justify-between hover:bg-purple-50 transition text-xs">
+                        <div>
+                            <div class="font-semibold text-gray-800"><?php echo htmlspecialchars($order['item_name']); ?> <span class="text-gray-400">(<?php echo htmlspecialchars($order['product_type']); ?>)</span></div>
+                            <div class="text-gray-500">Cust: <span class="font-medium text-gray-700"><?php echo htmlspecialchars($order['customer_name']); ?></span></div>
+                            <div class="text-gray-500">Karigar: <span class="font-medium text-gray-700"><?php echo htmlspecialchars($order['karigar_name'] ?? 'N/A'); ?></span></div>
+                        </div>
+                        <div class="text-right flex flex-col items-end space-y-1">
+                            <span class="font-semibold <?php echo $order['status'] === 'Completed' ? 'text-green-600' : 'text-blue-600'; ?>"><?php echo htmlspecialchars($order['status']); ?></span>
+                            <span class="text-gray-400"><?php echo date('d M', strtotime($order['created_at'])); ?></span>
+                            <span class="text-gray-600"><?php echo number_format($order['net_weight'], 2); ?>g</span>
+                            <div class="flex space-x-1 mt-1">
+                                <button onclick="editOrderItem(<?php echo $order['id']; ?>)" class="p-1 rounded hover:bg-gray-200"><i class="fas fa-edit text-blue-500"></i></button>
+                                <button onclick="openIssueGoldModal(<?php echo $order['id']; ?>)" class="p-1 rounded hover:bg-yellow-100"><i class="fas fa-coins text-yellow-500"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if (empty($orderItems)): ?>
+                    <div class="p-8 text-center text-gray-400">
+                        <i class="fas fa-clipboard-list text-2xl mb-2"></i>
+                        <div class="font-semibold mb-1">No Orders</div>
+                        <div class="text-xs">No jewellery orders found for this firm.</div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <div id="tab-content-payments" class="tab-content hidden">
+            <div class="bg-white rounded-xl p-6 text-center text-gray-500">
+                <i class="fas fa-rupee-sign text-2xl mb-2"></i>
+                <div class="font-semibold mb-1">Payments</div>
+                <div class="text-xs">Payment records for karigars will appear here.</div>
             </div>
         </div>
     </main>
 
-    <!-- Bottom Navigation -->
-    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40">
+    <!-- Enhanced Bottom Navigation -->
+    <nav class="bottom-nav fixed bottom-0 left-0 right-0 shadow-xl z-40">
         <div class="px-4 py-2">
             <div class="flex justify-around">
-                <a href="home.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-home text-gray-500 text-xs"></i>
+                <a href="home.php" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-home text-gray-400 text-sm"></i>
                     </div>
-                    <span class="text-xs text-gray-500 mt-1">Home</span>
+                    <span class="text-xs text-gray-400 font-medium">Home</span>
                 </a>
-                <a href="inventory.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-boxes text-gray-500 text-xs"></i>
+                <a href="inventory.php" data-nav-id="inventory" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-boxes text-gray-400 text-sm"></i>
                     </div>
-                    <span class="text-xs text-gray-500 mt-1">Inventory</span>
+                    <span class="text-xs text-gray-400 font-medium">Inventory</span>
                 </a>
-                <a href="alerts.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-bell text-gray-500 text-xs"></i>
+                <a href="alerts.php" data-nav-id="alerts_nav" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-bell text-gray-400 text-sm"></i>
                     </div>
-                    <span class="text-xs text-gray-500 mt-1">Alerts</span>
+                    <span class="text-xs text-gray-400 font-medium">Alerts</span>
                 </a>
-                <a href="customers.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center">
-                        <i class="fas fa-users text-gray-500 text-xs"></i>
+                <a href="customers.php" data-nav-id="customers" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-users text-gray-400 text-sm"></i>
                     </div>
-                    <span class="text-xs text-gray-500 mt-1">Customers</span>
+                    <span class="text-xs text-gray-400 font-medium">Customers</span>
                 </a>
-                <a href="karigar_management.php" class="flex flex-col items-center py-2 px-3">
-                    <div class="w-6 h-6 bg-orange-500 rounded-md flex items-center justify-center">
-                        <i class="fas fa-hammer text-white text-xs"></i>
+                <a href="karigars.php" data-nav-id="karigars" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                    <div class="w-8 h-8 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg flex items-center justify-center shadow-lg">
+                        <i class="fas fa-hammer text-white text-sm"></i>
                     </div>
-                    <span class="text-xs text-orange-600 font-semibold mt-1">Karigars</span>
+                    <span class="text-xs text-orange-600 font-bold">Karigars</span>
                 </a>
             </div>
         </div>
@@ -407,6 +447,42 @@ $conn->close();
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- Issue Gold Modal -->
+    <div id="issueGoldModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-4 w-full max-w-xs mx-2">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-base font-semibold text-gray-800">Issue Gold</h3>
+                <button onclick="closeIssueGoldModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="issueGoldForm" class="space-y-2">
+                <input type="hidden" name="order_item_id" id="issueGoldOrderItemId">
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Metal Type</label>
+                    <select name="metal_type" class="w-full px-2 py-1 border border-gray-300 rounded text-xs">
+                        <option value="Gold">Gold</option>
+                        <option value="Silver">Silver</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Purity</label>
+                    <input type="text" name="purity" class="w-full px-2 py-1 border border-gray-300 rounded text-xs" placeholder="e.g. 22K, 24K">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Weight (g)</label>
+                    <input type="number" name="weight" step="0.01" min="0" class="w-full px-2 py-1 border border-gray-300 rounded text-xs" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                    <input type="text" name="notes" class="w-full px-2 py-1 border border-gray-300 rounded text-xs" placeholder="Optional">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeIssueGoldModal()" class="px-3 py-1 text-xs border border-gray-300 rounded text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="bg-yellow-500 text-white px-3 py-1 text-xs rounded hover:bg-yellow-600">Issue</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -509,6 +585,50 @@ $conn->close();
                 closeAddKarigarModal();
             }
         });
+
+        function switchKarigarTab(tab, btn) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-blue-500', 'text-white'));
+            btn.classList.add('active', 'bg-blue-500', 'text-white');
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
+            document.getElementById('tab-content-' + tab).classList.remove('hidden');
+        }
+
+        function editOrderItem(id) {
+            window.location.href = 'edit_order_item.php?id=' + id;
+        }
+
+        function openIssueGoldModal(orderItemId) {
+            document.getElementById('issueGoldOrderItemId').value = orderItemId;
+            document.getElementById('issueGoldModal').classList.remove('hidden');
+        }
+
+        function closeIssueGoldModal() {
+            document.getElementById('issueGoldModal').classList.add('hidden');
+            document.getElementById('issueGoldForm').reset();
+        }
+
+        document.getElementById('issueGoldForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            formData.append('action', 'issue_gold');
+            fetch('ajax/karigar_operations.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    closeIssueGoldModal();
+                    alert('Gold issued and ledger updated!');
+                    location.reload();
+                } else {
+                    alert(data.message || 'Error issuing gold');
+                }
+            })
+            .catch(() => alert('Error issuing gold'));
+        });
     </script>
+    <script type="module" src="js/home.js"></script>
 </body>
 </html>
+

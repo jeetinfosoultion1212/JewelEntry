@@ -2,7 +2,8 @@
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
-require 'config/config.php'; // Include your database configuration
+session_start();
+require '../config/config.php'; // Include your database configuration
 
 date_default_timezone_set('Asia/Kolkata');
 
@@ -20,10 +21,11 @@ if ($conn->connect_error) {
 
 // Get scheme ID from GET request
 $scheme_id = $_GET['scheme_id'] ?? null;
+$firm_id = $_SESSION['firmID'] ?? null;
 
-// Validate scheme_id
-if (empty($scheme_id) || !is_numeric($scheme_id)) {
-    echo json_encode(['success' => false, 'message' => 'Invalid scheme ID.']);
+// Validate scheme_id and firm_id
+if (empty($scheme_id) || !is_numeric($scheme_id) || empty($firm_id)) {
+    echo json_encode(['success' => false, 'message' => 'Invalid scheme ID or firm.']);
     $conn->close();
     exit();
 }
@@ -31,9 +33,9 @@ if (empty($scheme_id) || !is_numeric($scheme_id)) {
 $scheme_id = (int)$scheme_id;
 
 // Fetch scheme details
-$sql_scheme = "SELECT * FROM schemes WHERE id = ?";
+$sql_scheme = "SELECT * FROM schemes WHERE id = ? AND firm_id = ?";
 $stmt_scheme = $conn->prepare($sql_scheme);
-$stmt_scheme->bind_param("i", $scheme_id);
+$stmt_scheme->bind_param("ii", $scheme_id, $firm_id);
 $stmt_scheme->execute();
 $scheme_result = $stmt_scheme->get_result();
 $scheme = $scheme_result->fetch_assoc();

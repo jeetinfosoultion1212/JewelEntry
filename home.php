@@ -290,6 +290,28 @@ if ($hasFeatureAccess) {
     $totalBookingsResult = $totalBookingsStmt->get_result()->fetch_assoc();
     $totalBookings = $totalBookingsResult['total_bookings'] ?? 0;
 
+    // Karigar statistics
+    $totalKarigarsQuery = "SELECT COUNT(*) as total_karigars FROM karigars WHERE firm_id = ?";
+    $totalKarigarsStmt = $conn->prepare($totalKarigarsQuery);
+    $totalKarigarsStmt->bind_param("i", $firm_id);
+    $totalKarigarsStmt->execute();
+    $totalKarigarsResult = $totalKarigarsStmt->get_result()->fetch_assoc();
+    $totalKarigars = $totalKarigarsResult['total_karigars'] ?? 0;
+
+    $activeKarigarsQuery = "SELECT COUNT(*) as active_karigars FROM karigars WHERE firm_id = ? AND status = 'Active'";
+    $activeKarigarsStmt = $conn->prepare($activeKarigarsQuery);
+    $activeKarigarsStmt->bind_param("i", $firm_id);
+    $activeKarigarsStmt->execute();
+    $activeKarigarsResult = $activeKarigarsStmt->get_result()->fetch_assoc();
+    $activeKarigars = $activeKarigarsResult['active_karigars'] ?? 0;
+
+    $totalKarigarOrdersQuery = "SELECT COUNT(*) as total_karigar_orders FROM jewellery_order_items WHERE firm_id = ? AND karigar_id IS NOT NULL";
+    $totalKarigarOrdersStmt = $conn->prepare($totalKarigarOrdersQuery);
+    $totalKarigarOrdersStmt->bind_param("i", $firm_id);
+    $totalKarigarOrdersStmt->execute();
+    $totalKarigarOrdersResult = $totalKarigarOrdersStmt->get_result()->fetch_assoc();
+    $totalKarigarOrders = $totalKarigarOrdersResult['total_karigar_orders'] ?? 0;
+
     // Add this for active loans
     $activeLoansQuery = "SELECT COUNT(*) as total_active_loans FROM loans WHERE firm_id = ? AND current_status = 'active'";
     $activeLoansStmt = $conn->prepare($activeLoansQuery);
@@ -1012,6 +1034,34 @@ if (empty(trim($marqueeText))) {
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Staff</h3>
                     <p class="text-xs mt-1"><span class="text-pink-600 font-bold"><?php echo $hasFeatureAccess ? $totalStaff : '**'; ?> Members</span></p>
                 </div>
+
+                <!-- Karigars Module -->
+                <?php if ($hasFeatureAccess): ?>
+                <a href="karigars.php" class="menu-card menu-gradient-orange rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-hammer text-orange-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Karigars</h3>
+                    <p class="text-xs mt-1"><span class="text-orange-600 font-bold"><?php echo $activeKarigars; ?> Active</span></p>
+                </a>
+                <?php else: ?>
+                <div class="menu-card menu-gradient-orange rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
+                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                        <i class="fas fa-lock text-white text-lg"></i>
+                    </div>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-hammer text-orange-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Karigars</h3>
+                    <p class="text-xs mt-1"><span class="text-orange-600 font-bold">** Active</span></p>
+                </div>
+                <?php endif; ?>
 
                 <!-- Reports Module -->
                 <?php if ($hasFeatureAccess): ?>

@@ -171,6 +171,7 @@ $conn->close();
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/home.css">
     <script>
         tailwind.config = {
             theme: {
@@ -258,32 +259,38 @@ $conn->close();
     <?php endif; ?>
 
     <!-- Compact Glass Header -->
-    <header class="glass-header sticky top-0 z-50 shadow-sm">
-        <div class="px-3 py-2.5">
+    <header class="header-glass sticky top-0 z-50 shadow-md">
+        <div class="px-3 py-2">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 gradient-gold rounded-lg flex items-center justify-center shadow-sm">
-                        <i class="fas fa-gem text-white text-xs"></i>
+                    <div class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating">
+                        <?php if (!empty($userInfo['Logo'])): ?>
+                            <img src="<?php echo htmlspecialchars($userInfo['Logo']); ?>" alt="Firm Logo" class="w-full h-full object-cover rounded-xl">
+                        <?php else: ?>
+                            <i class="fas fa-gem text-white text-sm"></i>
+                        <?php endif; ?>
                     </div>
                     <div>
-                        <h1 class="text-sm font-bold text-gray-800 leading-tight"><?php echo $userInfo['FirmName']; ?></h1>
-                        <p class="text-xs text-primary-600 font-medium leading-tight">Powered by JewelEntry</p>
+                        <h1 class="text-sm font-bold text-gray-800"><?php echo $userInfo['FirmName']; ?></h1>
+                        <p class="text-xs text-gray-600 font-medium">Powered by JewelEntry</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
                     <div class="text-right">
-                        <p class="text-xs font-semibold text-gray-800 leading-tight"><?php echo $userInfo['Name']; ?></p>
-                        <p class="text-xs text-primary-600 leading-tight"><?php echo $userInfo['Role']; ?></p>
+                        <p id="headerUserName" class="text-xs font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
+                        <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
                     </div>
-                    <div class="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center shadow-sm overflow-hidden">
+                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
                         <?php 
                         $defaultImage = 'public/uploads/user.png';
                         if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
-                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="Profile" class="w-full h-full object-cover">
+                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="User Profile" class="w-full h-full object-cover">
+                        <?php elseif (file_exists($defaultImage)): ?>
+                            <img src="<?php echo htmlspecialchars($defaultImage); ?>" alt="Default User" class="w-full h-full object-cover">
                         <?php else: ?>
-                            <i class="fas fa-user text-white text-xs"></i>
+                            <i class="fas fa-user-crown text-white text-sm"></i>
                         <?php endif; ?>
-                    </div>
+                    </a>
                 </div>
             </div>
         </div>
@@ -597,7 +604,7 @@ $conn->close();
     </div>
 
     <!-- Fixed Bottom Navigation -->
-    <nav class="glass-nav fixed bottom-0 left-0 right-0 shadow-lg z-40 border-t border-gray-200 bg-white/90 backdrop-blur">
+    <nav class="glass-nav fixed bottom-0 left-0 right-0 shadow-lg z-40">
         <div class="px-4 py-2">
             <div class="flex justify-around items-center">
                 <a href="home.php" class="flex flex-col items-center space-y-0.5 py-1.5 px-2 rounded-lg transition-all duration-300 hover:bg-primary-50">
@@ -633,7 +640,7 @@ $conn->close();
             </div>
         </div>
     </nav>
-
+    <script type="module" src="js/home.js"></script>
     <script>
         let rewardCounter = 0;
 

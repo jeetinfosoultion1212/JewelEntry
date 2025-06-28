@@ -5,11 +5,93 @@ require 'config/config.php'; // Your main DB
 require_once 'config/hallmark.php'; // For huid_data table
 date_default_timezone_set('Asia/Kolkata');
 
+// Test database connections
+if (!isset($conn2) || !$conn2) {
+    die('Error: Hallmark database connection failed');
+}
+
+// Database table required for view tracking:
+// CREATE TABLE IF NOT EXISTS page_views (
+//     id INT AUTO_INCREMENT PRIMARY KEY,
+//     page_name VARCHAR(255) NOT NULL,
+//     view_count INT DEFAULT 1,
+//     first_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+//     last_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+//     UNIQUE KEY unique_page (page_name)
+// );
+
 // 🔄 Handle AJAX requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $response = ['status' => 'error', 'message' => 'Invalid input.'];
 
     if (isset($_POST['action'])) {
+        // Increment view counter
+        if ($_POST['action'] === 'increment_view') {
+            try {
+                // First, check if the table exists
+                $table_check = $conn2->query("SHOW TABLES LIKE 'page_views'");
+                if ($table_check->num_rows === 0) {
+                    // Create the table if it doesn't exist
+                    $create_table = "CREATE TABLE IF NOT EXISTS page_views (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        page_name VARCHAR(255) NOT NULL,
+                        view_count INT DEFAULT 1,
+                        first_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY unique_page (page_name)
+                    )";
+                    $conn2->query($create_table);
+                }
+                
+                $page_name = 'huid_data_page';
+                
+                // Check if page view record exists
+                $check_stmt = $conn2->prepare("SELECT id, view_count FROM page_views WHERE page_name = ?");
+                if (!$check_stmt) {
+                    $response = ['status' => 'error', 'message' => 'Prepare failed: ' . $conn2->error];
+                } else {
+                    $check_stmt->bind_param('s', $page_name);
+                    $check_stmt->execute();
+                    $result = $check_stmt->get_result();
+                    $view_record = $result->fetch_assoc();
+                    $check_stmt->close();
+                    
+                    if ($view_record) {
+                        // Update existing record
+                        $new_count = $view_record['view_count'] + 1;
+                        $update_stmt = $conn2->prepare("UPDATE page_views SET view_count = ?, last_viewed = NOW() WHERE page_name = ?");
+                        if ($update_stmt) {
+                            $update_stmt->bind_param('is', $new_count, $page_name);
+                            if ($update_stmt->execute()) {
+                                $response = ['status' => 'success', 'view_count' => $new_count];
+                            } else {
+                                $response = ['status' => 'error', 'message' => 'Update failed: ' . $update_stmt->error];
+                            }
+                            $update_stmt->close();
+                        } else {
+                            $response = ['status' => 'error', 'message' => 'Update prepare failed: ' . $conn2->error];
+                        }
+                    } else {
+                        // Create new record
+                        $insert_stmt = $conn2->prepare("INSERT INTO page_views (page_name, view_count, first_viewed, last_viewed) VALUES (?, 1, NOW(), NOW())");
+                        if ($insert_stmt) {
+                            $insert_stmt->bind_param('s', $page_name);
+                            if ($insert_stmt->execute()) {
+                                $response = ['status' => 'success', 'view_count' => 1];
+                            } else {
+                                $response = ['status' => 'error', 'message' => 'Insert failed: ' . $insert_stmt->error];
+                            }
+                            $insert_stmt->close();
+                        } else {
+                            $response = ['status' => 'error', 'message' => 'Insert prepare failed: ' . $conn2->error];
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                $response = ['status' => 'error', 'message' => 'Exception: ' . $e->getMessage()];
+            }
+        }
+
         // Save Pair ID action
         if ($_POST['action'] === 'save_pair_id') {
             $ids = $_POST['ids'] ?? [];
@@ -619,6 +701,12 @@ $user_name = $_SESSION['user_name'] ?? 'Guest';
                         ?>
                     </div>
                 </div>
+                <div class="stat-card bg-red-50 border border-red-200">
+                    <div class="text-red-600 text-xs font-medium">Views</div>
+                    <div class="text-red-800 font-bold text-sm" id="viewCount">
+                        <i class="fas fa-eye text-xs"></i> <span id="viewCountValue">-</span>
+                    </div>
+                </div>
             </div>
             
             <!-- Compact Action Buttons -->
@@ -640,6 +728,9 @@ $user_name = $_SESSION['user_name'] ?? 'Guest';
                 </button>
                 <button id="exportExcelBtn" class="btn-sm bg-green-600 text-white hover:bg-green-700">
                     <i class="fas fa-file-excel"></i> Excel
+                </button>
+                <button id="testViewCounterBtn" class="btn-sm bg-purple-600 text-white hover:bg-purple-700">
+                    <i class="fas fa-eye"></i> Test View
                 </button>
                 <?php if (!$is_logged_in): ?>
                 <button id="manualLoginBtn" class="btn-sm bg-orange-500 text-white hover:bg-orange-600">
@@ -886,8 +977,8 @@ $user_name = $_SESSION['user_name'] ?? 'Guest';
             </div>
             
             <div class="absolute top-4 left-4">
-                <button onclick="closeAllModals()" class="text-white/80 hover:text-white text-sm font-medium transition-colors">
-                    Skip for now
+                <button onclick="openRegistrationPage()" class="bg-white text-orange-600 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-all duration-200 shadow-md">
+                    <i class="fas fa-user-plus mr-1"></i>Create Account
                 </button>
             </div>
             
@@ -939,140 +1030,34 @@ $user_name = $_SESSION['user_name'] ?? 'Guest';
             </form>
         </div>
 
-        <!-- Features Section -->
+        <!-- Quick Features Preview -->
         <div class="px-6 pb-4">
-            <div class="bg-gradient-to-r from-gray-50 to-orange-50 rounded-xl p-5 border border-gray-100">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-cube text-orange-600"></i>
+            <div class="bg-gradient-to-r from-gray-50 to-orange-50 rounded-xl p-4 border border-gray-100">
+                <h5 class="font-semibold text-gray-800 mb-3 text-center">15 Professional Modules</h5>
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                    <div class="bg-white p-2 rounded-lg shadow-sm border text-center">
+                        <i class="fas fa-warehouse text-blue-600 text-lg mb-1"></i>
+                        <p class="font-medium text-gray-700">Inventory</p>
                     </div>
-                    <div>
-                        <h4 class="font-bold text-gray-800">15 Professional Modules</h4>
-                        <p class="text-gray-600 text-sm">Complete jewelry business solution</p>
+                    <div class="bg-white p-2 rounded-lg shadow-sm border text-center">
+                        <i class="fas fa-cash-register text-green-600 text-lg mb-1"></i>
+                        <p class="font-medium text-gray-700">Sales</p>
                     </div>
-                </div>
-                
-                <div class="grid grid-cols-3 gap-3 mb-4">
-                    <div class="bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 group cursor-pointer">
-                        <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-blue-100 transition-colors">
-                            <i class="fas fa-warehouse text-blue-600"></i>
-                        </div>
-                        <p class="text-sm font-medium text-gray-700">Inventory</p>
+                    <div class="bg-white p-2 rounded-lg shadow-sm border text-center">
+                        <i class="fas fa-users text-purple-600 text-lg mb-1"></i>
+                        <p class="font-medium text-gray-700">CRM</p>
                     </div>
-                    
-                    <div class="bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 group cursor-pointer">
-                        <div class="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-green-100 transition-colors">
-                            <i class="fas fa-cash-register text-green-600"></i>
-                        </div>
-                        <p class="text-sm font-medium text-gray-700">Sales</p>
+                    <div class="bg-white p-2 rounded-lg shadow-sm border text-center">
+                        <i class="fas fa-coins text-yellow-600 text-lg mb-1"></i>
+                        <p class="font-medium text-gray-700">Gold Loans</p>
                     </div>
-                    
-                    <div class="bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 group cursor-pointer">
-                        <div class="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-purple-100 transition-colors">
-                            <i class="fas fa-users text-purple-600"></i>
-                        </div>
-                        <p class="text-sm font-medium text-gray-700">CRM</p>
+                    <div class="bg-white p-2 rounded-lg shadow-sm border text-center">
+                        <i class="fas fa-ring text-pink-600 text-lg mb-1"></i>
+                        <p class="font-medium text-gray-700">Products</p>
                     </div>
-                    
-                    <div class="bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 group cursor-pointer">
-                        <div class="w-8 h-8 bg-yellow-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-yellow-100 transition-colors">
-                            <i class="fas fa-coins text-yellow-600"></i>
-                        </div>
-                        <p class="text-sm font-medium text-gray-700">Gold Loans</p>
-                    </div>
-                    
-                    <div class="bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 group cursor-pointer">
-                        <div class="w-8 h-8 bg-pink-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-pink-100 transition-colors">
-                            <i class="fas fa-ring text-pink-600"></i>
-                        </div>
-                        <p class="text-sm font-medium text-gray-700">Products</p>
-                    </div>
-                    
-                    <div class="bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 group cursor-pointer">
-                        <div class="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-orange-100 transition-colors">
-                            <i class="fas fa-chart-line text-orange-600"></i>
-                        </div>
-                        <p class="text-sm font-medium text-gray-700">Reports</p>
-                    </div>
-                </div>
-                
-                <div class="text-center">
-                    <button class="text-sm text-orange-600 hover:text-orange-700 font-semibold transition-colors hover:underline">
-                        View All 15 Modules <i class="fas fa-arrow-right ml-1"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Free Trial CTA -->
-        <div class="px-6 pb-4">
-            <div class="bg-gradient-to-r from-orange-500 to-red-500 rounded-xl p-5 text-white shadow-lg">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0 backdrop-blur-sm">
-                        <i class="fas fa-gift text-white text-lg"></i>
-                    </div>
-                    <div class="flex-1">
-                        <h5 class="font-bold text-lg mb-1">Start Your Free Trial</h5>
-                        <p class="text-orange-100 text-sm mb-3">30 days • All features • No setup fee</p>
-                        
-                        <button onclick="openRegistrationPage()" class="w-full bg-white text-orange-600 py-3 px-4 rounded-xl font-semibold hover:bg-gray-50 transition-all duration-200 transform hover:scale-[1.02] shadow-md">
-                            <i class="fas fa-user-plus mr-2"></i>Create Free Account
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Statistics -->
-        <div class="px-6 pb-4">
-            <div class="grid grid-cols-2 gap-3">
-                <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl text-center border border-blue-200">
-                    <div class="text-2xl font-bold text-blue-700">174</div>
-                    <div class="text-sm text-blue-600 font-medium">Products</div>
-                </div>
-                <div class="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl text-center border border-green-200">
-                    <div class="text-2xl font-bold text-green-700">₹2.1L</div>
-                    <div class="text-sm text-green-600 font-medium">Revenue</div>
-                </div>
-                <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl text-center border border-purple-200">
-                    <div class="text-2xl font-bold text-purple-700">500+</div>
-                    <div class="text-sm text-purple-600 font-medium">Firms</div>
-                </div>
-                <div class="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-xl text-center border border-orange-200">
-                    <div class="text-2xl font-bold text-orange-700">25</div>
-                    <div class="text-sm text-orange-600 font-medium">Orders</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Key Features -->
-        <div class="px-6 pb-4">
-            <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <h5 class="font-semibold text-gray-800 mb-3 text-center">Why Choose JewelEntry?</h5>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-shield-alt text-blue-600 text-sm"></i>
-                        </div>
-                        <span class="text-sm font-medium text-gray-700">Secure & Safe</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-mobile-alt text-green-600 text-sm"></i>
-                        </div>
-                        <span class="text-sm font-medium text-gray-700">Mobile Ready</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-cloud text-orange-600 text-sm"></i>
-                        </div>
-                        <span class="text-sm font-medium text-gray-700">Cloud Based</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-headset text-purple-600 text-sm"></i>
-                        </div>
-                        <span class="text-sm font-medium text-gray-700">24/7 Support</span>
+                    <div class="bg-white p-2 rounded-lg shadow-sm border text-center">
+                        <i class="fas fa-chart-line text-orange-600 text-lg mb-1"></i>
+                        <p class="font-medium text-gray-700">Reports</p>
                     </div>
                 </div>
             </div>
@@ -1081,18 +1066,14 @@ $user_name = $_SESSION['user_name'] ?? 'Guest';
         <!-- Footer -->
         <div class="px-6 pb-6 text-center border-t border-gray-100 pt-4">
             <p class="text-sm text-gray-600 mb-3">Need help? Contact our support team</p>
-            <div class="flex justify-center gap-6">
-                <a href="mailto:support@jewelentry.com" class="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-medium">
-                    <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-envelope text-sm"></i>
-                    </div>
-                    <span class="text-sm">Email Support</span>
+            <div class="flex justify-center gap-4">
+                <a href="mailto:support@jewelentry.com" class="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-medium text-sm">
+                    <i class="fas fa-envelope"></i>
+                    <span>Email</span>
                 </a>
-                <a href="tel:+919876543210" class="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-medium">
-                    <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-phone text-sm"></i>
-                    </div>
-                    <span class="text-sm">Call Us</span>
+                <a href="tel:+919876543210" class="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-medium text-sm">
+                    <i class="fas fa-phone"></i>
+                    <span>Call</span>
                 </a>
             </div>
         </div>
@@ -1116,6 +1097,45 @@ function initializeApp() {
     
     // Initialize modal dismissal tracking
     window.loginModalDismissed = false;
+    
+    // Increment page view counter (always)
+    incrementViewCounter();
+}
+
+function incrementViewCounter() {
+    console.log('Incrementing page view counter');
+    
+    const formData = new FormData();
+    formData.append('action', 'increment_view');
+    
+    fetch('', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('View counter response:', data);
+        if (data.status === 'success') {
+            const viewCountElement = document.getElementById('viewCountValue');
+            if (viewCountElement) {
+                viewCountElement.textContent = data.view_count;
+                console.log('Page view count updated to:', data.view_count);
+            } else {
+                console.error('View count element not found');
+            }
+        } else {
+            console.error('View counter error:', data.message);
+            // Show error in toast
+            showToast('View counter error: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error incrementing view counter:', error);
+        showToast('View counter failed: ' + error.message, 'error');
+    });
 }
 
 function checkLoginStatus() {
@@ -1172,6 +1192,7 @@ function setupEventListeners() {
         'printTagsBtn': printSelectedTags,
         'submitJewelBtn': submitToJewelEntry,
         'exportExcelBtn': exportToExcel,
+        'testViewCounterBtn': () => incrementViewCounter(),
         'loginBtn': openLoginModal,
         'manualLoginBtn': openLoginModal,
         'findCombinationsBtn': findWeightCombinations,
