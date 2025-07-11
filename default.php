@@ -20,6 +20,57 @@ $debugRawRevenue = 'N/A';
 $debugRawFirms = 'N/A';
 $debugRawOrders = 'N/A';
 
+// --- PAGE VIEW TRACKER (backend only, not shown on frontend) ---
+require_once 'config/hallmarkpro_config.php'; // Provides $hallmarkpro_conn
+try {
+    $conn2 = $hallmarkpro_conn; // For compatibility with huid_data.php logic
+    // Check if table exists, create if not
+    $table_check = $conn2->query("SHOW TABLES LIKE 'page_views'");
+    if ($table_check && $table_check->num_rows === 0) {
+        $create_table = "CREATE TABLE IF NOT EXISTS page_views (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            page_name VARCHAR(255) NOT NULL,
+            view_count INT DEFAULT 1,
+            first_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_page (page_name)
+        )";
+        $conn2->query($create_table);
+    }
+    $page_name = 'default_page';
+    // Check if record exists
+    $check_stmt = $conn2->prepare("SELECT id, view_count FROM page_views WHERE page_name = ?");
+    if ($check_stmt) {
+        $check_stmt->bind_param('s', $page_name);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        $view_record = $result->fetch_assoc();
+        $check_stmt->close();
+        if ($view_record) {
+            // Update existing record
+            $new_count = $view_record['view_count'] + 1;
+            $update_stmt = $conn2->prepare("UPDATE page_views SET view_count = ?, last_viewed = NOW() WHERE page_name = ?");
+            if ($update_stmt) {
+                $update_stmt->bind_param('is', $new_count, $page_name);
+                $update_stmt->execute();
+                $update_stmt->close();
+            }
+        } else {
+            // Insert new record
+            $insert_stmt = $conn2->prepare("INSERT INTO page_views (page_name, view_count, first_viewed, last_viewed) VALUES (?, 1, NOW(), NOW())");
+            if ($insert_stmt) {
+                $insert_stmt->bind_param('s', $page_name);
+                $insert_stmt->execute();
+                $insert_stmt->close();
+            }
+        }
+    }
+} catch(Exception $e) {
+    // Silently fail, do not show error on frontend
+    error_log("Page view tracker error: " . $e->getMessage());
+}
+// --- END PAGE VIEW TRACKER ---
+
 try {
     // Use mysqli connection like other files in the project
     $conn = new mysqli($servername, $username, $password, $dbname);

@@ -94,6 +94,25 @@ $stmt->bind_param("iss", $firm_id, $startDate, $endDate);
 $stmt->execute();
 $sales = $stmt->get_result();
 
+// Fetch GST and non-GST bill page URLs from firm_configurations
+$gstBillPageUrl = 'invoice.php'; // default fallback
+$nonGstBillPageUrl = 'thermal_invoice.php'; // default fallback
+
+$configQuery = "SELECT gst_bill_page_url, non_gst_bill_page_url FROM firm_configurations WHERE firm_id = ? LIMIT 1";
+$configStmt = $conn->prepare($configQuery);
+$configStmt->bind_param("i", $firm_id);
+$configStmt->execute();
+$configResult = $configStmt->get_result();
+if ($configResult && $configResult->num_rows > 0) {
+    $config = $configResult->fetch_assoc();
+    if (!empty($config['gst_bill_page_url'])) {
+        $gstBillPageUrl = $config['gst_bill_page_url'];
+    }
+    if (!empty($config['non_gst_bill_page_url'])) {
+        $nonGstBillPageUrl = $config['non_gst_bill_page_url'];
+    }
+}
+
 // Determine date range display text
 function getDateRangeDisplayText($startDate, $endDate) {
     $today = date('Y-m-d');
@@ -514,7 +533,7 @@ $dateRangeText = getDateRangeDisplayText($startDate, $endDate);
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <a href="print-invoice.php?id=<?php echo $sale['id']; ?>" class="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200">
+            <a href="<?php echo ($sale['is_gst_applicable'] ? $gstBillPageUrl : $nonGstBillPageUrl) . '?id=' . $sale['id']; ?>" class="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200">
               <i class="fas fa-print"></i>
             </a>
             <a href="view-sale.php?id=<?php echo $sale['id']; ?>" class="bg-primary text-white px-3 py-1 rounded text-xs hover:bg-primary-dark">
@@ -528,29 +547,7 @@ $dateRangeText = getDateRangeDisplayText($startDate, $endDate);
   </div>
 
   <!-- Bottom Navigation -->
-  <nav class="bottom-nav">
-    <a href="home.php" class="nav-item">
-      <i class="nav-icon fas fa-home"></i>
-      <span class="nav-text">Home</span>
-    </a>
-    <a href="add.php" class="nav-item">
-      <i class="nav-icon fas fa-tags"></i>
-      <span class="nav-text">Add</span>
-    </a>
-     <a href="sale-entry.php" class="nav-item">
-      <i class="nav-icon fas fa-shopping-cart"></i>
-      <span class="nav-text">Sale</span>
-    </a>
-    <a href="sale-list.php" class="nav-item active">
-      <i class="nav-icon fa-solid fa-file-invoice-dollar"></i>
-      <span class="nav-text">Sales List</span>
-    </a>
-   
-    <a href="reports.php" class="nav-item">
-      <i class="nav-icon fas fa-chart-pie"></i>
-      <span class="nav-text">Reports</span>
-    </a>
-  </nav>
+  <?php include 'includes/bottom_nav.php'; ?>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {

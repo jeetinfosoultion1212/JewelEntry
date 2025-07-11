@@ -36,9 +36,42 @@ $userInfo = $userResult->fetch_assoc();
   <style>
     body { font-family: 'Inter', sans-serif; background: #f5f7fa; }
     .section-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.04); margin-bottom: 1.5rem; }
-    .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
-    .table-responsive table { min-width: 100%; font-size: 12px; }
-    .table-header { background: #f8fafc; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; }
+    .table-responsive { overflow-x: auto; border-radius: 12px; border: 1px solid #e5e7eb; }
+    .table-responsive table { min-width: 100%; font-size: 13px; border-collapse: separate; border-spacing: 0; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+    .table-header th {
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #475569;
+      border-bottom: 2px solid #e5e7eb;
+      z-index: 2;
+      padding: 10px 8px;
+    }
+    .enhanced-table-row {
+      transition: background 0.2s;
+    }
+    .enhanced-table-row:nth-child(even) {
+      background: #f3f4f6;
+    }
+    .enhanced-table-row:nth-child(odd) {
+      background: #fff;
+    }
+    .enhanced-table-row:hover {
+      background: #e0e7ef;
+    }
+    .enhanced-table-cell {
+      padding: 10px 8px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+      color: #374151;
+      white-space: nowrap;
+    }
+    .enhanced-table-row:last-child .enhanced-table-cell {
+      border-bottom: none;
+    }
     .bottom-nav { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-top: 1px solid rgba(0,0,0,0.05); }
     .nav-btn { transition: all 0.2s ease; }
     .nav-btn:hover { transform: scale(1.05); }
@@ -80,6 +113,40 @@ $userInfo = $userResult->fetch_assoc();
       max-height: 220px;
       overflow-y: auto;
       border-radius: 12px;
+    }
+    /* Colorful badge styles */
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      margin-right: 2px;
+      margin-bottom: 1px;
+      border: 1px solid #e5e7eb;
+    }
+    .badge-purity-24 { background: #fef9c3; color: #b45309; }
+    .badge-purity-22 { background: #fdf6b2; color: #b45309; }
+    .badge-purity-20 { background: #fce7f3; color: #a21caf; }
+    .badge-purity-18 { background: #dbeafe; color: #1e40af; }
+    .badge-purity-14 { background: #d1fae5; color: #065f46; }
+    .badge-purity-other { background: #ede9fe; color: #6d28d9; }
+    .badge-type { background: #e0e7ff; color: #3730a3; }
+    .badge-material { background: #fee2e2; color: #991b1b; }
+    .badge-action { background: #cffafe; color: #155e75; }
+    .badge-ring { background: #fef9c3; color: #b45309; }
+    .badge-earring { background: #dbeafe; color: #1e40af; }
+    .badge-chain { background: #d1fae5; color: #065f46; }
+    .badge-bracelet { background: #fce7f3; color: #a21caf; }
+    .badge-default { background: #f3f4f6; color: #374151; }
+    .chart-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 220px;
+      min-height: 180px;
+      background: none;
     }
   </style>
 </head>
@@ -123,12 +190,25 @@ $userInfo = $userResult->fetch_assoc();
     <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center">
       <i class="fas fa-layer-group mr-2 text-yellow-500"></i>Jewellery Stock by Purity & Type
     </h3>
-    <div class="chart-container mb-4" style="height:220px;">
-      <canvas id="jewelryStockChart"></canvas>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="chart-container">
+        <h4 class="text-xs font-semibold text-gray-600 mb-1">Distribution by Purity</h4>
+        <canvas id="jewelryPurityChart"></canvas>
+      </div>
+      <div class="chart-container">
+        <h4 class="text-xs font-semibold text-gray-600 mb-1">Distribution by Type</h4>
+        <canvas id="jewelryTypeChart"></canvas>
+      </div>
     </div>
     <div class="table-responsive mt-2">
       <table class="min-w-full text-xs">
-        <thead><tr class="table-header"><th>Purity</th><th>Type</th><th>Count</th><th>Gross Wt. (g)</th><th>Net Wt. (g)</th></tr></thead>
+        <thead><tr class="table-header">
+          <th title="Purity of the item">Purity</th>
+          <th title="Jewellery type">Type</th>
+          <th title="Number of items">Count</th>
+          <th title="Gross Weight in grams">Gross Wt. (g)</th>
+          <th title="Net Weight in grams">Net Wt. (g)</th>
+        </tr></thead>
         <tbody id="jewelryStockTable"></tbody>
       </table>
     </div>
@@ -137,12 +217,25 @@ $userInfo = $userResult->fetch_assoc();
     <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center">
       <i class="fas fa-cubes mr-2 text-blue-500"></i>Inventory Metal by Purity & Material
     </h3>
-    <div class="chart-container mb-4" style="height:220px;">
-      <canvas id="inventoryStockChart"></canvas>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="chart-container">
+        <h4 class="text-xs font-semibold text-gray-600 mb-1">Distribution by Purity</h4>
+        <canvas id="inventoryPurityChart"></canvas>
+      </div>
+      <div class="chart-container">
+        <h4 class="text-xs font-semibold text-gray-600 mb-1">Distribution by Material</h4>
+        <canvas id="inventoryMaterialChart"></canvas>
+      </div>
     </div>
     <div class="table-responsive mt-2">
       <table class="min-w-full text-xs">
-        <thead><tr class="table-header"><th>Purity</th><th>Material</th><th>Lots</th><th>Total Stock (g)</th><th>Unallocated (g)</th></tr></thead>
+        <thead><tr class="table-header">
+          <th title="Purity">Purity</th>
+          <th title="Material">Material</th>
+          <th title="Number of lots">Lots</th>
+          <th title="Total Stock in grams">Total Stock (g)</th>
+          <th title="Unallocated in grams">Unallocated (g)</th>
+        </tr></thead>
         <tbody id="inventoryStockTable"></tbody>
       </table>
     </div>
@@ -153,34 +246,15 @@ $userInfo = $userResult->fetch_assoc();
     </h3>
     <div class="recent-stock-table-container">
       <table class="recent-stock-table min-w-full">
-        <thead><tr><th>Date</th><th>Type</th><th>Material</th><th>Purity</th><th>Weight (g)</th><th>Action</th></tr></thead>
+        <thead><tr class="table-header">
+          <th>Date</th><th>Type</th><th>Material</th><th>Purity</th><th>Weight (g)</th><th>Action</th>
+        </tr></thead>
         <tbody id="recentStockTable"></tbody>
       </table>
     </div>
   </div>
 </main>
-<nav class="bottom-nav fixed bottom-0 left-0 right-0 z-40">
-  <div class="px-4 py-2">
-    <div class="flex justify-around">
-      <a href="home.php" class="nav-item flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-        <i class="nav-icon fas fa-home text-gray-400 text-lg"></i>
-        <span class="nav-text text-xs text-gray-500 font-medium">Home</span>
-      </a>
-      <a href="stock_report.php" class="nav-item flex flex-col items-center space-y-1 py-2 px-3 rounded-lg gradient-gold active">
-        <i class="nav-icon fas fa-cubes text-yellow-600 text-lg"></i>
-        <span class="nav-text text-xs text-yellow-700 font-bold">Stock</span>
-      </a>
-      <a href="reports.php" class="nav-item flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-        <i class="nav-icon fas fa-chart-pie text-gray-400 text-lg"></i>
-        <span class="nav-text text-xs text-gray-500 font-medium">Reports</span>
-      </a>
-      <a href="customers.php" class="nav-item flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-        <i class="nav-icon fas fa-users text-gray-400 text-lg"></i>
-        <span class="nav-text text-xs text-gray-500 font-medium">Customers</span>
-      </a>
-    </div>
-  </div>
-</nav>
+<?php include 'includes/bottom_nav.php'; ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   fetch('api/get_stock_report.php')
@@ -189,8 +263,10 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!res.success) throw new Error(res.message);
       renderJewelryStock(res.data.jewelry_stock);
       renderInventoryStock(res.data.inventory_stock);
-      renderJewelryChart(res.data.jewelry_stock);
-      renderInventoryChart(res.data.inventory_stock);
+      renderJewelryPurityChart(res.data.jewelry_stock);
+      renderJewelryTypeChart(res.data.jewelry_stock);
+      renderInventoryPurityChart(res.data.inventory_stock);
+      renderInventoryMaterialChart(res.data.inventory_stock);
       fetchRecentStock();
     })
     .catch(err => {
@@ -198,15 +274,54 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('inventoryStockTable').innerHTML = `<tr><td colspan='5' class='text-center text-red-500'>${err.message}</td></tr>`;
     });
 
+  function getPurityBadge(purity) {
+    purity = parseFloat(purity);
+    if (purity >= 99.5) return `<span class='badge badge-purity-24'>24K</span>`;
+    if (purity >= 91.6 && purity <= 92.0) return `<span class='badge badge-purity-22'>22K</span>`;
+    if (purity >= 83.3 && purity < 91.6) return `<span class='badge badge-purity-20'>20K</span>`;
+    if (purity >= 75.0 && purity < 83.3) return `<span class='badge badge-purity-18'>18K</span>`;
+    if (purity >= 58.3 && purity < 75.0) return `<span class='badge badge-purity-14'>14K</span>`;
+    return `<span class='badge badge-purity-other'>${purity}K</span>`;
+  }
+  function getTypeBadge(type) {
+    const t = type.toLowerCase();
+    if (t.includes('ring')) return `<span class='badge badge-ring'>${type}</span>`;
+    if (t.includes('earring')) return `<span class='badge badge-earring'>${type}</span>`;
+    if (t.includes('chain')) return `<span class='badge badge-chain'>${type}</span>`;
+    if (t.includes('bracelet')) return `<span class='badge badge-bracelet'>${type}</span>`;
+    return `<span class='badge badge-type'>${type}</span>`;
+  }
+  function getMaterialBadge(mat) {
+    return `<span class='badge badge-material'>${mat}</span>`;
+  }
+  function getActionBadge(action) {
+    return `<span class='badge badge-action'>${action}</span>`;
+  }
   function renderJewelryStock(data) {
     const tbody = document.getElementById('jewelryStockTable');
     if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400">No data</td></tr>'; return; }
-    tbody.innerHTML = data.map(row => `<tr><td>${row.purity}</td><td>${row.jewelry_type}</td><td>${row.item_count}</td><td>${parseFloat(row.total_gross_weight).toFixed(2)}</td><td>${parseFloat(row.total_net_weight).toFixed(2)}</td></tr>`).join('');
+    tbody.innerHTML = data.map(row => `
+      <tr class="enhanced-table-row">
+        <td class="enhanced-table-cell">${getPurityBadge(row.purity)}</td>
+        <td class="enhanced-table-cell">${getTypeBadge(row.jewelry_type)}</td>
+        <td class="enhanced-table-cell">${row.item_count}</td>
+        <td class="enhanced-table-cell">${parseFloat(row.total_gross_weight).toFixed(2)}</td>
+        <td class="enhanced-table-cell">${parseFloat(row.total_net_weight).toFixed(2)}</td>
+      </tr>
+    `).join('');
   }
   function renderInventoryStock(data) {
     const tbody = document.getElementById('inventoryStockTable');
     if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400">No data</td></tr>'; return; }
-    tbody.innerHTML = data.map(row => `<tr><td>${row.purity}</td><td>${row.material_type}</td><td>${row.lot_count}</td><td>${parseFloat(row.total_stock).toFixed(2)}</td><td>${parseFloat(row.remaining_stock).toFixed(2)}</td></tr>`).join('');
+    tbody.innerHTML = data.map(row => `
+      <tr class="enhanced-table-row">
+        <td class="enhanced-table-cell">${getPurityBadge(row.purity)}</td>
+        <td class="enhanced-table-cell">${getMaterialBadge(row.material_type)}</td>
+        <td class="enhanced-table-cell">${row.lot_count}</td>
+        <td class="enhanced-table-cell">${parseFloat(row.total_stock).toFixed(2)}</td>
+        <td class="enhanced-table-cell">${parseFloat(row.remaining_stock).toFixed(2)}</td>
+      </tr>
+    `).join('');
   }
   function purityToCarat(purity) {
     purity = parseFloat(purity);
@@ -218,53 +333,138 @@ document.addEventListener('DOMContentLoaded', function() {
     return purity + 'K';
   }
   function getColor(idx) {
-    // Pastel color palette
+    // Soft pastel color palette
     const colors = [
-      '#fbbf24', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#f87171', '#facc15', '#38bdf8', '#4ade80', '#c084fc'
+      '#fef9c3', // soft yellow
+      '#dbeafe', // soft blue
+      '#d1fae5', // soft green
+      '#fce7f3', // soft pink
+      '#ede9fe', // soft purple
+      '#fee2e2', // soft red
+      '#fdf6b2', // light gold
+      '#e0e7ff', // light indigo
+      '#cffafe', // light teal
+      '#f3f4f6', // light gray
+      '#f1f5f9', // extra light gray
+      '#f9fafb', // almost white
+      '#e0f2fe', // light sky
+      '#fef3c7', // light amber
+      '#e7e5e4', // stone
+      '#f5d0fe', // light fuchsia
+      '#bbf7d0', // mint
+      '#fde68a', // light yellow
+      '#a7f3d0', // light emerald
+      '#fbcfe8'  // light rose
     ];
     return colors[idx % colors.length];
   }
-  function renderInventoryChart(data) {
+  function renderJewelryPurityChart(data) {
     if (!data.length) return;
-    // Group for grouped bar: X = purity, bars = material_type
-    const purities = [...new Set(data.map(r => r.purity))].sort((a,b) => b-a);
-    const materials = [...new Set(data.map(r => r.material_type))];
-    const datasets = materials.map((mat, mIdx) => ({
-      label: mat,
-      data: purities.map((p, idx) => {
-        const found = data.find(r => r.purity == p && r.material_type == mat);
-        return found ? parseFloat(found.remaining_stock) : 0;
-      }),
-      backgroundColor: purities.map((_, idx) => getColor(idx)),
-      borderWidth: 1
-    }));
-    new Chart(document.getElementById('inventoryStockChart').getContext('2d'), {
-      type: 'bar',
-      data: { labels: purities.map(purityToCarat), datasets },
-      options: { responsive: true, plugins: { legend: { position: 'top' } },
-        scales: { x: { stacked: false }, y: { beginAtZero: true, title: { display: true, text: 'Unallocated Stock (g)' } } }
+    const purityMap = {};
+    data.forEach(row => {
+      const purity = purityToCarat(row.purity);
+      purityMap[purity] = (purityMap[purity] || 0) + parseFloat(row.total_net_weight);
+    });
+    const labels = Object.keys(purityMap);
+    const values = Object.values(purityMap);
+    new Chart(document.getElementById('jewelryPurityChart').getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: labels.map((_, idx) => getColor(idx)),
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(2)}g` } }
+        }
       }
     });
   }
-  function renderJewelryChart(data) {
+  function renderJewelryTypeChart(data) {
     if (!data.length) return;
-    // Group for stacked bar: X = purity, stacks = jewelry_type
-    const purities = [...new Set(data.map(r => r.purity))].sort((a,b) => b-a);
-    const types = [...new Set(data.map(r => r.jewelry_type))];
-    const datasets = types.map((type, tIdx) => ({
-      label: type,
-      data: purities.map((p, idx) => {
-        const found = data.find(r => r.purity == p && r.jewelry_type == type);
-        return found ? parseFloat(found.total_net_weight) : 0;
-      }),
-      backgroundColor: purities.map((_, idx) => getColor(idx)),
-      borderWidth: 1
-    }));
-    new Chart(document.getElementById('jewelryStockChart').getContext('2d'), {
+    const typeMap = {};
+    data.forEach(row => {
+      const type = row.jewelry_type;
+      typeMap[type] = (typeMap[type] || 0) + parseFloat(row.total_net_weight);
+    });
+    const labels = Object.keys(typeMap);
+    const values = Object.values(typeMap);
+    new Chart(document.getElementById('jewelryTypeChart').getContext('2d'), {
       type: 'bar',
-      data: { labels: purities.map(purityToCarat), datasets },
-      options: { responsive: true, plugins: { legend: { position: 'top' } },
-        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Net Weight (g)' } } }
+      data: {
+        labels,
+        datasets: [{
+          label: 'Net Weight (g)',
+          data: values,
+          backgroundColor: labels.map((_, idx) => getColor(idx)),
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.x.toFixed(2)}g` } }
+        },
+        scales: { x: { beginAtZero: true } }
+      }
+    });
+  }
+  function renderInventoryPurityChart(data) {
+    if (!data.length) return;
+    const purityMap = {};
+    data.forEach(row => {
+      const purity = purityToCarat(row.purity);
+      purityMap[purity] = (purityMap[purity] || 0) + parseFloat(row.remaining_stock);
+    });
+    const labels = Object.keys(purityMap);
+    const values = Object.values(purityMap);
+    new Chart(document.getElementById('inventoryPurityChart').getContext('2d'), {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: labels.map((_, idx) => getColor(idx)),
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(2)}g` } }
+        }
+      }
+    });
+  }
+  function renderInventoryMaterialChart(data) {
+    if (!data.length) return;
+    const matMap = {};
+    data.forEach(row => {
+      const mat = row.material_type;
+      matMap[mat] = (matMap[mat] || 0) + parseFloat(row.remaining_stock);
+    });
+    const labels = Object.keys(matMap);
+    const values = Object.values(matMap);
+    new Chart(document.getElementById('inventoryMaterialChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Unallocated Stock (g)',
+          data: values,
+          backgroundColor: labels.map((_, idx) => getColor(idx)),
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.x.toFixed(2)}g` } }
+        },
+        scales: { x: { beginAtZero: true } }
       }
     });
   }
@@ -282,7 +482,16 @@ document.addEventListener('DOMContentLoaded', function() {
   function renderRecentStock(data) {
     const tbody = document.getElementById('recentStockTable');
     if (!data.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400">No data</td></tr>'; return; }
-    tbody.innerHTML = data.map(row => `<tr><td>${row.date}</td><td>${row.type}</td><td>${row.material_type}</td><td>${purityToCarat(row.purity)}</td><td>${parseFloat(row.weight).toFixed(2)}</td><td>${row.action}</td></tr>`).join('');
+    tbody.innerHTML = data.map(row => `
+      <tr class="enhanced-table-row">
+        <td class="enhanced-table-cell">${row.date}</td>
+        <td class="enhanced-table-cell">${getTypeBadge(row.type)}</td>
+        <td class="enhanced-table-cell">${getMaterialBadge(row.material_type)}</td>
+        <td class="enhanced-table-cell">${getPurityBadge(row.purity)}</td>
+        <td class="enhanced-table-cell">${parseFloat(row.weight).toFixed(2)}</td>
+        <td class="enhanced-table-cell">${getActionBadge(row.action)}</td>
+      </tr>
+    `).join('');
   }
 });
 </script>

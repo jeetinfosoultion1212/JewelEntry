@@ -185,7 +185,7 @@ if ($hasFeatureAccess) {
     $totalInWeight = $inResult['total_weight'] ?? 0;
 
     // Get today's inventory OUT count and weight
-    $outQuery = "SELECT COUNT(jsi.id) as total_out, COALESCE(SUM(jsi.gross_weight), 0) as total_weight FROM jewellery_sales_items jsi JOIN jewellery_sales js ON jsi.sale_id = js.id WHERE DATE(js.created_at) = ? AND js.firm_id = ?";
+    $outQuery = "SELECT COUNT(jsi.id) as total_out, COALESCE(SUM(jsi.gross_weight), 0) as total_weight FROM Jewellery_sales_items jsi JOIN jewellery_sales js ON jsi.sale_id = js.id WHERE DATE(js.created_at) = ? AND js.firm_id = ?";
     $outStmt = $conn->prepare($outQuery);
     $outStmt->bind_param("si", $today, $firm_id);
     $outStmt->execute();
@@ -232,7 +232,7 @@ if ($hasFeatureAccess) {
     $totalAddedItems = $totalAddedResult['total_added'] ?? 0;
     $totalAddedWeight = $totalAddedResult['total_added_weight'] ?? 0;
 
-    $totalSoldQuery = "SELECT COUNT(jsi.id) as total_sold, COALESCE(SUM(jsi.gross_weight), 0) as total_sold_weight FROM jewellery_sales_items jsi JOIN jewellery_sales js ON jsi.sale_id = js.id WHERE js.firm_id = ?";
+    $totalSoldQuery = "SELECT COUNT(jsi.id) as total_sold, COALESCE(SUM(jsi.gross_weight), 0) as total_sold_weight FROM Jewellery_sales_items jsi JOIN jewellery_sales js ON jsi.sale_id = js.id WHERE js.firm_id = ?";
     $totalSoldStmt = $conn->prepare($totalSoldQuery);
     $totalSoldStmt->bind_param("i", $firm_id);
     $totalSoldStmt->execute();
@@ -290,28 +290,6 @@ if ($hasFeatureAccess) {
     $totalBookingsResult = $totalBookingsStmt->get_result()->fetch_assoc();
     $totalBookings = $totalBookingsResult['total_bookings'] ?? 0;
 
-    // Karigar statistics
-    $totalKarigarsQuery = "SELECT COUNT(*) as total_karigars FROM karigars WHERE firm_id = ?";
-    $totalKarigarsStmt = $conn->prepare($totalKarigarsQuery);
-    $totalKarigarsStmt->bind_param("i", $firm_id);
-    $totalKarigarsStmt->execute();
-    $totalKarigarsResult = $totalKarigarsStmt->get_result()->fetch_assoc();
-    $totalKarigars = $totalKarigarsResult['total_karigars'] ?? 0;
-
-    $activeKarigarsQuery = "SELECT COUNT(*) as active_karigars FROM karigars WHERE firm_id = ? AND status = 'Active'";
-    $activeKarigarsStmt = $conn->prepare($activeKarigarsQuery);
-    $activeKarigarsStmt->bind_param("i", $firm_id);
-    $activeKarigarsStmt->execute();
-    $activeKarigarsResult = $activeKarigarsStmt->get_result()->fetch_assoc();
-    $activeKarigars = $activeKarigarsResult['active_karigars'] ?? 0;
-
-    $totalKarigarOrdersQuery = "SELECT COUNT(*) as total_karigar_orders FROM jewellery_order_items WHERE firm_id = ? AND karigar_id IS NOT NULL";
-    $totalKarigarOrdersStmt = $conn->prepare($totalKarigarOrdersQuery);
-    $totalKarigarOrdersStmt->bind_param("i", $firm_id);
-    $totalKarigarOrdersStmt->execute();
-    $totalKarigarOrdersResult = $totalKarigarOrdersStmt->get_result()->fetch_assoc();
-    $totalKarigarOrders = $totalKarigarOrdersResult['total_karigar_orders'] ?? 0;
-
     // Add this for active loans
     $activeLoansQuery = "SELECT COUNT(*) as total_active_loans FROM loans WHERE firm_id = ? AND current_status = 'active'";
     $activeLoansStmt = $conn->prepare($activeLoansQuery);
@@ -355,13 +333,13 @@ if ($hasFeatureAccess) {
     $goldSaverResult = $goldSaverStmt->get_result();
 
     while ($row = $goldSaverResult->fetch_assoc()) {
-        // Optionally fetch enrollments for gold saver plans if needed
-        // $enrollmentsQuery = "SELECT COUNT(*) as total_enrollments FROM gold_saver_enrollments WHERE plan_id = ?";
-        // $enrollmentsStmt = $conn->prepare($enrollmentsQuery);
-        // $enrollmentsStmt->bind_param("i", $row['id']);
-        // $enrollmentsStmt->execute();
-        // $enrollmentsResult = $enrollmentsStmt->get_result()->fetch_assoc();
-        // $row['total_enrollments'] = $enrollmentsResult['total_enrollments'] ?? 0;
+        // Fetch total enrollments for each gold saver plan
+        $enrollmentsQuery = "SELECT COUNT(*) as total_enrollments FROM customer_gold_plans WHERE plan_id = ?";
+        $enrollmentsStmt = $conn->prepare($enrollmentsQuery);
+        $enrollmentsStmt->bind_param("i", $row['id']);
+        $enrollmentsStmt->execute();
+        $enrollmentsResult = $enrollmentsStmt->get_result()->fetch_assoc();
+        $row['total_enrollments'] = $enrollmentsResult['total_enrollments'] ?? 0;
         $goldSaverPlans[] = $row;
     }
 }
@@ -373,7 +351,7 @@ $marqueeText = "👋 Welcome to JewelEntry! Your all-in-one jewelry store manage
 if ($hasFeatureAccess) {
     $recentSalesQuery = "SELECT js.grand_total, js.created_at, GROUP_CONCAT(jsi.product_name) as items 
                         FROM jewellery_sales js 
-                        LEFT JOIN jewellery_sales_items jsi ON js.id = jsi.sale_id 
+                        LEFT JOIN Jewellery_sales_items jsi ON js.id = jsi.sale_id 
                         WHERE js.firm_id = ? 
                         GROUP BY js.id 
                         ORDER BY js.created_at DESC 
@@ -697,7 +675,7 @@ if (empty(trim($marqueeText))) {
         </div>
         <div class="py-3">
             <div class="flex items-center justify-between mb-2">
-                <h2 class="text-base font-bold text-gray-800">Featured Schemes</h2>
+                <h2 class="text-sm font-bold text-gray-800">Featured Schemes</h2>
                 <a href="#" class="text-xs text-purple-600 font-medium hover:text-purple-800">View All</a>
             </div>
             <div class="flex space-x-2 overflow-x-auto pb-1 hide-scrollbar">
@@ -725,12 +703,12 @@ if (empty(trim($marqueeText))) {
                     }
                 ?>
                 <!-- Lucky Draw Scheme Card -->
-                <a href="schemes.php" class="min-w-[200px] rounded-xl p-2.5 shadow-md flex flex-col justify-between scheme-gradient-lottery text-yellow-800 <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
+                <a href="schemes.php" class="min-w-[200px] rounded-xl p-2 shadow-md flex flex-col justify-between scheme-gradient-lottery text-yellow-800 <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
                     <div class="flex items-center space-x-2 mb-1">
                         <div class="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0">
                             <i class="<?php echo $iconClass; ?> text-base text-<?php echo $statusColor; ?>-500"></i>
                         </div>
-                        <h3 class="text-sm font-bold leading-tight"><?php echo htmlspecialchars($scheme['scheme_name']); ?></h3>
+                        <h3 class="text-xs font-bold leading-tight"><?php echo htmlspecialchars($scheme['scheme_name']); ?></h3>
                     </div>
 
                     <div class="text-xs text-<?php echo $statusColor; ?>-700 leading-tight">
@@ -754,21 +732,22 @@ if (empty(trim($marqueeText))) {
 
                 <?php foreach ($goldSaverPlans as $plan): ?>
                 <!-- Gold Saver Scheme Card -->
-                 <div class="min-w-[190px] scheme-gradient-savings rounded-xl p-2 shadow-md <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
-                         <div class="flex items-center space-x-2">
-                             <div class="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0">
-                                 <i class="fas fa-piggy-bank text-teal-500 text-base"></i>
-                             </div>
-                             <div>
-                                 <h3 class="text-sm font-bold text-teal-800"><?php echo htmlspecialchars($plan['plan_name']); ?></h3>
-                                 <p class="text-[11px] text-teal-700 leading-tight">
-                                     <?php echo htmlspecialchars($plan['description']); ?>
-                                     <?php // if (isset($plan['total_enrollments'])): ?>
-                                     <?php // endif; ?>
-                                 </p>
-                             </div>
+                 <div class="min-w-[210px] scheme-gradient-savings rounded-xl p-2 shadow-md flex flex-col justify-between <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
+                     <div class="flex items-center space-x-2 mb-1">
+                         <div class="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0">
+                             <i class="fas fa-piggy-bank text-teal-500 text-base"></i>
                          </div>
+                         <h3 class="text-xs font-bold text-teal-800"><?php echo htmlspecialchars($plan['plan_name']); ?></h3>
                      </div>
+                     <div class="text-xs text-teal-700 leading-tight mb-1">
+                         <p class="font-medium"><?php echo htmlspecialchars($plan['description']); ?></p>
+                         <p class="mt-0.5 text-[10px] text-gray-600">
+                             <span class="text-teal-600 font-semibold"><?php echo $plan['total_enrollments']; ?> Enrolled</span>
+                             <span class="mx-1">•</span>
+                             <span class="text-[10px]">Status: <?php echo ucfirst($plan['status']); ?></span>
+                         </p>
+                     </div>
+                 </div>
                 <?php endforeach; ?>
 
                 <!-- No Schemes/Plans Placeholder -->
@@ -999,9 +978,38 @@ if (empty(trim($marqueeText))) {
                 </div>
                 <?php endif; ?>
 
+                <!-- Daily Book Module -->
+                <?php if ($hasFeatureAccess): ?>
+                <a href="reports.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-book text-purple-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Daily Book</h3>
+                    <p class="text-xs mt-1"><span class="text-purple-600 font-bold">View Report</span></p>
+                </a>
+                <?php else: ?>
+                <div class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
+                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                        <i class="fas fa-lock text-white text-lg"></i>
+                    </div>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-book text-purple-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Daily Book</h3>
+                    <p class="text-xs mt-1"><span class="text-purple-600 font-bold">Locked</span></p>
+                </div>
+                <?php endif; ?>
+
                 <!-- Suppliers Module -->
                 <div class="menu-card menu-gradient-orange rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
-                     data-module-id="suppliers" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
+                     data-module-id="suppliers" 
+                     <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php elseif (!$hasFeatureAccess): ?>onclick="showFeatureLockedModal()"<?php endif; ?>>
                     <?php if (!$hasFeatureAccess): ?>
                         <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
                             <i class="fas fa-lock text-white text-lg"></i>
@@ -1018,8 +1026,9 @@ if (empty(trim($marqueeText))) {
                 </div>
 
                 <!-- Staff Module -->
-                <div class="menu-card menu-gradient-pink rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
-                     data-module-id="staff" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
+                <div class="menu-card menu-gradient-pink rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>"
+                     data-module-id="staff" 
+                     <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php elseif (!$hasFeatureAccess): ?>onclick="showFeatureLockedModal()"<?php endif; ?>>
                     <?php if (!$hasFeatureAccess): ?>
                         <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
                             <i class="fas fa-lock text-white text-lg"></i>
@@ -1035,71 +1044,9 @@ if (empty(trim($marqueeText))) {
                     <p class="text-xs mt-1"><span class="text-pink-600 font-bold"><?php echo $hasFeatureAccess ? $totalStaff : '**'; ?> Members</span></p>
                 </div>
 
-                <!-- Karigars Module -->
-                <?php if ($hasFeatureAccess): ?>
-                <a href="karigars.php" class="menu-card menu-gradient-orange rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
-                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
-                        <i class="far fa-star text-base"></i>
-                    </button>
-                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
-                        <i class="fas fa-hammer text-orange-600 text-xs"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-800 text-xs mt-1">Karigars</h3>
-                    <p class="text-xs mt-1"><span class="text-orange-600 font-bold"><?php echo $activeKarigars; ?> Active</span></p>
-                </a>
-                <?php else: ?>
-                <div class="menu-card menu-gradient-orange rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
-                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
-                        <i class="fas fa-lock text-white text-lg"></i>
-                    </div>
-                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
-                        <i class="far fa-star text-base"></i>
-                    </button>
-                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
-                        <i class="fas fa-hammer text-orange-600 text-xs"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-800 text-xs mt-1">Karigars</h3>
-                    <p class="text-xs mt-1"><span class="text-orange-600 font-bold">** Active</span></p>
-                </div>
-                <?php endif; ?>
-
-                <!-- Reports Module -->
-                <?php if ($hasFeatureAccess): ?>
-                <a href="reports.php" class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
-                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20" onclick="event.preventDefault(); event.stopPropagation(); /* Handle favorite logic */">
-                        <i class="far fa-star text-base"></i>
-                    </button>
-                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
-                        <i class="fas fa-chart-bar text-cyan-600 text-xs"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-800 text-xs mt-1">Reports</h3>
-                    <p class="text-xs mt-1"><span class="text-cyan-600 font-bold">Analytics</span></p>
-                </a>
-                <?php else: ?>
-                <div class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" 
-                     data-module-id="reports" onclick="showFeatureLockedModal()">
-                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
-                        <i class="fas fa-lock text-white text-lg"></i>
-                    </div>
-                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
-                        <i class="far fa-star text-base"></i>
-                    </button>
-                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
-                        <i class="fas fa-chart-bar text-cyan-600 text-xs"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-800 text-xs mt-1">Reports</h3>
-                    <p class="text-xs mt-1"><span class="text-cyan-600 font-bold">Analytics</span></p>
-                </div>
-                <?php endif; ?>
-
                 <!-- Settings Module -->
-                <div class="menu-card menu-gradient-gray rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" 
-                     data-module-id="settings" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
-                    <?php if (!$hasFeatureAccess): ?>
-                        <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
-                            <i class="fas fa-lock text-white text-lg"></i>
-                        </div>
-                    <?php endif; ?>
+                <?php if ($hasFeatureAccess): ?>
+                <a href="settings.php" class="menu-card menu-gradient-gray rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1107,8 +1054,86 @@ if (empty(trim($marqueeText))) {
                         <i class="fas fa-cog text-gray-600 text-xs"></i>
                     </div>
                     <h3 class="font-bold text-gray-800 text-xs mt-1">Settings</h3>
-                    <p class="text-xs mt-1"><span class="text-gray-600 font-bold">Configure</span></p>
+                    <p class="text-xs mt-1"><span class="text-gray-500 font-bold">Store Settings</span></p>
+                </a>
+                <?php else: ?>
+                <div class="menu-card menu-gradient-gray rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative opacity-50" onclick="showFeatureLockedModal()">
+                    <div class="absolute inset-0 bg-black bg-opacity-20 rounded-2xl flex items-center justify-center z-10">
+                        <i class="fas fa-lock text-white text-lg"></i>
+                    </div>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-cog text-gray-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Settings</h3>
+                    <p class="text-xs mt-1"><span class="text-gray-500 font-bold">Store Settings</span></p>
                 </div>
+                <?php endif; ?>
+
+                <!-- Karigars Module -->
+                <a href="karigars.php" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
+                   <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php endif; ?>>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-user-cog text-yellow-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Karigars</h3>
+                    <p class="text-xs mt-1"><span class="text-yellow-600 font-bold">Manage Artisans</span></p>
+                </a>
+
+                <!-- Tray Manage Module -->
+                <a href="tray_manage.php" class="menu-card menu-gradient-blue rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
+                   <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php endif; ?>>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-box text-blue-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Tray Manage</h3>
+                    <p class="text-xs mt-1"><span class="text-blue-600 font-bold">Manage Trays</span></p>
+                </a>
+
+                <!-- GST Report Module -->
+                <a href="gst_report.php" class="menu-card menu-gradient-green rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
+                   <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php endif; ?>>
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-file-invoice text-green-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">GST Report</h3>
+                    <p class="text-xs mt-1"><span class="text-green-600 font-bold">GST Reports</span></p>
+                </a>
+
+                <!-- Hallmark Module -->
+                <a href="hallmark_requests.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-certificate text-purple-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Hallmark</h3>
+                    <p class="text-xs mt-1"><span class="text-purple-600 font-bold">Hallmarking</span></p>
+                </a>
+
+                <!-- Stock Report Module -->
+                <a href="stock_report.php" class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                    <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
+                        <i class="far fa-star text-base"></i>
+                    </button>
+                    <div class="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-md">
+                        <i class="fas fa-clipboard-list text-cyan-600 text-xs"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs mt-1">Stock Report</h3>
+                    <p class="text-xs mt-1"><span class="text-cyan-600 font-bold">Stock Reports</span></p>
+                </a>
             </div>
         </div>
 
@@ -1363,6 +1388,64 @@ if (empty(trim($marqueeText))) {
                 </div>
             </div>
         </div>
+        <!-- Footer Note with Guide Me -->
+        <div class="mt-4 mb-3 flex flex-col items-center justify-center">
+            <div class="bg-gradient-to-r from-purple-100 to-blue-50 p-3 rounded-xl shadow flex flex-col items-center w-full max-w-lg mx-auto">
+                <p class="text-xs text-gray-700 font-medium mb-2 text-center">
+                    New to JewelEntry? <span class="font-semibold text-purple-700">Get started in minutes!</span>
+                </p>
+                <button id="openGuideModalBtn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors shadow">
+                    <i class="fas fa-compass mr-1"></i> Guide Me
+                </button>
+            </div>
+        </div>
+        <!-- Onboarding & Pitch Modal -->
+        <div id="guideModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100] hidden">
+            <div class="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto relative">
+                <!-- Header Icon and Close -->
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-compass text-purple-600 text-2xl"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-purple-800" id="customGuideModalTitle">Welcome to JewelEntry</h3>
+                    </div>
+                    <button onclick="closeGuideModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <!-- Language Selector Tabs -->
+                <div class="flex justify-center mb-4 gap-2">
+                    <button class="lang-tab px-2 py-1 rounded text-xs font-semibold border border-purple-200 text-purple-700 bg-purple-50" data-lang="en">English</button>
+                    <button class="lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="hi">हिन्दी</button>
+                    <button class="lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="bn">বাংলা</button>
+                    <button class="lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="mr">मराठी</button>
+                    <button class="lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="te">తెలుగు</button>
+                    <button class="lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="kn">ಕನ್ನಡ</button>
+                </div>
+                <!-- YouTube Video Section -->
+                <div class="mb-4 flex justify-center">
+                    <div class="w-full aspect-video max-w-xs rounded-lg overflow-hidden shadow">
+                        <iframe id="guideVideo" width="100%" height="200" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="JewelEntry Quick Start" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen></iframe>
+                    </div>
+                </div>
+                <div class="flex justify-center mt-2">
+                    <button
+                        id="fullscreenGuideVideoBtn"
+                        type="button"
+                        class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold transition-colors"
+                    >
+                        <i class="fas fa-expand mr-1"></i> Fullscreen
+                    </button>
+                </div>
+                <div id="guideModalDetails">
+                    <!-- Details will be injected by JS -->
+                </div>
+                <div class="mt-4 text-center">
+                    <button onclick="closeGuideModal()" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg text-xs font-semibold transition-colors">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Feature Locked Modal -->
@@ -1583,6 +1666,12 @@ if (empty(trim($marqueeText))) {
                         <span id="currentRateSourceIndicator" class="font-semibold text-purple-600">Not Set</span>
                     </label>
                     <p id="mcxLiveRateDisplay" class="text-xs text-gray-500 mt-1 hidden"></p>
+                    <div id="mcxQuickLinkContainer" class="mt-2 hidden">
+                        <a href="https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-1.5 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-semibold rounded shadow transition-colors text-xs">
+                            <i class="fas fa-bolt mr-2 text-yellow-500"></i>View Live MCX Gold Rate
+                            <span class="ml-2" title="Click to view the latest gold price on MCX"><i class="fas fa-info-circle text-gray-400"></i></span>
+                        </a>
+                    </div>
                 </div>
                 <div>
                     <label for="customRateInput" class="block text-sm font-medium text-gray-700">Enter Rate for <span id="customRateModalMetalNamePlaceholder">Metal</span></label>
@@ -1636,11 +1725,11 @@ if (empty(trim($marqueeText))) {
                     <span class="text-xs text-gray-400 font-medium">Home</span>
                 </a>
                 <?php if ($hasFeatureAccess): ?>
-                <button data-nav-id="search" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                <button data-nav-id="search" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300" onclick="window.location.href='sale-entry.php'">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-search text-gray-400 text-sm"></i>
+                        <i class="fas fa-cash-register text-green-500 text-sm"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Search</span>
+                    <span class="text-xs text-gray-700 font-medium">Sales</span>
                 </button>
                 <button data-nav-id="add" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
@@ -1663,9 +1752,9 @@ if (empty(trim($marqueeText))) {
                 <?php else: ?>
                 <button onclick="showFeatureLockedModal()" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-search text-gray-400 text-sm"></i>
+                        <i class="fas fa-cash-register text-green-500 text-sm"></i>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium">Search</span>
+                    <span class="text-xs text-gray-700 font-medium">Sales</span>
                 </button>
                 <button onclick="showFeatureLockedModal()" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
@@ -1689,6 +1778,12 @@ if (empty(trim($marqueeText))) {
             </div>
         </div>
     </nav>
+
+    <!-- Floating Help Button -->
+    <!-- REMOVE THIS BUTTON AND ITS MODAL -->
+
+    <!-- Education/Help Modal -->
+    <!-- REMOVE THIS MODAL -->
 
     <script type="module" src="js/home.js"></script>
     <script>
@@ -1744,6 +1839,11 @@ if (empty(trim($marqueeText))) {
                 showUpgradeModal();
             }, 2000);
         <?php endif; ?>
+
+        // Enhanced greeting for trial user restriction
+        function showTrialUserRestrictionAlert() {
+            alert('This page is not available for Trial users. Please upgrade to access this feature.');
+        }
     </script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -1795,6 +1895,13 @@ if (empty(trim($marqueeText))) {
                     customRateInputUnitSelect.value = 'per_10_gram'; // Default to per 10 gram
                 }
                 
+                // MCX Quick Link logic
+                const mcxQuickLink = document.getElementById('mcxQuickLinkContainer');
+                if (metalType === 'Gold' && purity === '99.99') {
+                    mcxQuickLink.classList.remove('hidden');
+                } else {
+                    mcxQuickLink.classList.add('hidden');
+                }
                 // Attempt to fetch MCX rate for Gold 99.99
                 if (metalType === 'Gold' && purity === '99.99') {
                     currentRateSourceIndicator.textContent = 'Fetching MCX...';
@@ -1805,7 +1912,7 @@ if (empty(trim($marqueeText))) {
                         const result = await response.json();
                         if (result.success && result.rate > 0) {
                             currentRateSourceIndicator.textContent = 'MCX Live';
-                            mcxLiveRateDisplay.innerHTML = `MCX Live: ${result.rate.toFixed(2)} per 10 Grams (<a href="https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/" target="_blank" class="text-blue-500 hover:underline">View Source</a>)`;
+                            mcxLiveRateDisplay.innerHTML = `MCX Live: ${result.rate.toFixed(2)} per 10 Grams (<a href=\"https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/\" target=\"_blank\" class=\"text-blue-500 hover:underline\">View Source</a>)`;
                             mcxLiveRateDisplay.classList.remove('hidden');
                         } else {
                             currentRateSourceIndicator.textContent = 'Not Set';
@@ -1949,6 +2056,199 @@ if (empty(trim($marqueeText))) {
                 });
             });
         });
+    </script>
+    <script>
+    // Help Modal logic
+    document.getElementById('openHelpModalBtn').addEventListener('click', function() {
+        document.getElementById('helpModal').classList.remove('hidden');
+    });
+    function closeHelpModal() {
+        document.getElementById('helpModal').classList.add('hidden');
+    }
+    </script>
+    <script>
+    // Remove Help Modal logic
+    // Add Guide Modal logic
+    document.getElementById('openGuideModalBtn').addEventListener('click', function() {
+        document.getElementById('guideModal').classList.remove('hidden');
+        localStorage.setItem('jewelentry_guide_seen', '1');
+    });
+    function closeGuideModal() {
+        // Pause/stop the video by resetting the src
+        var iframe = document.getElementById('guideVideo');
+        if (iframe) {
+            var src = iframe.src;
+            iframe.src = '';
+            setTimeout(function() { iframe.src = src; }, 100); // Reset after a short delay
+        }
+        document.getElementById('guideModal').classList.add('hidden');
+    }
+    // Auto-show guide modal for first-time users
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!localStorage.getItem('jewelentry_guide_seen')) {
+            setTimeout(function() {
+                document.getElementById('guideModal').classList.remove('hidden');
+                // Resume video autoplay when modal is opened
+                var iframe = document.getElementById('guideVideo');
+                if (iframe) {
+                    var src = iframe.src;
+                    iframe.src = '';
+                    setTimeout(function() { iframe.src = src; }, 100);
+                }
+                localStorage.setItem('jewelentry_guide_seen', '1');
+            }, 800); // slight delay for better UX
+        }
+    });
+    // Fullscreen button logic
+    document.getElementById('fullscreenGuideVideoBtn').addEventListener('click', function() {
+        var iframe = document.getElementById('guideVideo');
+        if (iframe.requestFullscreen) {
+            iframe.requestFullscreen();
+        } else if (iframe.mozRequestFullScreen) { // Firefox
+            iframe.mozRequestFullScreen();
+        } else if (iframe.webkitRequestFullscreen) { // Chrome, Safari and Opera
+            iframe.webkitRequestFullscreen();
+        } else if (iframe.msRequestFullscreen) { // IE/Edge
+            iframe.msRequestFullscreen();
+        }
+    });
+    </script>
+    <script>
+    // Multi-language onboarding content
+    const guideContent = {
+        en: {
+            why: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-question-circle text-purple-500 mr-2'></i>Why JewelEntry?</p>
+                <ul class="text-xs text-gray-700 space-y-2 mb-4">
+                    <li><b><i class='fas fa-mobile-alt text-blue-500 mr-1'></i>Mobile-first UI:</b> Manage your entire jewelry business from your phone—no PC needed.</li>
+                    <li><b><i class='fas fa-users text-green-500 mr-1'></i>Multi-staff support:</b> Add staff, let them log in and do sales, purchase, and inventory jobs.</li>
+                    <li><b><i class='fas fa-bolt text-yellow-500 mr-1'></i>Instant billing:</b> Scan QR, generate bills instantly—no more waiting for a single billing machine.</li>
+                    <li><b><i class='fas fa-user-check text-pink-500 mr-1'></i>Customer handling made easy:</b> Show estimate and final price instantly with QR code.</li>
+                    <li><b><i class='fas fa-chart-line text-indigo-500 mr-1'></i>Real-time insights:</b> Get stock, sales, and cash flow reports from anywhere, anytime.</li>
+                    <li><b><i class='fas fa-rocket text-orange-500 mr-1'></i>Grow your business:</b> High-value insights and easy management help you scale faster.</li>
+                </ul>`,
+            how: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-lightbulb text-yellow-500 mr-2'></i>How to Get Started:</p>
+                <ol class="text-xs text-gray-700 space-y-2 list-decimal pl-5">
+                    <li>Update your <b>firm details</b> in the <b>Profile</b> section.</li>
+                    <li>Set <b>Gold/Silver rates</b> for accurate pricing.</li>
+                    <li>Add inventory: <b>Bulk upload</b> or add items one by one.</li>
+                    <li>For sales: Go to <b>Sales</b>, scan the item's QR code, and complete the sale.</li>
+                </ol>`
+        },
+        hi: {
+            why: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-question-circle text-purple-500 mr-2'></i>क्यों चुनें JewelEntry?</p>
+                <ul class="text-xs text-gray-700 space-y-2 mb-4">
+                    <li><b><i class='fas fa-mobile-alt text-blue-500 mr-1'></i>मोबाइल-फर्स्ट UI:</b> अपने फोन से पूरा ज्वेलरी बिज़नेस मैनेज करें—कंप्यूटर की जरूरत नहीं।</li>
+                    <li><b><i class='fas fa-users text-green-500 mr-1'></i>मल्टी-स्टाफ सपोर्ट:</b> स्टाफ जोड़ें, उन्हें लॉगिन दें और बिक्री, खरीद, इन्वेंटरी संभालें।</li>
+                    <li><b><i class='fas fa-bolt text-yellow-500 mr-1'></i>इंस्टेंट बिलिंग:</b> QR स्कैन करें, तुरंत बिल बनाएं—बिलिंग मशीन का इंतजार नहीं।</li>
+                    <li><b><i class='fas fa-user-check text-pink-500 mr-1'></i>ग्राहक हैंडलिंग आसान:</b> QR कोड से तुरंत अनुमान और फाइनल प्राइस दिखाएं।</li>
+                    <li><b><i class='fas fa-chart-line text-indigo-500 mr-1'></i>रीयल-टाइम इनसाइट्स:</b> कहीं से भी स्टॉक, बिक्री, कैश फ्लो रिपोर्ट पाएं।</li>
+                    <li><b><i class='fas fa-rocket text-orange-500 mr-1'></i>बिज़नेस बढ़ाएं:</b> आसान मैनेजमेंट और इनसाइट्स से तेज़ ग्रोथ।</li>
+                </ul>`,
+            how: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-lightbulb text-yellow-500 mr-2'></i>शुरुआत कैसे करें:</p>
+                <ol class="text-xs text-gray-700 space-y-2 list-decimal pl-5">
+                    <li><b>प्रोफाइल</b> सेक्शन में अपनी फर्म डिटेल्स अपडेट करें।</li>
+                    <li>सही प्राइसिंग के लिए <b>गोल्ड/सिल्वर रेट्स</b> सेट करें।</li>
+                    <li>इन्वेंटरी जोड़ें: <b>बल्क अपलोड</b> या एक-एक करके जोड़ें।</li>
+                    <li>बिक्री के लिए <b>Sales</b> में जाएं, QR स्कैन करें और सेल पूरी करें।</li>
+                </ol>`
+        },
+        bn: {
+            why: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-question-circle text-purple-500 mr-2'></i>কেন JewelEntry?</p>
+                <ul class="text-xs text-gray-700 space-y-2 mb-4">
+                    <li><b><i class='fas fa-mobile-alt text-blue-500 mr-1'></i>মোবাইল-ফার্স্ট UI:</b> ফোন থেকেই ব্যবসা পরিচালনা করুন—কম্পিউটারের দরকার নেই।</li>
+                    <li><b><i class='fas fa-users text-green-500 mr-1'></i>মাল্টি-স্টাফ সাপোর্ট:</b> স্টাফ যোগ করুন, লগইন দিন, বিক্রি, ক্রয়, ইনভেন্টরি পরিচালনা করুন।</li>
+                    <li><b><i class='fas fa-bolt text-yellow-500 mr-1'></i>ইনস্ট্যান্ট বিলিং:</b> QR স্ক্যান করুন, সঙ্গে সঙ্গে বিল তৈরি করুন—বিলিং মেশিনের অপেক্ষা নেই।</li>
+                    <li><b><i class='fas fa-user-check text-pink-500 mr-1'></i>কাস্টমার হ্যান্ডলিং সহজ:</b> QR কোডে সঙ্গে সঙ্গে মূল্য দেখান।</li>
+                    <li><b><i class='fas fa-chart-line text-indigo-500 mr-1'></i>রিয়েল-টাইম ইনসাইটস:</b> যেকোনো জায়গা থেকে রিপোর্ট দেখুন।</li>
+                    <li><b><i class='fas fa-rocket text-orange-500 mr-1'></i>ব্যবসা বাড়ান:</b> সহজ ব্যবস্থাপনা ও ইনসাইটে দ্রুত বৃদ্ধি।</li>
+                </ul>`,
+            how: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-lightbulb text-yellow-500 mr-2'></i>কিভাবে শুরু করবেন:</p>
+                <ol class="text-xs text-gray-700 space-y-2 list-decimal pl-5">
+                    <li><b>প্রোফাইল</b> সেকশনে ফার্ম ডিটেইল আপডেট করুন।</li>
+                    <li>সঠিক দামের জন্য <b>গোল্ড/সিলভার রেট</b> সেট করুন।</li>
+                    <li>ইনভেন্টরি যোগ করুন: <b>বাল্ক আপলোড</b> বা এক এক করে যোগ করুন।</li>
+                    <li>বিক্রির জন্য <b>Sales</b> এ যান, QR স্ক্যান করুন এবং বিক্রি সম্পন্ন করুন।</li>
+                </ol>`
+        },
+        mr: {
+            why: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-question-circle text-purple-500 mr-2'></i>JewelEntry का निवड का?</p>
+                <ul class="text-xs text-gray-700 space-y-2 mb-4">
+                    <li><b><i class='fas fa-mobile-alt text-blue-500 mr-1'></i>मोबाइल-फर्स्ट UI:</b> आपल्या फोनवरून संपूर्ण व्यवसाय सांभाळा—PC ची गरज नाही.</li>
+                    <li><b><i class='fas fa-users text-green-500 mr-1'></i>मल्टी-स्टाफ सपोर्ट:</b> स्टाफ जोडा, लॉगिन द्या, विक्री, खरेदी, इन्व्हेंटरी सांभाळा.</li>
+                    <li><b><i class='fas fa-bolt text-yellow-500 mr-1'></i>इंस्टंट बिलिंग:</b> QR स्कॅन करा, त्वरित बिल तयार करा—बिलिंग मशीनची वाट पाहू नका.</li>
+                    <li><b><i class='fas fa-user-check text-pink-500 mr-1'></i>ग्राहक हाताळणी सोपी:</b> QR कोडने त्वरित किंमत दाखवा.</li>
+                    <li><b><i class='fas fa-chart-line text-indigo-500 mr-1'></i>रिअल-टाइम इनसाइट्स:</b> कुठूनही रिपोर्ट मिळवा.</li>
+                    <li><b><i class='fas fa-rocket text-orange-500 mr-1'></i>व्यवसाय वाढवा:</b> सोपी व्यवस्थापन व इनसाइट्सने जलद वाढ.</li>
+                </ul>`,
+            how: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-lightbulb text-yellow-500 mr-2'></i>कसे सुरू करावे:</p>
+                <ol class="text-xs text-gray-700 space-y-2 list-decimal pl-5">
+                    <li><b>प्रोफाइल</b> विभागात फर्म तपशील अपडेट करा.</li>
+                    <li>योग्य किंमतीसाठी <b>गोल्ड/सिल्वर रेट्स</b> सेट करा.</li>
+                    <li>इन्व्हेंटरी जोडा: <b>बल्क अपलोड</b> किंवा एकेक करून जोडा.</li>
+                    <li>विक्रीसाठी <b>Sales</b> मध्ये जा, QR स्कॅन करा आणि विक्री पूर्ण करा.</li>
+                </ol>`
+        },
+        te: {
+            why: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-question-circle text-purple-500 mr-2'></i>ఎందుకు JewelEntry?</p>
+                <ul class="text-xs text-gray-700 space-y-2 mb-4">
+                    <li><b><i class='fas fa-mobile-alt text-blue-500 mr-1'></i>మొబైల్-ఫస్ట్ UI:</b> మీ ఫోన్ నుండే వ్యాపారం నిర్వహించండి—PC అవసరం లేదు.</li>
+                    <li><b><i class='fas fa-users text-green-500 mr-1'></i>మల్టీ-స్టాఫ్ సపోర్ట్:</b> స్టాఫ్ జోడించండి, లాగిన్ ఇవ్వండి, అమ్మకాలు, కొనుగోలు, నిల్వ నిర్వహించండి.</li>
+                    <li><b><i class='fas fa-bolt text-yellow-500 mr-1'></i>తక్షణ బిల్లింగ్:</b> QR స్కాన్ చేయండి, వెంటనే బిల్ తయారు చేయండి—బిల్లింగ్ మెషీన్ కోసం వేచి ఉండకండి.</li>
+                    <li><b><i class='fas fa-user-check text-pink-500 mr-1'></i>కస్టమర్ హ్యాండ్లింగ్ సులభం:</b> QR కోడ్‌తో వెంటనే ధర చూపించండి.</li>
+                    <li><b><i class='fas fa-chart-line text-indigo-500 mr-1'></i>రియల్-టైమ్ ఇన్సైట్స్:</b> ఎక్కడినుంచైనా రిపోర్ట్స్ పొందండి.</li>
+                    <li><b><i class='fas fa-rocket text-orange-500 mr-1'></i>వ్యాపారం పెంచుకోండి:</b> సులభమైన నిర్వహణతో వేగంగా అభివృద్ధి చెందండి.</li>
+                </ul>`,
+            how: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-lightbulb text-yellow-500 mr-2'></i>ఎలా ప్రారంభించాలి:</p>
+                <ol class="text-xs text-gray-700 space-y-2 list-decimal pl-5">
+                    <li><b>ప్రొఫైల్</b> సెక్షన్‌లో ఫర్మ్ వివరాలు అప్డేట్ చేయండి.</li>
+                    <li>సరైన ధర కోసం <b>గోల్డ్/సిల్వర్ రేట్స్</b> సెట్ చేయండి.</li>
+                    <li>నిల్వ జోడించండి: <b>బల్క్ అప్లోడ్</b> లేదా ఒక్కొక్కటి జోడించండి.</li>
+                    <li>అమ్మకాలకు <b>Sales</b>కి వెళ్లి, QR స్కాన్ చేసి, అమ్మకాన్ని పూర్తి చేయండి.</li>
+                </ol>`
+        },
+        kn: {
+            why: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-question-circle text-purple-500 mr-2'></i>ಏಕೆ JewelEntry?</p>
+                <ul class="text-xs text-gray-700 space-y-2 mb-4">
+                    <li><b><i class='fas fa-mobile-alt text-blue-500 mr-1'></i>ಮೊಬೈಲ್-ಫಸ್ಟ್ UI:</b> ನಿಮ್ಮ ಫೋನ್‌ನಿಂದಲೇ ವ್ಯಾಪಾರ ನಿರ್ವಹಿಸಿ—PC ಅಗತ್ಯವಿಲ್ಲ.</li>
+                    <li><b><i class='fas fa-users text-green-500 mr-1'></i>ಮಲ್ಟಿ-ಸ್ಟಾಫ್ ಸಪೋರ್ಟ್:</b> ಸಿಬ್ಬಂದಿಯನ್ನು ಸೇರಿಸಿ, ಲಾಗಿನ್ ನೀಡಿ, ಮಾರಾಟ, ಖರೀದಿ, ಇನ್ವೆಂಟರಿ ನಿರ್ವಹಿಸಿ.</li>
+                    <li><b><i class='fas fa-bolt text-yellow-500 mr-1'></i>ತಕ್ಷಣದ ಬಿಲ್ಲಿಂಗ್:</b> QR ಸ್ಕ್ಯಾನ್ ಮಾಡಿ, ತಕ್ಷಣ ಬಿಲ್ ರಚಿಸಿ—ಬಿಲ್ಲಿಂಗ್ ಯಂತ್ರಕ್ಕಾಗಿ ಕಾಯಬೇಡಿ.</li>
+                    <li><b><i class='fas fa-user-check text-pink-500 mr-1'></i>ಗ್ರಾಹಕ ನಿರ್ವಹಣೆ ಸುಲಭ:</b> QR ಕೋಡ್‌ನಿಂದ ತಕ್ಷಣ ಬೆಲೆ ತೋರಿಸಿ.</li>
+                    <li><b><i class='fas fa-chart-line text-indigo-500 mr-1'></i>ರಿಯಲ್-ಟೈಮ್ ಇನ್ಸೈಟ್ಸ್:</b> ಎಲ್ಲಿಂದ ಬೇಕಾದರೂ ವರದಿಗಳನ್ನು ಪಡೆಯಿರಿ.</li>
+                    <li><b><i class='fas fa-rocket text-orange-500 mr-1'></i>ವ್ಯಾಪಾರವನ್ನು ವೃದ್ಧಿಸಿ:</b> ಸುಲಭ ನಿರ್ವಹಣೆ ಮತ್ತು ಇನ್ಸೈಟ್ಸ್‌ನಿಂದ ವೇಗವಾಗಿ ಬೆಳೆಯಿರಿ.</li>
+                </ul>`,
+            how: `<p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-lightbulb text-yellow-500 mr-2'></i>ಹೆಗೆ ಪ್ರಾರಂಭಿಸಬೇಕು:</p>
+                <ol class="text-xs text-gray-700 space-y-2 list-decimal pl-5">
+                    <li><b>ಪ್ರೊಫೈಲ್</b> ವಿಭಾಗದಲ್ಲಿ ಫರ್ಮ್ ವಿವరಗಳನ್ನು ಅಪ್ಡೇಟ್ ಮಾಡಿ.</li>
+                    <li>ಸರಿಯಾದ ಬೆಲೆಗಾಗಿ <b>ಗೋಲ్ಡ್/ಸಿಲ್ವರ್ ದರ</bಗಳನ್ನು ಸೆಟ್ ಮಾಡಿ.</li>
+                    <li>ಇನ್ವೆಂಟರಿ ಸೇರಿಸಿ: <b>ಬಲ್ಕ್ ಅಪ್ಲೋಡ್</b> ಅಥವಾ ಒಂದೊಂದಾಗಿ ಸೇರಿಸಿ.</li>
+                    <li>ಮಾರಾಟಕ್ಕೆ <b>Sales</b>ಗೆ ಹೋಗಿ, QR ಸ್ಕ್ಯಾನ್ ಮಾಡಿ ಮತ್ತು ಮಾರಾಟವನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ.</li>
+                </ol>`
+        }
+    };
+
+    function setGuideLang(lang) {
+        // Update tab styles
+        document.querySelectorAll('.lang-tab').forEach(btn => {
+            if (btn.dataset.lang === lang) {
+                btn.classList.add('border-purple-200', 'text-purple-700', 'bg-purple-50');
+                btn.classList.remove('border-gray-200', 'text-gray-700', 'bg-gray-50');
+            } else {
+                btn.classList.remove('border-purple-200', 'text-purple-700', 'bg-purple-50');
+                btn.classList.add('border-gray-200', 'text-gray-700', 'bg-gray-50');
+            }
+        });
+        // Inject content
+        const details = document.getElementById('guideModalDetails');
+        details.innerHTML = guideContent[lang].why + guideContent[lang].how;
+    }
+    // Default to English
+    setGuideLang('en');
+    // Add event listeners
+    document.querySelectorAll('.lang-tab').forEach(btn => {
+        btn.addEventListener('click', function() {
+            setGuideLang(this.dataset.lang);
+        });
+    });
     </script>
 </body>
 </html>

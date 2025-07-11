@@ -61,18 +61,18 @@ $reportData = $data;
         
         .stat-card {
             flex: 0 0 auto;
-            width: 130px;
-            border-radius: 12px;
-            padding: 12px;
+            width: 105px;
+            border-radius: 10px;
+            padding: 5px 5px 5px 8px;
             background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid rgba(0,0,0,0.04);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 1px 1px rgba(0,0,0,0.03);
+            border: 1px solid rgba(0,0,0,0.03);
             transition: all 0.2s ease;
         }
         
         .stat-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            transform: translateY(-1px) scale(1.01);
         }
         
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -159,36 +159,38 @@ $reportData = $data;
         
         .section-card {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            border: 1px solid rgba(0,0,0,0.04);
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            border: 1px solid rgba(0,0,0,0.03);
+            padding: 12px 10px;
         }
         
         .metric-value {
-            font-size: 16px;
+            font-size: 13px;
             font-weight: 700;
-            line-height: 1.2;
+            line-height: 1.1;
         }
         
         .metric-label {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
         .metric-sub {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 500;
         }
         
         .icon-wrapper {
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 13px;
         }
         
         .table-header {
@@ -202,39 +204,162 @@ $reportData = $data;
         
         .table-cell {
             padding: 8px 6px;
-            font-size: 11px;
+            font-size: 8px;
             border-bottom: 1px solid #f1f5f9;
         }
         
         @media (max-width: 375px) {
-            .stat-card { width: 120px; padding: 10px; }
-            .metric-value { font-size: 14px; }
-            .table-responsive table { font-size: 10px; }
+            .stat-card { width: 90px; padding: 6px; }
+            .metric-value { font-size: 11px; }
+            .table-responsive table { font-size: 9px; }
+        }
+        
+        .scrollable-table-body {
+            max-height: 260px;
+            overflow-y: auto;
+            display: block;
+        }
+        .scrollable-table-body tr {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+        }
+        .scrollable-table-body td, .scrollable-table-body th {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .scrollable-table-wrapper {
+            max-height: 180px;
+            overflow-y: auto;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            padding: 0.1rem 0.1rem 0.2rem 0.1rem;
+        }
+        .scrollable-table-wrapper table {
+            width: 100%;
+            table-layout: auto;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        .scrollable-table-wrapper th, .scrollable-table-wrapper td {
+            max-width: 80px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 3px 4px;
+            font-size: 10px;
+            vertical-align: middle;
+        }
+        .scrollable-table-wrapper th {
+            background: #e0e7ef;
+            color: #374151;
+            font-weight: 700;
+            border-bottom: 1.5px solid #cbd5e1;
+            text-align: left;
+        }
+        .scrollable-table-wrapper td {
+            border-bottom: 1px solid #f1f5f9;
+            background: #fff;
+        }
+        .scrollable-table-wrapper tbody tr:nth-child(even) td {
+            background: #f8fafc;
+        }
+        .scrollable-table-wrapper tr:hover td {
+            background: #f3f4f6;
+        }
+        .scrollable-table-wrapper td.text-right, .scrollable-table-wrapper th.text-right {
+            text-align: right;
+        }
+        .scrollable-table-wrapper td.text-center, .scrollable-table-wrapper th.text-center {
+            text-align: center;
+        }
+        .scrollable-table-wrapper td, .scrollable-table-wrapper th {
+            vertical-align: middle;
+        }
+        .scrollable-table-wrapper th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .card-list-row {
+            background: #f9fafb;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.02);
+            padding: 5px 7px;
+            display: flex;
+            align-items: center;
+            font-size: 11px;
+            gap: 6px;
+            min-width: 0;
+        }
+        .card-list-row .card-col {
+            flex: 1 1 0;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .card-list-row .card-col.amount {
+            text-align: right;
+            font-weight: 600;
+            color: #2563eb;
+        }
+        .card-list-row .card-col.status {
+            text-align: center;
+            min-width: 60px;
+        }
+        .card-list-row .card-col.date {
+            color: #64748b;
+            font-size: 11px;
+            min-width: 70px;
+        }
+        .card-list-row .card-col.id {
+            font-weight: 600;
+            color: #a21caf;
+            min-width: 40px;
+        }
+        .card-list-row .card-col.category {
+            color: #f59e42;
+            font-size: 11px;
+            min-width: 60px;
+        }
+        .card-list-row .card-col.desc {
+            color: #334155;
+            font-size: 11px;
+            min-width: 80px;
+        }
+        .card-list-row .card-col.paid-badge {
+            background: #ef4444;
+            color: #fff;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-left: 6px;
+        }
+        .min-w-full { min-width: 100%; }
+        .table-cell, .table-header th, .table-header td {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 4px 4px;
+            font-size: 11px;
+        }
+        .table-header th {
+            background: #f8fafc;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #475569;
         }
     </style>
 </head>
 <body class="bg-gray-50">
-    <!-- Header -->
-    <header class="header-glass sticky top-0 z-50">
-        <div class="px-4 py-3">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 gradient-gold rounded-xl flex items-center justify-center shadow-sm">
-                        <i class="fas fa-chart-pie text-white text-lg"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-lg font-bold text-gray-900">Reports</h1>
-                        <p class="text-xs text-gray-500 font-medium -mt-0.5">JewelEntry Analytics</p>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <a href="home.php" class="w-9 h-9 gradient-purple rounded-lg flex items-center justify-center shadow-sm hover:shadow-md transition-all">
-                        <i class="fas fa-home text-white text-sm"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
-    </header>
+    <?php include 'includes/header.php'; ?>
 
     <main class="px-4 pb-24 pt-4">
         <!-- Date Range Picker -->
@@ -398,7 +523,7 @@ $reportData = $data;
                             </div>
                             <h3 class="text-sm font-bold text-gray-900">Income (Sales)</h3>
                         </div>
-                        <div class="table-responsive">
+                        <div class="scrollable-table-wrapper">
                             <table class="min-w-full">
                                 <thead>
                                     <tr class="table-header">
@@ -422,7 +547,7 @@ $reportData = $data;
                             </div>
                             <h3 class="text-sm font-bold text-gray-900">Expenses</h3>
                         </div>
-                        <div class="table-responsive">
+                        <div class="scrollable-table-wrapper">
                             <table class="min-w-full">
                                 <thead>
                                     <tr class="table-header">
@@ -447,7 +572,7 @@ $reportData = $data;
                             </div>
                             <h3 class="text-sm font-bold text-gray-900">Stock In (New Items)</h3>
                         </div>
-                        <div class="table-responsive">
+                        <div class="scrollable-table-wrapper">
                             <table class="min-w-full">
                                 <thead>
                                     <tr class="table-header">
@@ -471,7 +596,7 @@ $reportData = $data;
                             </div>
                             <h3 class="text-sm font-bold text-gray-900">Stock Out (Sold Items)</h3>
                         </div>
-                        <div class="table-responsive">
+                        <div class="scrollable-table-wrapper">
                             <table class="min-w-full">
                                 <thead>
                                     <tr class="table-header">
@@ -532,32 +657,7 @@ $reportData = $data;
         </div>
     </main>
 
-    <!-- Bottom Navigation -->
-    <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-40">
-        <div class="px-4 py-2">
-            <div class="flex justify-around">
-                <a href="home.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-                    <i class="fas fa-home text-gray-400 text-lg"></i>
-                    <span class="text-xs text-gray-500 font-medium">Home</span>
-                </a>
-                <a href="reports.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg bg-purple-100">
-                    <i class="fas fa-chart-pie text-purple-600 text-lg"></i>
-                    <span class="text-xs text-purple-700 font-bold">Reports</span>
-                </a>
-                <a href="sale-entry.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-                    <i class="fas fa-plus-circle text-gray-400 text-2xl"></i>
-                </a>
-                <a href="customers.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-                    <i class="fas fa-users text-gray-400 text-lg"></i>
-                    <span class="text-xs text-gray-500 font-medium">Customers</span>
-                </a>
-                <a href="settings.php" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-lg">
-                    <i class="fas fa-cog text-gray-400 text-lg"></i>
-                    <span class="text-xs text-gray-500 font-medium">Settings</span>
-                </a>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/bottom_nav.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>

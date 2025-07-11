@@ -94,25 +94,21 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                                 ]);
                             }
 
-                            // Redirect user to appropriate dashboard based on role
-                            switch($role) {
-                                case 'admin':
-                                    header("location: admin_dashboard.php");
-                                    break;
-                                case 'manager':
-                                    header("location: manager_dashboard.php");
-                                    break;
-                                case 'employee':
-                                    header("location: employee_dashboard.php");
-                                    break;
-                                case 'accountant':
-                                    header("location: accountant_dashboard.php");
-                                    break;
-                                case 'hr':
-                                    header("location: hr_dashboard.php");
-                                    break;
-                                default:
-                                    header("location: home.php");
+                            // Get the app_view from POST and detect device if not set
+                            $app_view = $_POST['app_view'] ?? '';
+                            
+                            // If app_view is empty, try to detect device type
+                            if (empty($app_view)) {
+                                $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                                $is_mobile = preg_match('/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i', $user_agent);
+                                $app_view = $is_mobile ? 'mobile-view' : 'pc-view';
+                            }
+
+                            // Redirect user to appropriate dashboard based on role and view
+                            if ($app_view === 'pc-view') {
+                                header("location: PC/dashborad.php");
+                            } else {
+                                header("location: home.php");
                             }
                             exit;
                         } else{
@@ -426,7 +422,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
 <body>
     <div class="w-full flex justify-center">
         <div class="login-card">
-            <div class="view-selector pc-active"> <!-- Default to PC active -->
+            <div class="view-selector"> <!-- Will be set by JavaScript based on device detection -->
                 <button id="mobileViewBtn"><i class="fas fa-mobile-alt"></i></button>
                 <button id="pcViewBtn"><i class="fas fa-desktop"></i></button>
             </div>
@@ -449,6 +445,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             
             <!-- Login Form -->
             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
+                <input type="hidden" name="app_view" id="appViewInput" value="">
                 <div class="input-group">
                     <i class="fas fa-user input-icon"></i>
                     <input type="text" name="login_identifier" class="input-field"
@@ -508,47 +505,62 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             const pcViewBtn = document.getElementById('pcViewBtn');
             const body = document.body;
             const viewSelector = document.querySelector('.view-selector');
+            const appViewInput = document.getElementById('appViewInput');
 
-            // Load preference from localStorage
-            const savedView = localStorage.getItem('appView');
-            if (savedView) {
-                body.classList.add(savedView);
-                if (savedView === 'mobile-view') {
-                    viewSelector.classList.add('mobile-active');
-                    viewSelector.classList.remove('pc-active');
-                    mobileViewBtn.classList.add('active');
-                    pcViewBtn.classList.remove('active');
-                } else {
-                    viewSelector.classList.add('pc-active');
-                    viewSelector.classList.remove('mobile-active');
-                    pcViewBtn.classList.add('active');
-                    mobileViewBtn.classList.remove('active');
-                }
-            } else {
-                // Default to PC view if no preference saved
-                body.classList.add('pc-view');
-                viewSelector.classList.add('pc-active');
-                pcViewBtn.classList.add('active');
+            // Function to detect mobile device
+            function isMobileDevice() {
+                return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                       window.innerWidth <= 768;
             }
 
-            mobileViewBtn.addEventListener('click', function() {
+            // Function to switch to mobile view
+            function switchToMobileView() {
                 body.classList.remove('pc-view');
                 body.classList.add('mobile-view');
                 viewSelector.classList.remove('pc-active');
                 viewSelector.classList.add('mobile-active');
                 mobileViewBtn.classList.add('active');
                 pcViewBtn.classList.remove('active');
+                appViewInput.value = 'mobile-view';
                 localStorage.setItem('appView', 'mobile-view');
-            });
+            }
 
-            pcViewBtn.addEventListener('click', function() {
+            // Function to switch to PC view
+            function switchToPCView() {
                 body.classList.remove('mobile-view');
                 body.classList.add('pc-view');
                 viewSelector.classList.remove('mobile-active');
                 viewSelector.classList.add('pc-active');
                 pcViewBtn.classList.add('active');
                 mobileViewBtn.classList.remove('active');
+                appViewInput.value = 'pc-view';
                 localStorage.setItem('appView', 'pc-view');
+            }
+
+            // Load preference from localStorage or detect device
+            const savedView = localStorage.getItem('appView');
+            if (savedView) {
+                if (savedView === 'mobile-view') {
+                    switchToMobileView();
+                } else {
+                    switchToPCView();
+                }
+            } else {
+                // Auto-detect device and set appropriate view
+                if (isMobileDevice()) {
+                    switchToMobileView();
+                } else {
+                    switchToPCView();
+                }
+            }
+
+            // Add click event listeners for toggle buttons
+            mobileViewBtn.addEventListener('click', function() {
+                switchToMobileView();
+            });
+
+            pcViewBtn.addEventListener('click', function() {
+                switchToPCView();
             });
 
             // Password toggle functionality

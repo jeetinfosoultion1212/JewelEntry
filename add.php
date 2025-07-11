@@ -401,8 +401,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
           // Generate product ID based on jewelry type
           $product_id = generateProductId($conn, $jewelryType);
 
+          // Initialize cost_per_gram
+          $costPerGram = null;
+
           // Check if inventory should be updated - only for Purchase source type
           $updateInventory = ($sourceType === 'Purchase' && $inventoryId);
+
+          // If Purchase, fetch cost_price_per_gram from inventory_metals
+          if ($sourceType === 'Purchase' && $inventoryId) {
+              $costSql = "SELECT cost_price_per_gram FROM inventory_metals WHERE inventory_id = ?";
+              $costStmt = $conn->prepare($costSql);
+              $costStmt->bind_param("i", $inventoryId);
+              $costStmt->execute();
+              $costResult = $costStmt->get_result();
+              if ($costResult->num_rows > 0) {
+                  $costPerGram = $costResult->fetch_assoc()['cost_price_per_gram'];
+              }
+          }
           
           // Begin transaction
           $conn->begin_transaction();
@@ -429,9 +444,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
               $karigarId = 0; // Set default value to 0
               $purchaseIdForSource = null;
               $manufacturingOrderIdForSource = null;
+              $sourceIdForInsert = null; // Added this line
               
               if ($sourceType === 'Purchase') {
                   $purchaseIdForSource = $sourceId;
+                  $sourceIdForInsert = $sourceId;
                   // For Purchase, get supplier_id from metal_purchases
                   $supplierSql = "SELECT source_id FROM metal_purchases WHERE purchase_id = ?";
                   $supplierStmt = $conn->prepare($supplierSql);
@@ -444,8 +461,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   $karigarId = 0;
               } elseif ($sourceType === 'Manufacturing Order') {
                   $manufacturingOrderIdForSource = $sourceId;
-                  // For Manufacturing Order, get karigar_id from manufacturing_orders
-                  $karigarSql = "SELECT karigar_id FROM manufacturing_orders WHERE id = ?";
+                  $sourceIdForInsert = $sourceId;
+                  // For Manufacturing Order, get karigar_id from jewellery_customer_order
+                  $karigarSql = "SELECT karigar_id FROM jewellery_customer_order WHERE id = ?";
                   $karigarStmt = $conn->prepare($karigarSql);
                   $karigarStmt->bind_param("i", $sourceId);
                   $karigarStmt->execute();
@@ -455,32 +473,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   }
                   $supplierId = 0;
               } else {
-                  // Others
+                  // Others / Manual Entry
                   $supplierId = 0;
                   $karigarId = 0;
+                  $sourceIdForInsert = $sourceId; // Use the entered value for Others
               }
               
               // Insert into jewellery_items table
               $sql = "INSERT INTO jewellery_items (
-                  firm_id, product_id, jewelry_type, product_name, material_type, 
-                  purity, Tray_no, huid_code, gross_weight, less_weight, net_weight, 
-                  stone_type, stone_weight, stone_unit, stone_color, stone_clarity, stone_quality, stone_price,
-                  making_charge, making_charge_type, description, status, 
-                  quantity, supplier_id, karigar_id, created_at, source_type, source_id
-              ) VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?
-              )";
-              
+                firm_id, product_id, jewelry_type, product_name, material_type, 
+                purity, Tray_no, huid_code, gross_weight, less_weight, net_weight, 
+                stone_type, stone_weight, stone_unit, stone_color, stone_clarity, stone_quality, stone_price,
+                making_charge, making_charge_type, description, status, 
+                quantity, supplier_id, karigar_id, created_at, source_type, source_id, cost_per_gram
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?
+            )";
+            
               $stmt = $conn->prepare($sql);
               
               $stmt->bind_param(
-                  "issssssddddssssssdssssiissi",
-                  $firm_id, $product_id, $jewelryType, $productName, $materialType,
-                  $purity, $trayNo, $huidCode, $grossWeight, $lessWeight, $netWeight,
-                  $stoneType, $stoneWeight, $stoneUnit, $stoneColor, $stoneClarity, $stoneQuality, $stonePrice,
-                  $makingCharge, $makingChargeType, $description, $status,
-                  $quantity, $supplierId, $karigarId, $sourceType, $purchaseIdForSource
-              );
+                "isssssissdddsdssssddsssiiisd",
+                $firm_id, $product_id, $jewelryType, $productName, $materialType,
+                $purity, $trayNo, $huidCode, $grossWeight, $lessWeight, $netWeight,
+                $stoneType, $stoneWeight, $stoneUnit, $stoneColor, $stoneClarity, $stoneQuality, $stonePrice,
+                $makingCharge, $makingChargeType, $description, $status,
+                $quantity, $supplierId, $karigarId, $sourceType, $sourceIdForInsert, $costPerGram
+            );
+            
               
               $stmt->execute();
               $jewelryItemId = $conn->insert_id;
@@ -1286,9 +1306,14 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+
 <link rel="stylesheet" href="css/add.css">
+<style>
+#openAddGuideModalBtn {
+  transition: opacity 0.4s;
+}
+</style>
 </head>
 <body data-firm-id="<?php echo $firm_id; ?>" class="text-gray-800">
 <!-- Header -->
@@ -1846,7 +1871,6 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
   </div>
 </div>
 </div>
-</div>
 
 <nav class="bottom-nav">
  <!-- Home -->
@@ -2130,18 +2154,9 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
   </div>
 </div>
 
-<!-- Place the cropper modal here, just before </body> -->
-<div id="cropperModal" class="cropper-modal hidden">
-  <div class="cropper-container">
-    <img id="cropperImage" src="" alt="Crop" style="max-width:100%; display:block; margin:auto;" />
-  </div>
-  <div class="cropper-controls mt-2">
-    <button id="cropperCropBtn" class="bg-green-500 text-white px-3 py-1 rounded font-bold mr-2"><i class="fas fa-crop"></i> Crop</button>
-    <button id="cropperRotateBtn" class="bg-blue-500 text-white px-3 py-1 rounded font-bold mr-2"><i class="fas fa-undo"></i> Rotate</button>
-    <button id="cropperFlipBtn" class="bg-purple-500 text-white px-3 py-1 rounded font-bold mr-2"><i class="fas fa-arrows-alt-h"></i> Flip</button>
-    <button id="cropperCancelBtn" class="bg-gray-400 text-white px-3 py-1 rounded font-bold"><i class="fas fa-times"></i> Cancel</button>
-  </div>
-</div>
+
+
+
 
 <script src="js/add.js"></script>
 <script>
@@ -2199,6 +2214,298 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+</script>
+
+<!-- Guide Me Modal for Add Inventory -->
+<div id="addGuideModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100] hidden">
+  <div class="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto relative">
+    <div class="flex justify-between items-center mb-4">
+      <div class="flex items-center gap-2">
+        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+          <i class="fas fa-compass text-purple-600 text-2xl"></i>
+        </div>
+        <h3 class="text-lg font-bold text-purple-800" id="addGuideModalTitle">Inventory Management Guide</h3>
+      </div>
+      <button onclick="closeAddGuideModal()" class="text-gray-500 hover:text-gray-700">
+        <i class="fas fa-times text-xl"></i>
+      </button>
+    </div>
+    <!-- Language Tabs -->
+    <div class="flex justify-center mb-4 gap-2">
+      <button class="add-lang-tab px-2 py-1 rounded text-xs font-semibold border border-purple-200 text-purple-700 bg-purple-50" data-lang="en">English</button>
+      <button class="add-lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="hi">हिन्दी</button>
+      <button class="add-lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="bn">বাংলা</button>
+      <button class="add-lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="mr">मराठी</button>
+      <button class="add-lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="te">తెలుగు</button>
+      <button class="add-lang-tab px-2 py-1 rounded text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50" data-lang="kn">ಕನ್ನಡ</button>
+    </div>
+    <!-- Video -->
+    <div class="mb-4 flex justify-center">
+      <div class="w-full aspect-video max-w-xs rounded-lg overflow-hidden shadow">
+        <iframe id="addGuideVideo" width="100%" height="200" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="Inventory Quick Start" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen></iframe>
+      </div>
+    </div>
+    <div class="flex justify-center mt-2">
+      <button id="fullscreenAddGuideVideoBtn" type="button" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold transition-colors">
+        <i class="fas fa-expand mr-1"></i> Fullscreen
+      </button>
+    </div>
+    <div id="addGuideModalDetails" class="mt-4"></div>
+    <div class="mt-4 flex items-center">
+      <input type="checkbox" id="dontShowAddGuideAgain" class="mr-2">
+      <label for="dontShowAddGuideAgain" class="text-xs text-gray-700">Don't show this again</label>
+    </div>
+    <div class="mt-4 text-center">
+      <button onclick="closeAddGuideModal()" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg text-xs font-semibold transition-colors">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guide Me Button -->
+<button id="openAddGuideModalBtn" class="fixed bottom-24 right-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors shadow z-[101]">
+  <i class="fas fa-compass mr-1"></i> Guide Me
+</button>
+
+<script>
+const addGuideContent = {
+  en: {
+    intro: `
+      <p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-box text-purple-500 mr-2'></i>How to use Inventory Management</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>Add from Purchase:</b> Add bulk stock first, then select "Purchase" as source, pick the stock lot by purity, and allocate items one by one until the lot is fully used.</li>
+        <li><b>Add from Manufacture:</b> For custom orders, select "Manufacture" as source, enter any source ID, and add finished items.</li>
+        <li><b>Manual Entry:</b> For items not linked to a purchase or manufacture, choose the appropriate source and add details.</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">How to Manage Items</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>View:</b> Click on an item to see full details and images.</li>
+        <li><b>Edit:</b> Click <i class="fas fa-edit text-blue-500"></i> to update item details or change the source ID.</li>
+        <li><b>Delete:</b> Click <i class="fas fa-trash text-red-500"></i> to remove an item (confirmation required).</li>
+        <li><b>Print Tag:</b> Click <i class="fas fa-print text-green-500"></i> to generate and print a QR/barcode tag for the item.</li>
+        <li><b>Bulk Upload:</b> Use the bulk upload option to add multiple items at once (see help docs for format).</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">Tips</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>Stock Allocation:</b> For Purchase source, you can only allocate up to the remaining weight in the selected stock lot. The system will prevent over-allocation.</li>
+        <li><b>Editing Source:</b> When editing an item, you can also change its source ID if needed.</li>
+        <li><b>Tracking:</b> All actions are logged for audit and inventory tracking.</li>
+      </ul>
+      <p class="text-xs text-gray-600 mb-2">Need help? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">Contact Support</a> or <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>.</p>`,
+    resources: `<p class="text-xs text-gray-700">Watch the video above for a quick walkthrough, or read the <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">Inventory Help Docs</a>.</p>`
+  },
+  hi: {
+    intro: `
+      <p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-box text-purple-500 mr-2'></i>इन्वेंटरी प्रबंधन का उपयोग कैसे करें</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>खरीद से जोड़ें:</b> पहले बल्क स्टॉक जोड़ें, फिर स्रोत के रूप में "खरीद" चुनें, शुद्धता के अनुसार स्टॉक लॉट चुनें, और एक-एक करके आइटम आवंटित करें जब तक कि लॉट पूरी तरह से उपयोग न हो जाए।</li>
+        <li><b>निर्माण से जोड़ें:</b> कस्टम ऑर्डर के लिए, स्रोत के रूप में "निर्माण" चुनें, कोई भी स्रोत आईडी दर्ज करें, और तैयार आइटम जोड़ें।</li>
+        <li><b>मैन्युअल एंट्री:</b> ऐसे आइटम जो खरीद या निर्माण से लिंक नहीं हैं, उनके लिए उपयुक्त स्रोत चुनें और विवरण जोड़ें।</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">आइटम कैसे प्रबंधित करें</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>देखें:</b> किसी आइटम पर क्लिक करें और पूरी जानकारी व इमेज देखें।</li>
+        <li><b>संपादित करें:</b> <i class="fas fa-edit text-blue-500"></i> पर क्लिक करें, विवरण या स्रोत आईडी बदलें।</li>
+        <li><b>हटाएं:</b> <i class="fas fa-trash text-red-500"></i> पर क्लिक करें, आइटम हटाएं (पुष्टि आवश्यक)।</li>
+        <li><b>प्रिंट टैग:</b> <i class="fas fa-print text-green-500"></i> पर क्लिक करें, क्यूआर/बारकोड टैग प्रिंट करें।</li>
+        <li><b>बल्क अपलोड:</b> एक साथ कई आइटम जोड़ने के लिए बल्क अपलोड विकल्प का उपयोग करें (फॉर्मेट के लिए हेल्प डॉक्स देखें)।</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">टिप्स</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>स्टॉक आवंटन:</b> खरीद स्रोत के लिए, आप केवल चयनित स्टॉक लॉट में शेष वजन तक ही आवंटन कर सकते हैं। सिस्टम ओवर-एलोकेशन नहीं होने देगा।</li>
+        <li><b>स्रोत संपादन:</b> आइटम संपादित करते समय, आप उसका स्रोत आईडी भी बदल सकते हैं।</li>
+        <li><b>ट्रैकिंग:</b> सभी क्रियाएं ऑडिट और इन्वेंटरी ट्रैकिंग के लिए लॉग होती हैं।</li>
+      </ul>
+      <p class="text-xs text-gray-600 mb-2">मदद चाहिए? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">सपोर्ट से संपर्क करें</a> या <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>।</p>`,
+    resources: `<p class="text-xs text-gray-700">ऊपर दिया गया वीडियो देखें या <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">इन्वेंटरी हेल्प डॉक्स</a> पढ़ें।</p>`
+  },
+  bn: {
+    intro: `
+      <p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-box text-purple-500 mr-2'></i>ইনভেন্টরি ব্যবস্থাপনা কীভাবে ব্যবহার করবেন</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>ক্রয় থেকে যোগ করুন:</b> প্রথমে বাল্ক স্টক যোগ করুন, তারপর "ক্রয়" নির্বাচন করুন, বিশুদ্ধতা অনুযায়ী স্টক লট বাছাই করুন এবং একে একে আইটেম বরাদ্দ করুন যতক্ষণ না লটটি পুরোপুরি ব্যবহৃত হয়।</li>
+        <li><b>উৎপাদন থেকে যোগ করুন:</b> কাস্টম অর্ডারের জন্য, "উৎপাদন" নির্বাচন করুন, যেকোনো সোর্স আইডি দিন এবং প্রস্তুত আইটেম যোগ করুন।</li>
+        <li><b>ম্যানুয়াল এন্ট্রি:</b> যেসব আইটেম ক্রয় বা উৎপাদনের সাথে যুক্ত নয়, তাদের জন্য উপযুক্ত সোর্স নির্বাচন করুন এবং বিস্তারিত দিন।</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">আইটেম কিভাবে পরিচালনা করবেন</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>দেখুন:</b> কোনো আইটেমে ক্লিক করুন এবং সম্পূর্ণ তথ্য ও ছবি দেখুন।</li>
+        <li><b>সম্পাদনা:</b> <i class="fas fa-edit text-blue-500"></i> ক্লিক করুন, তথ্য বা সোর্স আইডি পরিবর্তন করুন।</li>
+        <li><b>মুছুন:</b> <i class="fas fa-trash text-red-500"></i> ক্লিক করুন, আইটেম মুছুন (নিশ্চিতকরণ প্রয়োজন)।</li>
+        <li><b>প্রিন্ট ট্যাগ:</b> <i class="fas fa-print text-green-500"></i> ক্লিক করুন, কিউআর/বারকোড ট্যাগ প্রিন্ট করুন।</li>
+        <li><b>বাল্ক আপলোড:</b> একসাথে একাধিক আইটেম যোগ করতে বাল্ক আপলোড ব্যবহার করুন (ফরম্যাটের জন্য হেল্প ডক্স দেখুন)।</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">টিপস</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>স্টক বরাদ্দ:</b> ক্রয় সোর্সের জন্য, আপনি শুধুমাত্র নির্বাচিত স্টক লটে অবশিষ্ট ওজন পর্যন্ত বরাদ্দ করতে পারবেন। সিস্টেম ওভার-অ্যালোকেশন হতে দেবে না।</li>
+        <li><b>সোর্স সম্পাদনা:</b> আইটেম সম্পাদনা করার সময়, আপনি সোর্স আইডি পরিবর্তন করতে পারবেন।</li>
+        <li><b>ট্র্যাকিং:</b> সব কার্যক্রম অডিট ও ইনভেন্টরি ট্র্যাকিংয়ের জন্য লগ হয়।</li>
+      </ul>
+      <p class="text-xs text-gray-600 mb-2">সাহায্য লাগবে? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">সাপোর্টে যোগাযোগ করুন</a> অথবা <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>।</p>`,
+    resources: `<p class="text-xs text-gray-700">উপরের ভিডিওটি দেখুন অথবা <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ইনভেন্টরি হেল্প ডॉক্স</a> পড়ুন।</p>`
+  },
+  te: {
+    intro: `
+      <p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-box text-purple-500 mr-2'></i>ఇన్వెంటరీ మేనేజ్‌మెంట్ ఎలా ఉపయోగించాలి</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>కొనుగోలు నుండి జోడించండి:</b> ముందుగా బల్క్ స్టాక్ జోడించండి, "కొనుగోలు"ని సోర్స్‌గా ఎంచుకోండి, ప్యూరిటీ ప్రకారం స్టాక్ లాట్ ఎంచుకోండి, ఒక్కొక్కదాన్ని కేటాయించండి.</li>
+        <li><b>తయారీ నుండి జోడించండి:</b> కస్టమ్ ఆర్డర్‌ల కోసం, "తయారీ"ని సోర్స్‌గా ఎంచుకోండి, ఏదైనా సోర్స్ ఐడీ ఇవ్వండి, పూర్తయిన వస్తువులు జోడించండి.</li>
+        <li><b>మాన్యువల్ ఎంట్రీ:</b> కొనుగోలు లేదా తయారీకి సంబంధించినవి కానివి అయితే, సరైన సోర్స్ ఎంచుకుని వివరాలు జోడించండి.</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">వస్తువులను ఎలా నిర్వహించాలి</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>చూడండి:</b> వస్తువుపై క్లిక్ చేసి పూర్తి వివరాలు, చిత్రాలు చూడండి.</li>
+        <li><b>సవరించండి:</b> <i class="fas fa-edit text-blue-500"></i> క్లిక్ చేసి వివరాలు లేదా సోర్స్ ఐడీ మార్చండి.</li>
+        <li><b>తొలగించండి:</b> <i class="fas fa-trash text-red-500"></i> క్లిక్ చేసి వస్తువును తొలగించండి (నిర్ధారణ అవసరం).</li>
+        <li><b>ప్రింట్ ట్యాగ్:</b> <i class="fas fa-print text-green-500"></i> క్లిక్ చేసి క్యూఆర్/బార్కోడ్ ట్యాగ్ ప్రింట్ చేయండి.</li>
+        <li><b>బల్క్ అప్లోడ్:</b> ఒకేసారి అనేక వస్తువులు జోడించడానికి బల్క్ అప్లోడ్ ఉపయోగించండి (ఫార్మాట్ కోసం హెల్ప్ డాక్స్ చూడండి).</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">సలహాలు</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>స్టాక్ కేటాయింపు:</b> కొనుగోలు సోర్స్ కోసం, మీరు ఎంచుకున్న స్టాక్ లాట్‌లో మిగిలిన బరువు వరకు మాత్రమే కేటాయించవచ్చు. సిస్టమ్ ఓవర్-అలోకేషన్‌ను అనుమతించదు.</li>
+        <li><b>సోర్స్ సవరణ:</b> వస్తువును సవరించేటప్పుడు, సోర్స్ ఐడీని కూడా మార్చవచ్చు.</li>
+        <li><b>ట్రాకింగ్:</b> అన్ని చర్యలు ఆడిట్ మరియు ఇన్వెంటరీ ట్రాకింగ్ కోసం లాగ్ అవుతాయి.</li>
+      </ul>
+      <p class="text-xs text-gray-600 mb-2">సహాయం కావాలా? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">సపోర్ట్‌ను సంప్రదించండి</a> లేదా <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>।</p>`,
+    resources: `<p class="text-xs text-gray-700">పైన ఉన్న వీడియోను చూడండి లేదా <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ఇన్వెంటరీ హెల్ప్ డాక్స్</a> చదవండి।</p>`
+  },
+  kn: {
+    intro: `
+      <p class="text-sm text-gray-700 font-semibold mb-2 flex items-center"><i class='fas fa-box text-purple-500 mr-2'></i>ಇನ್ವೆಂಟರಿ ನಿರ್ವಹಣೆಯನ್ನು ಹೇಗೆ ಬಳಸುವುದು</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>ಖರೀದಿಯಿಂದ ಸೇರಿಸಿ:</b> ಮೊದಲು ಬಲ್ಕ್ ಸ್ಟಾಕ್ ಸೇರಿಸಿ, ನಂತರ "ಖರೀದಿ" ಆಯ್ಕೆಮಾಡಿ, ಶುದ್ಧತೆ ಪ್ರಕಾರ ಸ್ಟಾಕ್ ಲಾಟ್ ಆಯ್ಕೆಮಾಡಿ, ಒಂದೊಂದಾಗಿ ವಸ್ತುಗಳನ್ನು ಹಂಚಿಕೆ ಮಾಡಿ.</li>
+        <li><b>ತಯಾರಿಕೆಯಿಂದ ಸೇರಿಸಿ:</b> ಕಸ್ಟಮ್ ಆರ್ಡರ್‌ಗಳಿಗೆ, "ತಯಾರಿ" ಆಯ್ಕೆಮಾಡಿ, ಯಾವುದೇ ಸೋರ್ಸ್ ಐಡీ ಇವ್ವಂడಿ, ಪೂರ್ಣಗೊಂಡ ವಸ್ತುಗಳನ್ನು ಸೇರಿಸಿ.</li>
+        <li><b>ಮಾನುಯಲ್ ಎಂಟ್ರಿ:</b> ಖರೀದಿ ಅಥವಾ ತಯಾರಿಕೆಗೆ ಸಂబంಧಿಸದ ವಸ್ತುಗಳಿಗಾಗಿ, ಸರಿಯಾದ ಸೋರ್ಸ್ ಆಯ್ಕೆಮಾಡಿ ಮತ್ತು ವಿವరಗಳನ್ನು ಸೇರಿಸಿ.</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">ವಸ్ತುಗಳನ್ನು ಹೇಗೆ ನಿರ್ವಹಿಸಬೇಕು</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>ನೋಡಿ:</b> ವಸ్ತುವನ್ನು ಕ್ಲಿಕ್ ಮಾಡಿ ಮತ್ತು ಸಂಪೂರ್ಣ ವಿವరಗಳು ಮತ್ತು ಚಿತ್ರಗಳನ್ನು ನೋಡಿ.</li>
+        <li><b>ಸಂಪಾದಿಸಿ:</b> <i class="fas fa-edit text-blue-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, ವಿವరಗಳು ಅಥವಾ ಸೋರ್ಸ್ ಐಡీ ಬದಲಾಯಿಸಿ.</li>
+        <li><b>ಅಳಿಸಿ:</b> <i class="fas fa-trash text-red-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, ವಸ్ತುವನ್ನು ಅಳಿಸಿ (ದೃಢೀಕರಣ ಅಗತ್ಯವಿದೆ).</li>
+        <li><b>ಮುದ್ರಣ ಟ್ಯಾಗ್:</b> <i class="fas fa-print text-green-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, QR/ಬಾರ್ಕೋಡ್ ಟ್ಯಾಗ್ ಮುದ್ರಿಸಿ.</li>
+        <li><b>ಬಲ್ಕ్ ಅಪ್ಲೋಡ್:</b> ಒಂದೇ ಸಮಯದಲ್ಲಿ ಅನೇಕ ವಸ్ತುಗಳನ್ನು ಸೇರಿಸಲು ಬಲ್ಕ್ ಅಪ್ಲೋಡ್ ಬಳಸಿ (ಫಾರ್ಮ್ಯಾಟ್‌ಗೆ ಸಹಾಯ ಡಾಕ್ಸ್ ನೋಡಿ).</li>
+      </ul>
+      <p class="text-xs text-gray-700 font-semibold mb-2">ಟಿಪ್ಸ್</p>
+      <ul class="text-xs text-gray-700 space-y-2 mb-4">
+        <li><b>ಸ್ಟಾಕ್ ಹಂಚಿಕೆ:</b> ಖರೀದಿ ಸೋರ್ಸ್‌ಗೆ, ನೀವು ಆಯ್ಕೆಮಾಡಿದ ಸ್ಟಾಕ್ ಲಾಟ್‌ನಲ್ಲಿ ಉಳಿದ ತೂಕದವರೆಗೆ ಮಾತ್ರ ಹಂಚಿಕೆ ಮಾಡಬಹುದು. ಸಿಸ್టಮ్ ಓವರ್-ಅಲೊಕೇಶನ್ ಅನ್ನು ಅನುమತಿಸುವುದಿಲ್ಲ.</li>
+        <li><b>ಸೋರ్ಸ్ ಸಂಪಾದನೆ:</b> ವಸ్ತುವನ್ನು ಸಂಪಾದಿಸುವಾಗ, ನೀವು ಸೋರ್ಸ್ ಐಡಿಯನ್ನು ಕೂಡ ಬದಲಾಯಿಸಬಹುದು.</li>
+        <li><b>ಟ್ರ್ಯಾಕಿಂಗ್:</b> ಎಲ್ಲಾ ಕ್ರಿಯೆಗಳು ಆಡಿట್ ಮತ್ತು ಇನ్ವೆಂటರీ ಟ್ರ್ಯಾಕಿಂಗ್‌ಗೆ ಲಾಗ್ ಆಗುತ್ತವೆ.</li>
+      </ul>
+      <p class="text-xs text-gray-600 mb-2">ಸಹಾಯ ಬೇಕಾ? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">ಸಪೋರ్ಟ್ ಅನ್ನು ಸಂಪರ್ಕಿಸಿ</a> ಅಥವಾ <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>।</p>`,
+    resources: `<p class="text-xs text-gray-700">ಮೇಲಿನ ವಿಡಿಯೋವನ್ನು ನೋಡಿ ಅಥವಾ <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ಇನ್ವೆಂಟರಿ ಸಹಾಯ ಡಾಕ್ಸ್</a> ಓದಿ।</p>`
+  },
+};
+
+// Remove translateText and update setAddGuideLang to use only hardcoded content
+// Remove the async/await and translation logic
+function setAddGuideLang(lang) {
+  document.querySelectorAll('.add-lang-tab').forEach(btn => {
+    if (btn.dataset.lang === lang) {
+      btn.classList.add('border-purple-200', 'text-purple-700', 'bg-purple-50');
+      btn.classList.remove('border-gray-200', 'text-gray-700', 'bg-gray-50');
+    } else {
+      btn.classList.remove('border-purple-200', 'text-purple-700', 'bg-purple-50');
+      btn.classList.add('border-gray-200', 'text-gray-700', 'bg-gray-50');
+    }
+  });
+  const details = document.getElementById('addGuideModalDetails');
+  if (addGuideContent[lang]) {
+    details.innerHTML = addGuideContent[lang].intro + addGuideContent[lang].resources;
+  } else {
+    details.innerHTML = addGuideContent.en.intro + addGuideContent.en.resources;
+  }
+}
+
+function showAddGuideModal() {
+  document.getElementById('addGuideModal').classList.remove('hidden');
+}
+function closeAddGuideModal() {
+  document.getElementById('addGuideModal').classList.add('hidden');
+  if (document.getElementById('dontShowAddGuideAgain').checked) {
+    localStorage.setItem('jewelentry_add_guide_seen', '1');
+  }
+}
+document.getElementById('fullscreenAddGuideVideoBtn').addEventListener('click', function() {
+  var iframe = document.getElementById('addGuideVideo');
+  if (iframe.requestFullscreen) {
+    iframe.requestFullscreen();
+  } else if (iframe.mozRequestFullScreen) {
+    iframe.mozRequestFullScreen();
+  } else if (iframe.webkitRequestFullscreen) {
+    iframe.webkitRequestFullscreen();
+  } else if (iframe.msRequestFullscreen) {
+    iframe.msRequestFullscreen();
+  }
+});
+document.querySelectorAll('.add-lang-tab').forEach(btn => {
+  btn.addEventListener('click', function() {
+    setAddGuideLang(this.dataset.lang);
+  });
+});
+document.getElementById('openAddGuideModalBtn').addEventListener('click', showAddGuideModal);
+document.addEventListener('DOMContentLoaded', function() {
+  setAddGuideLang('en');
+  if (!localStorage.getItem('jewelentry_add_guide_seen')) {
+    setTimeout(showAddGuideModal, 800);
+  }
+});
+</script>
+
+<script>
+(function() {
+  const guideBtn = document.getElementById('openAddGuideModalBtn');
+  let lastScrollY = window.scrollY;
+  let hideTimeout;
+
+  // Auto-hide after 5 seconds
+  function autoHideGuideBtn() {
+    if (guideBtn) {
+      guideBtn.style.opacity = '1';
+      guideBtn.style.pointerEvents = 'auto';
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => {
+        guideBtn.style.opacity = '0';
+        guideBtn.style.pointerEvents = 'none';
+      }, 5000); // 5 seconds
+    }
+  }
+
+  // Show on scroll up, hide on scroll down
+  function handleScroll() {
+    if (!guideBtn) return;
+    if (window.scrollY > lastScrollY) {
+      // Scrolling down
+      guideBtn.style.opacity = '0';
+      guideBtn.style.pointerEvents = 'none';
+    } else {
+      // Scrolling up
+      guideBtn.style.opacity = '1';
+      guideBtn.style.pointerEvents = 'auto';
+      autoHideGuideBtn();
+    }
+    lastScrollY = window.scrollY;
+  }
+
+  // Show button when mouse moves near it
+  guideBtn.addEventListener('mouseenter', () => {
+    guideBtn.style.opacity = '1';
+    guideBtn.style.pointerEvents = 'auto';
+    clearTimeout(hideTimeout);
+  });
+  guideBtn.addEventListener('mouseleave', autoHideGuideBtn);
+
+  // Initial auto-hide
+  autoHideGuideBtn();
+
+  // Listen for scroll
+  window.addEventListener('scroll', handleScroll);
+
+  // Optionally, show again when user stops scrolling for a while
+  let scrollTimeout;
+  window.addEventListener('scroll', () => {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(autoHideGuideBtn, 1500);
+  });
+})();
 </script>
 </body>
 </html>

@@ -4,7 +4,7 @@ require 'config/config.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
-    header("Location: default.php");
+    header("Location: login.php");
     exit();
 }
 
@@ -259,7 +259,7 @@ $conn->close();
                         <div id="userDropdownMenu" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none hidden" role="menu" aria-orientation="vertical" aria-labelledby="userDropdownToggle">
                             <div class="py-1" role="none">
                                 <!-- Add more profile options here if needed -->
-                                <a href="logout.php?redirect=default.php" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
+                                <a href="logout.php" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
                                     <i class="fas fa-sign-out-alt mr-2"></i> Logout
                                 </a>
                             </div>
@@ -274,7 +274,7 @@ $conn->close();
         <?php if ($isSuperAdmin): ?>
         <!-- Section 1: Firm Details (Super Admin Only) -->
         <div class="profile-card-gradient rounded-xl p-4 shadow-lg mb-6">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">
+            <h2 class="text-sm font-bold text-gray-800 mb-4">
                 <i class="fas fa-building mr-2"></i>Firm Profile
             </h2>
             
@@ -322,8 +322,45 @@ $conn->close();
                     </div>
                     <div>
                         <label for="firmState" class="form-label">State</label>
-                        <input type="text" id="firmState" class="form-input" placeholder="e.g., Maharashtra" 
-                               value="<?php echo htmlspecialchars($userInfo['State'] ?? ''); ?>">
+                        <select id="firmState" class="form-input">
+                            <option value="">Select State</option>
+                            <option value="Andhra Pradesh" <?php echo ($userInfo['State'] === 'Andhra Pradesh') ? 'selected' : ''; ?>>Andhra Pradesh</option>
+                            <option value="Arunachal Pradesh" <?php echo ($userInfo['State'] === 'Arunachal Pradesh') ? 'selected' : ''; ?>>Arunachal Pradesh</option>
+                            <option value="Assam" <?php echo ($userInfo['State'] === 'Assam') ? 'selected' : ''; ?>>Assam</option>
+                            <option value="Bihar" <?php echo ($userInfo['State'] === 'Bihar') ? 'selected' : ''; ?>>Bihar</option>
+                            <option value="Chhattisgarh" <?php echo ($userInfo['State'] === 'Chhattisgarh') ? 'selected' : ''; ?>>Chhattisgarh</option>
+                            <option value="Goa" <?php echo ($userInfo['State'] === 'Goa') ? 'selected' : ''; ?>>Goa</option>
+                            <option value="Gujarat" <?php echo ($userInfo['State'] === 'Gujarat') ? 'selected' : ''; ?>>Gujarat</option>
+                            <option value="Haryana" <?php echo ($userInfo['State'] === 'Haryana') ? 'selected' : ''; ?>>Haryana</option>
+                            <option value="Himachal Pradesh" <?php echo ($userInfo['State'] === 'Himachal Pradesh') ? 'selected' : ''; ?>>Himachal Pradesh</option>
+                            <option value="Jharkhand" <?php echo ($userInfo['State'] === 'Jharkhand') ? 'selected' : ''; ?>>Jharkhand</option>
+                            <option value="Karnataka" <?php echo ($userInfo['State'] === 'Karnataka') ? 'selected' : ''; ?>>Karnataka</option>
+                            <option value="Kerala" <?php echo ($userInfo['State'] === 'Kerala') ? 'selected' : ''; ?>>Kerala</option>
+                            <option value="Madhya Pradesh" <?php echo ($userInfo['State'] === 'Madhya Pradesh') ? 'selected' : ''; ?>>Madhya Pradesh</option>
+                            <option value="Maharashtra" <?php echo ($userInfo['State'] === 'Maharashtra') ? 'selected' : ''; ?>>Maharashtra</option>
+                            <option value="Manipur" <?php echo ($userInfo['State'] === 'Manipur') ? 'selected' : ''; ?>>Manipur</option>
+                            <option value="Meghalaya" <?php echo ($userInfo['State'] === 'Meghalaya') ? 'selected' : ''; ?>>Meghalaya</option>
+                            <option value="Mizoram" <?php echo ($userInfo['State'] === 'Mizoram') ? 'selected' : ''; ?>>Mizoram</option>
+                            <option value="Nagaland" <?php echo ($userInfo['State'] === 'Nagaland') ? 'selected' : ''; ?>>Nagaland</option>
+                            <option value="Odisha" <?php echo ($userInfo['State'] === 'Odisha') ? 'selected' : ''; ?>>Odisha</option>
+                            <option value="Punjab" <?php echo ($userInfo['State'] === 'Punjab') ? 'selected' : ''; ?>>Punjab</option>
+                            <option value="Rajasthan" <?php echo ($userInfo['State'] === 'Rajasthan') ? 'selected' : ''; ?>>Rajasthan</option>
+                            <option value="Sikkim" <?php echo ($userInfo['State'] === 'Sikkim') ? 'selected' : ''; ?>>Sikkim</option>
+                            <option value="Tamil Nadu" <?php echo ($userInfo['State'] === 'Tamil Nadu') ? 'selected' : ''; ?>>Tamil Nadu</option>
+                            <option value="Telangana" <?php echo ($userInfo['State'] === 'Telangana') ? 'selected' : ''; ?>>Telangana</option>
+                            <option value="Tripura" <?php echo ($userInfo['State'] === 'Tripura') ? 'selected' : ''; ?>>Tripura</option>
+                            <option value="Uttar Pradesh" <?php echo ($userInfo['State'] === 'Uttar Pradesh') ? 'selected' : ''; ?>>Uttar Pradesh</option>
+                            <option value="Uttarakhand" <?php echo ($userInfo['State'] === 'Uttarakhand') ? 'selected' : ''; ?>>Uttarakhand</option>
+                            <option value="West Bengal" <?php echo ($userInfo['State'] === 'West Bengal') ? 'selected' : ''; ?>>West Bengal</option>
+                            <option value="Andaman and Nicobar Islands" <?php echo ($userInfo['State'] === 'Andaman and Nicobar Islands') ? 'selected' : ''; ?>>Andaman and Nicobar Islands</option>
+                            <option value="Chandigarh" <?php echo ($userInfo['State'] === 'Chandigarh') ? 'selected' : ''; ?>>Chandigarh</option>
+                            <option value="Dadra and Nagar Haveli and Daman and Diu" <?php echo ($userInfo['State'] === 'Dadra and Nagar Haveli and Daman and Diu') ? 'selected' : ''; ?>>Dadra and Nagar Haveli and Daman and Diu</option>
+                            <option value="Delhi" <?php echo ($userInfo['State'] === 'Delhi') ? 'selected' : ''; ?>>Delhi</option>
+                            <option value="Jammu and Kashmir" <?php echo ($userInfo['State'] === 'Jammu and Kashmir') ? 'selected' : ''; ?>>Jammu and Kashmir</option>
+                            <option value="Ladakh" <?php echo ($userInfo['State'] === 'Ladakh') ? 'selected' : ''; ?>>Ladakh</option>
+                            <option value="Lakshadweep" <?php echo ($userInfo['State'] === 'Lakshadweep') ? 'selected' : ''; ?>>Lakshadweep</option>
+                            <option value="Puducherry" <?php echo ($userInfo['State'] === 'Puducherry') ? 'selected' : ''; ?>>Puducherry</option>
+                        </select>
                     </div>
                     <div>
                         <label for="firmPincode" class="form-label">Pincode *</label>
@@ -408,7 +445,7 @@ $conn->close();
         <!-- Section 2: Staff Management (Super Admin Only) -->
         <div class="staff-card-gradient rounded-xl p-4 shadow-lg mb-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-gray-800">
+                <h2 class="text-sm font-bold text-gray-800">
                     <i class="fas fa-users mr-2"></i>Staff Management
                 </h2>
                 <button id="addNewStaffBtn" class="btn-primary text-sm px-3 py-1.5">

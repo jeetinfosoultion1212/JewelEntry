@@ -69,7 +69,7 @@ try {
     $data['summary']['total_revenue'] = $revStmt->get_result()->fetch_assoc()['total_sales'];
 
     // --- NEW: Total Sales, Paid, Due ---
-    $salesBreakdownQuery = "SELECT COALESCE(SUM(grand_total),0) as total_sales, COALESCE(SUM(paid_amount),0) as total_paid, COALESCE(SUM(grand_total - paid_amount),0) as total_due FROM jewellery_sales WHERE firm_id = ? AND DATE(created_at) BETWEEN ? AND ?";
+    $salesBreakdownQuery = "SELECT COALESCE(SUM(grand_total),0) as total_sales, COALESCE(SUM(total_paid_amount),0) as total_paid, COALESCE(SUM(grand_total - total_paid_amount),0) as total_due FROM jewellery_sales WHERE firm_id = ? AND DATE(created_at) BETWEEN ? AND ?";
     $salesBreakdownStmt = $conn->prepare($salesBreakdownQuery);
     $salesBreakdownStmt->bind_param("iss", $firm_id, $start_date, $end_date);
     $salesBreakdownStmt->execute();
@@ -87,7 +87,7 @@ try {
     
     // Items Sold
     $soldQuery = "SELECT COUNT(jsi.id) as total_count, COALESCE(SUM(jsi.gross_weight), 0) as total_weight 
-                  FROM jewellery_sales_items jsi 
+                  FROM Jewellery_sales_items jsi 
                   JOIN jewellery_sales js ON jsi.sale_id = js.id 
                   WHERE js.firm_id = ? AND DATE(js.created_at) BETWEEN ? AND ?";
     $soldStmt = $conn->prepare($soldQuery);
@@ -165,7 +165,7 @@ try {
 
     // Stock Out
     $stockOutQuery = "SELECT jsi.product_id, jsi.product_name, js.created_at, jsi.gross_weight, jsi.sale_id 
-                      FROM jewellery_sales_items jsi 
+                      FROM Jewellery_sales_items jsi 
                       JOIN jewellery_sales js ON jsi.sale_id = js.id 
                       WHERE js.firm_id = ? AND DATE(js.created_at) BETWEEN ? AND ?
                       ORDER BY js.created_at DESC";

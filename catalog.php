@@ -1,4 +1,7 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 session_start();
 if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
     header("Location: login.php");
@@ -83,7 +86,7 @@ if (!isset($priceConfig['Silver']['999.90'])) {
 // --- NOW FETCH PRODUCT DATA WITH CORRECT PRICE CALCULATIONS ---
 $productsData = array();
 
-$sql_products = "SELECT ji.*, GROUP_CONCAT(jpi.image_url) as image_urls,
+$sql_products = "SELECT ji.*, ji.Tray_no as tray_no, GROUP_CONCAT(jpi.image_url) as image_urls,
                  SUBSTRING(ji.description, 1, 100) as short_description 
                  FROM jewellery_items ji 
                  LEFT JOIN jewellery_product_image jpi ON ji.id = jpi.product_id 
@@ -139,6 +142,7 @@ if ($result_products && $result_products->num_rows > 0) {
         $row['netWeight'] = $row['net_weight'];
         $row['grossWeight'] = $row['gross_weight'];
         $row['stoneWeight'] = $row['stone_weight'] > 0 ? $row['stone_weight'] . ' ' . $row['stone_unit'] : null;
+        $row['tray_no'] = isset($row['tray_no']) ? $row['tray_no'] : '';
         
         $productsData[$row['id']] = $row;
     }
@@ -180,7 +184,7 @@ if ($result_stats->num_rows > 0) {
 // --- Fetch Firm Details ---
 $firmDetails = array();
 // It's good practice to select specific columns instead of '*'
-$sql_firm = "SELECT FirmName, Address,  city, state, PostalCode, PhoneNumber FROM firm WHERE id = ? LIMIT 1";
+$sql_firm = "SELECT FirmName, Address,  city, state, PostalCode, PhoneNumber FROM Firm WHERE id = ? LIMIT 1";
 $stmt_firm = $conn->prepare($sql_firm);
 $stmt_firm->bind_param("i", $current_firm_id);
 $stmt_firm->execute();
@@ -290,9 +294,10 @@ $conn->close();
         }
 
         .glass-effect {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.3);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.07);
         }
 
         .spec-card {
@@ -461,6 +466,714 @@ $conn->close();
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            padding: 10px;
+        }
+        .product-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0001;
+            padding: 10px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .product-image {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            margin-bottom: 8px;
+        }
+        .product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            background: #f5f5f5;
+        }
+        .category-badge {
+            position: absolute;
+            bottom: -10px;
+            right: -10px;
+            background: #f0c419;
+            color: #fff;
+            border-radius: 50%;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 1px 4px #0002;
+        }
+     
+        .category-filter-minimal {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 6px;
+            scrollbar-width: thin;
+            scrollbar-color: #e0e0e0 #fff;
+        }
+        .category-filter-minimal::-webkit-scrollbar {
+            height: 4px;
+        }
+        .category-filter-minimal::-webkit-scrollbar-thumb {
+            background: #e0e0e0;
+            border-radius: 2px;
+        }
+        .category-filter-btn {
+            background: #f5f5f5;
+            border-radius: 16px;
+            padding: 6px 16px;
+            font-size: 14px;
+            color: #444;
+            border: none;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            white-space: nowrap;
+        }
+        .category-filter-btn.active, .category-filter-btn:hover {
+            background: #1a7f37;
+            color: #fff;
+        }
+        .filter-bar-minimal {
+            background: #fff;
+            border-radius: 10px;
+            padding: 6px 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        .filter-select-minimal {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 3px 10px;
+            font-size: 13px;
+            background: #fafafa;
+            color: #444;
+            outline: none;
+        }
+        .filter-range-minimal {
+            width: 70px;
+            accent-color: #1a7f37;
+        }
+        .filter-label-minimal {
+            font-size: 12px;
+            color: #888;
+            min-width: 24px;
+            text-align: center;
+        }
+        @media (max-width: 600px) {
+            .filter-bar-minimal { flex-direction: column; gap: 6px; padding: 6px 4px; }
+            .filter-range-minimal { width: 50px; }
+        }
+        .filter-icon-btn-minimal {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 6px 16px;
+            font-size: 15px;
+            color: #1a7f37;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .filter-icon-btn-minimal:hover {
+            background: #1a7f37;
+            color: #fff;
+        }
+        .filter-modal-minimal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1001;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+            min-width: 280px;
+            max-width: 95vw;
+            width: 340px;
+            padding: 18px 18px 12px 18px;
+            display: flex;
+            flex-direction: column;
+            transition: opacity 0.2s;
+            overflow-y: auto;
+            max-height: 90vh;
+        }
+        .filter-modal-content-minimal {
+            width: 100%;
+            position: relative;
+            z-index: 1002;
+        }
+        .filter-select-minimal {
+            max-width: 100%;
+            width: 100%;
+            z-index: 1100;
+            position: relative;
+        }
+        .filter-modal-minimal select, .filter-modal-minimal option {
+            max-width: 100vw;
+            word-break: break-all;
+        }
+        @media (max-width: 600px) {
+            .filter-modal-minimal { min-width: 90vw; width: 98vw; padding: 10px 6px 8px 6px; }
+        }
+        .purity-badge-minimal {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: #ffd700;
+            color: #222;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 12px;
+            padding: 2px 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            z-index: 2;
+        }
+        .making-badge-minimal {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #fff;
+            color: #1a7f37;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 12px;
+            padding: 2px 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            z-index: 2;
+            border: 1px solid #e0e0e0;
+        }
+        .product-image-minimal {
+            position: relative;
+        }
+        .product-grid-minimal {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 10px;
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.product-card-minimal {
+    background: #ffffff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.25s ease;
+    position: relative;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+}
+
+.product-card-minimal:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    border-color: #cbd5e1;
+}
+
+.product-image-minimal {
+    position: relative;
+    width: 100%;
+    height: 110px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+}
+
+.product-image-minimal img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.product-card-minimal:hover .product-image-minimal img {
+    transform: scale(1.06);
+}
+
+.purity-badge-minimal {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    z-index: 3;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.making-badge-minimal {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(15, 23, 42, 0.85);
+    color: white;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 8px;
+    font-weight: 600;
+    z-index: 3;
+    backdrop-filter: blur(4px);
+    max-width: 45px;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.favorite-icon-minimal {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 3;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.favorite-icon-minimal:hover {
+    background: white;
+    color: #ef4444;
+    transform: scale(1.1);
+}
+
+.product-info-minimal {
+    padding: 10px;
+}
+
+.product-title-minimal {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 5px;
+    line-height: 1.3;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.product-meta-minimal {
+    margin-bottom: 6px;
+}
+
+.product-weight-minimal {
+    display: inline-flex;
+    align-items: center;
+    background: #f1f5f9;
+    color: #475569;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.product-weight-minimal::before {
+    content: "⚖";
+    margin-right: 3px;
+    font-size: 9px;
+    opacity: 0.7;
+}
+
+.product-price-minimal {
+    font-size: 13px;
+    font-weight: 700;
+    color: #059669;
+    text-align: left;
+    margin-top: 2px;
+}
+
+.product-price-minimal::before {
+    content: "₹";
+    font-size: 11px;
+    margin-right: 1px;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 480px) {
+    .product-grid-minimal {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        padding: 8px;
+    }
+    
+    .product-image-minimal {
+        height: 100px;
+    }
+    
+    .product-info-minimal {
+        padding: 8px;
+    }
+    
+    .product-title-minimal {
+        font-size: 11px;
+        margin-bottom: 4px;
+    }
+    
+    .product-weight-minimal {
+        font-size: 9px;
+        padding: 1px 5px;
+    }
+    
+    .product-price-minimal {
+        font-size: 12px;
+    }
+    
+    .purity-badge-minimal,
+    .making-badge-minimal {
+        font-size: 8px;
+        padding: 1px 4px;
+    }
+    
+    .favorite-icon-minimal {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 640px) {
+    .product-grid-minimal {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+    .product-grid-minimal {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .product-grid-minimal {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 11px;
+    }
+}
+
+@media (min-width: 1025px) {
+    .product-grid-minimal {
+        grid-template-columns: repeat(6, 1fr);
+        gap: 12px;
+    }
+}
+
+/* Enhanced Hover Effects */
+.product-card-minimal:hover .product-title-minimal {
+    color: #3b82f6;
+}
+
+.product-card-minimal:hover .product-price-minimal {
+    transform: translateX(2px);
+}
+
+/* Loading State */
+.product-image-minimal img[src*="no_image"] {
+    opacity: 0.6;
+    filter: grayscale(0.2);
+}
+
+.glass-badge {
+    background: rgba(255,255,255,0.5);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.2);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+/* New styles for rate and price on same line */
+.price-rate-container {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.price-section {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.product-price-minimal {
+    font-size: 13px;
+    font-weight: 700;
+    color: #059669;
+    margin: 0;
+}
+
+.product-rate-minimal {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.product-rate-minimal::before {
+    content: "@₹";
+    font-size: 9px;
+    margin-right: 1px;
+}
+
+/* Action icons container */
+.action-icons-minimal {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.action-icon-minimal {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.action-icon-minimal:hover {
+    transform: scale(1.1);
+}
+
+.action-icon-view {
+    color: #3b82f6;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.action-icon-view:hover {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.action-icon-edit {
+    color: #f59e0b;
+    background: #fffbeb;
+    border-color: #fed7aa;
+}
+
+.action-icon-edit:hover {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.action-icon-delete {
+    color: #ef4444;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.action-icon-delete:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* --- Professional Export Card Styles --- */
+.pro-export-card {
+    max-width: 400px;
+    background: linear-gradient(135deg, #fdf6ec 0%, #fff9f0 100%);
+    border-radius: 24px;
+    padding: 24px 18px 18px 18px;
+    box-shadow: 0 6px 32px rgba(0,0,0,0.10);
+    font-family: 'Inter', sans-serif;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+}
+.pro-export-card:before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: url('https://www.transparenttextures.com/patterns/diamond-upholstery.png');
+    opacity: 0.07;
+    pointer-events: none;
+    z-index: 0;
+}
+.pro-firm-header {
+    text-align: center;
+    margin-bottom: 10px;
+    position: relative;
+    z-index: 1;
+}
+.pro-firm-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #b8860b;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    display: inline-block;
+    margin-bottom: 2px;
+}
+.pro-image-container {
+    width: 100%;
+    height: 210px;
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 18px;
+    background: linear-gradient(135deg, #fffbe6 0%, #f5e7c4 100%);
+    box-shadow: 0 2px 12px rgba(184,134,11,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid #ffe082;
+    position: relative;
+    z-index: 1;
+}
+.pro-image-gold {
+    box-shadow: 0 0 0 4px #ffe082, 0 2px 12px rgba(184,134,11,0.12);
+}
+.pro-image-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 16px;
+    background: #fff;
+}
+.pro-product-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #3e2723;
+    text-align: center;
+    margin-bottom: 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+}
+.pro-specs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    background: #fff8e1;
+    border-radius: 12px;
+    padding: 12px 10px 6px 10px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    position: relative;
+    z-index: 1;
+}
+.pro-spec-label {
+    font-size: 11px;
+    color: #a1887f;
+    font-weight: 500;
+    display: block;
+}
+.pro-spec-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #222;
+    display: block;
+}
+.pro-price-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #b8860b;
+    background: linear-gradient(90deg, #fffde7 60%, #fff9c4 100%);
+    border-radius: 10px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px #b8860b11;
+    position: relative;
+    z-index: 1;
+}
+.pro-price-label {
+    font-size: 15px;
+    color: #a1887f;
+    font-weight: 600;
+}
+.pro-price-value {
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+    background: linear-gradient(90deg, #ffd700 0%, #b8860b 100%);
+    border-radius: 8px;
+    padding: 4px 18px;
+    box-shadow: 0 2px 8px #b8860b33;
+    border: 2px solid #ffe082;
+    letter-spacing: 1px;
+}
+.pro-footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 10px;
+    gap: 10px;
+    position: relative;
+    z-index: 1;
+}
+.pro-date-export {
+    font-size: 12px;
+    color: #8d6e63;
+    font-weight: 500;
+    margin-top: 8px;
+}
+.pro-qr-code {
+    width: 72px;
+    height: 72px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px #b8860b11;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #ffe082;
+}
+.pro-watermark {
+    position: absolute;
+    bottom: 10px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 11px;
+    color: #b8860b33;
+    font-family: 'Playfair Display', serif;
+    letter-spacing: 2px;
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+}
+.tray-badge {
+    display: inline-block;
+    background: #fffde7;
+    color: #b8860b;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin: 2px 0 4px 0;
+    letter-spacing: 1px;
+}
     </style>
 </head>
 <body class="bg-gray-50 font-inter overflow-hidden"> <!-- Added overflow-hidden to body to prevent main page scroll when detail is open -->
@@ -505,85 +1218,93 @@ $conn->close();
         <!-- Product List View -->
         <div id="productList" class="slide-out active overflow-y-auto" style="height: calc(100vh - 64px);"> <!-- This view will be translated out -->
             <main class="container mx-auto px-4 py-6" role="main">
-                <!-- Original Store Info -->
-                <div class="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-xl p-4 mb-6 border border-yellow-200 shadow-sm" style="display:none;">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h2 class="font-playfair font-bold text-xl text-gray-900 mb-1">Premium Gold Collection</h2>
-                            <p class="text-gray-600 text-sm">Handcrafted with precision & excellence</p>
+                <!-- Filter Icon Button -->
+                <button id="openFilterModalBtn" class="filter-icon-btn-minimal mb-2" aria-label="Open Filters">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
+                <!-- Filter Modal -->
+                <div id="filterModal" class="filter-modal-minimal hidden">
+                    <div class="filter-modal-content-minimal">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-semibold text-lg">Filters</span>
+                            <button id="closeFilterModalBtn" class="text-gray-500 hover:text-red-500 text-xl">&times;</button>
                         </div>
-                        <div class="text-right">
-                            <p class="text-sm font-semibold text-gray-800">Today's Gold Rate</p>
-                            <p class="text-lg font-bold gold-gradient">₹<?php echo number_format($priceConfig['Gold']['99.99']['rate'], 2); ?>/gm</p>
-                        </div>
+                        <form id="productFilterBar" class="filter-bar-minimal flex flex-col gap-2 items-stretch">
+                            <select id="filterPurity" class="filter-select-minimal">
+                                <option value="">All Purity</option>
+                            </select>
+                            <select id="filterStone" class="filter-select-minimal">
+                                <option value="">All Stones</option>
+                            </select>
+                            <div class="filter-price-group flex items-center gap-1">
+                                <span class="filter-label-minimal">₹</span>
+                                <input type="range" id="filterPriceMin" min="0" max="1000000" step="100" value="0" class="filter-range-minimal">
+                                <input type="range" id="filterPriceMax" min="0" max="1000000" step="100" value="1000000" class="filter-range-minimal">
+                                <span id="filterPriceValue" class="filter-label-minimal"></span>
+                            </div>
+                        </form>
+                        <button id="closeFilterModalBtn2" class="mt-3 w-full bg-green-600 text-white py-2 rounded-lg font-semibold">Apply Filters</button>
                     </div>
                 </div>
-
-                <!-- Original Stats Card -->
-                <div class="overflow-x-auto mb-6">
-                    <div class="inline-flex space-x-3 p-1 min-w-full">
-                        <!-- Live Rates Card -->
-                        <div class="flex-none w-60 bg-white rounded-xl shadow-sm p-2 border border-gray-100">
-                            <div class="flex items-center justify-between mb-1">
-                                <h3 class="font-playfair font-bold text-sm text-gray-900">Live Rates</h3>
-                                <span class="text-xs text-gray-500">Updated: <?php echo htmlspecialchars($priceConfig['Gold']['99.99']['date']); ?></span>
-                            </div>
-                            <div class="space-y-1.5">
-                                <div class="flex items-center justify-between p-1.5 bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg">
-                                    <div class="flex items-center">
-                                        <i class="fas fa-coins text-yellow-500 mr-1.5 text-xs" aria-hidden="true"></i>
-                                        <span class="font-medium text-xs">Gold (24K)</span>
-                                    </div>
-                                    <span class="font-bold text-yellow-600 text-xs">₹<?php echo number_format($priceConfig['Gold']['99.99']['rate'], 2); ?>/gm</span>
-                                </div>
-                                <div class="flex items-center justify-between p-1.5 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
-                                    <div class="flex items-center">
-                                        <i class="fas fa-coins text-gray-500 mr-1.5 text-xs" aria-hidden="true"></i>
-                                        <span class="font-medium text-xs">Silver (999)</span>
-                                    </div>
-                                    <span class="font-bold text-gray-600 text-xs">₹<?php echo number_format($priceConfig['Silver']['999.90']['rate'], 2); ?>/gm</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Inventory Stats Cards -->
-                        <?php
-                        $purityColors = [
-                            '22K' => 'from-yellow-50 to-yellow-100',
-                            '20K' => 'from-amber-50 to-amber-100',
-                            '18K' => 'from-orange-50 to-orange-100',
-                            '14K' => 'from-red-50 to-red-100'
-                        ];
-                        
-                        foreach ($productStats as $material => $purities) {
-                            foreach ($purities as $purity => $stats) {
-                                if ($purity !== 'Other') {
-                                    $colorClass = $purityColors[$purity] ?? 'from-gray-50 to-gray-100';
-                                    ?>
-                                    <div class="flex-none w-40 bg-white rounded-xl shadow-sm p-2 border border-gray-100">
-                                        <div class="flex items-center justify-between p-1.5 bg-gradient-to-r <?php echo $colorClass; ?> rounded-lg">
-                                            <div class="flex items-center">
-                                                <i class="fas fa-gem text-gray-500 mr-1.5 text-xs" aria-hidden="true"></i>
-                                                <span class="font-medium text-xs"><?php echo htmlspecialchars($material . ' ' . $purity); ?></span>
-                                            </div>
-                                        </div>
-                                        <div class="mt-1.5 text-center">
-                                            <div class="text-xs font-semibold text-gray-900"><?php echo htmlspecialchars($stats['count']); ?> items</div>
-                                            <div class="text-xs text-gray-600"><?php echo number_format($stats['weight'], 2); ?>g</div>
-                                        </div>
-                                    </div>
-                                    <?php
-                                }
-                            }
-                        }
-                        ?>
+                <!-- Overlay for modal -->
+                <div id="filterModalOverlay" class="filter-modal-overlay-minimal hidden"></div>
+                <!-- Category Filter Horizontal List -->
+                <div id="categoryFilter" class="category-filter-minimal mb-4"></div>
+               <div class="product-grid-minimal" id="productGridMinimal">
+    <?php foreach ($productsData as $product): ?>
+        <div class="product-card-minimal" 
+             data-jewelry-type="<?= htmlspecialchars($product['jewelry_type']) ?>" 
+             data-purity="<?= htmlspecialchars($product['purity']) ?>" 
+             data-stone="<?= htmlspecialchars($product['stone_type']) ?>" 
+             data-price="<?= (int)$product['marketPrice'] ?>"
+             onclick="showProductDetails('<?= $product['id'] ?>')"
+             style="cursor:pointer;">
+            <div class="product-image-minimal">
+                <img src="<?= !empty($product['images']) && !empty($product['images'][0]) ? $product['images'][0] : 'uploads/jewelry/no_image.png' ?>" 
+                     alt="<?= htmlspecialchars($product['name']) ?>"
+                     loading="lazy"
+                     style="object-fit: contain; background: #f5f5f5;">
+                <span class="purity-badge-minimal"><?= htmlspecialchars($product['purity']) ?></span>
+                <span class="making-badge-minimal">
+                    <?php if ($product['making_charge_type'] == 'percentage'): ?>
+                        @<?= rtrim(rtrim(number_format($product['making_charge'], 1), '0'), '.') ?>%
+                    <?php else: ?>
+                        @₹<?= number_format($product['making_charge'], 0) ?>/g
+                    <?php endif; ?>
+                </span>
+                <span class="favorite-icon-minimal" onclick="event.stopPropagation();">♡</span>
+            </div>
+            <div class="product-info-minimal">
+                <div class="product-title-minimal">
+                    <?= htmlspecialchars($product['name']) ?>
+                    <span class="ml-1 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-[10px] font-bold align-middle">
+                        <?= $product['netWeight'] ?>g
+                    </span>
+                </div>
+        <?php if (!empty($product['tray_no'])): ?>
+            <div class="tray-badge"><?= htmlspecialchars($product['tray_no']) ?></div>
+        <?php endif; ?>
+                <div class="price-rate-container">
+                    <div class="price-section">
+                        <span class="product-price-minimal">₹<?= number_format(round($product['totalPrice'])) ?></span>
+                        <span class="product-rate-minimal"><?= number_format(round($product['rate_per_gram'])) ?>/g</span>
                     </div>
                 </div>
-
-                <!-- Original Product Grid - 2 items per row -->
-                <div class="grid grid-cols-2 gap-3 md:gap-4">
-                    <!-- Products will be dynamically rendered here by JavaScript -->
+                <div class="action-icons-minimal">
+                    <div class="action-icon-minimal action-icon-view" onclick="event.stopPropagation(); showProductDetails('<?= $product['id'] ?>')" title="View Details">
+                        <i class="fas fa-eye"></i>
+                    </div>
+                    <div class="action-icon-minimal action-icon-edit" onclick="event.stopPropagation(); editProduct('<?= $product['id'] ?>')" title="Edit Product">
+                        <i class="fas fa-edit"></i>
+                    </div>
+                    <div class="action-icon-minimal action-icon-delete" onclick="event.stopPropagation(); deleteProduct('<?= $product['id'] ?>')" title="Delete Product">
+                        <i class="fas fa-trash"></i>
+                    </div>
                 </div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+</div>
             </main>
         </div>
 
@@ -673,31 +1394,45 @@ $conn->close();
         </div>
     </div>
 
+   
     
 
+
+
+    
     <!-- Original Catalog Export Container -->
     <div id="catalog-card-export-container" aria-hidden="true">
-        <div id="catalog-card-export">
-            <div class="catalog-title">GOLD CATALOGUE</div>
-            <div class="image-container-export">
+        <div id="catalog-card-export" class="pro-export-card">
+            <div class="pro-firm-header">
+                <span id="export-card-company-name" class="pro-firm-name">KRISHNA JEWELLERS</span>
+            </div>
+            <div class="pro-image-container pro-image-gold">
                 <img id="export-card-image" src="/placeholder.svg" alt="Product Image for Export">
             </div>
-            <div id="export-card-product-name" class="product-name-export">Elegant Floral Ring</div>
-            <div class="specs-export">
-                <p id="export-card-purity">Gold Purity; 22K</p>
-                <p id="export-card-weight">Weight; 5:30g</p>
-                <p id="export-card-stone">Stone; 1 Diamond (0.07 ct)</p>
-                <p id="export-card-price" class="price-export">Price: <strong class="price-value-export">₹33,960</strong></p>
-            </div>
-            <div class="footer-export">
-                <div class="company-details-export">
-                    <div id="export-card-company-name" class="company-name-export">XYZ GOLD & JEWELS</div>
-                    <div id="export-card-date">31 May 2025</div>
+            <div id="export-card-product-name" class="pro-product-name">ELEGANT FLORAL RING</div>
+            <div class="pro-specs-grid">
+                <div>
+                    <span class="pro-spec-label">Gold Purity</span>
+                    <span id="export-card-purity" class="pro-spec-value">22K</span>
                 </div>
-                <div id="export-card-qr-code" class="qr-code-container-export">
-                    <!-- QR code will be generated here -->
+                <div>
+                    <span class="pro-spec-label">Weight</span>
+                    <span id="export-card-weight" class="pro-spec-value">5.60g</span>
+                </div>
+                <div>
+                    <span class="pro-spec-label">Stone</span>
+                    <span id="export-card-stone" class="pro-spec-value">N/A</span>
                 </div>
             </div>
+            <div class="pro-price-row">
+                <span class="pro-price-label">Price</span>
+                <span id="export-card-price" class="pro-price-value">₹33,960</span>
+            </div>
+            <div class="pro-footer-row">
+                <span id="export-card-date" class="pro-date-export">31 May 2025</span>
+                <div id="export-card-qr-code" class="pro-qr-code"></div>
+            </div>
+            <div class="pro-watermark">Jewellers Wala - Premium Gold Collection</div>
         </div>
     </div>
 
@@ -718,7 +1453,7 @@ $conn->close();
 
         // Function to render the product list
         function renderProductList(productsToRender) {
-            const productGrid = document.querySelector('#productList .grid-cols-2');
+            const productGrid = document.querySelector('#productList .product-grid');
             if (!productGrid) return;
 
             productGrid.innerHTML = ''; // Clear existing products
@@ -727,46 +1462,15 @@ $conn->close();
                 const product = productsToRender[productId];
                 const isWishlisted = wishlistedItems.has(String(productId));
                 const productCardHTML = `
-                    <div class="product-card bg-white rounded-lg shadow-md overflow-hidden border border-gray-100" onclick="showProductDetails('${productId}')" role="button" tabindex="0" aria-label="View details for ${product.name}">
-                        <div class="relative overflow-hidden">
-                            <img src="${product.images && product.images.length > 0 ? product.images[0] : 'upload/Jewellery/no_image.php'}" 
-                                 alt="${product.name}" 
-                                 class="w-full h-32 sm:h-40 object-cover transition-transform duration-300 hover:scale-105">
-                            
-                            <div class="absolute top-2 left-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full font-semibold">
-                                ${product.purity}
-                            </div>
-                            
-                            <button class="absolute top-2 right-2 w-7 h-7 bg-white/80 rounded-full shadow flex items-center justify-center text-gray-400 hover:text-red-500 transition-all ${isWishlisted ? 'text-red-500' : ''}" 
-                                    onclick="event.stopPropagation(); toggleWishlist(this, '${productId}')" aria-label="Toggle Wishlist for ${product.name}" aria-pressed="${isWishlisted}">
-                                <i class="${isWishlisted ? 'fas' : 'far'} fa-heart text-xs"></i>
-                            </button>
-
-                            ${product.making_charge > 0 ? `
-                                <div class="absolute bottom-2 right-2 bg-purple-600 text-white text-[10px] px-2 py-1 rounded-full font-semibold shadow-md">
-                                    MC: ${product.making_charge_type === 'percentage' ? `${Math.round(product.making_charge)}%` : `₹${Math.round(product.making_charge).toLocaleString()}`}
-                                </div>
-                            ` : ''}
+                    <div class="product-card">
+                        <div class="product-image">
+                            <img src="${product.images && product.images.length > 0 ? product.images[0] : 'uploads/jewelry/no_image.png'}" alt="Jewellery Image">
+                            <span class="category-badge">${product.purity}</span>
                         </div>
-                        
-                        <div class="p-3">
-                            <h3 class="font-playfair font-semibold text-sm sm:text-base text-gray-900 mb-1 truncate">${product.name}</h3>
-                            
-                            ${product.short_description ? `
-                                <p class="text-xs text-gray-600 mb-2 line-clamp-2">${product.short_description}</p>
-                            ` : ''}
-                            
-                            <div class="grid grid-cols-2 gap-1 text-xs text-gray-600 mb-2">
-                                <div><span class="font-medium">Wt:</span> ${product.netWeight}g</div>
-                                <div><span class="font-medium">${product.stoneWeight || product.purity}</span></div>
-                            </div>
-                            
-                            <div class="space-y-1">
-                                <div class="flex justify-between text-sm font-bold pt-1">
-                                    <span>Total:</span>
-                                    <span class="gold-gradient">₹${Math.round(product.totalPrice).toLocaleString()}</span>
-                                </div>
-                            </div>
+                        <div class="product-info">
+                            <div class="product-title">${product.name}</div>
+                            <div class="product-weight">${product.netWeight}g</div>
+                            <div class="product-price">₹${product.marketPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                         </div>
                     </div>
                 `;
@@ -803,15 +1507,15 @@ $conn->close();
             priceContainer.innerHTML = `
                 <div class="flex justify-between text-xs">
                     <span class="text-gray-700">Gold Value:</span>
-                    <span class="font-semibold text-gray-800">₹${Math.round(product.marketPrice).toLocaleString()}</span>
+                    <span class="font-semibold text-gray-800">₹${product.marketPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div class="flex justify-between text-xs">
                     <span class="text-gray-700">Making Charges:</span>
-                    <span class="font-semibold text-gray-800">₹${Math.round(product.makingCharges).toLocaleString()}</span>
+                    <span class="font-semibold text-gray-800">₹${product.makingCharges.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div class="flex justify-between text-sm font-bold border-t pt-1 mt-1">
                     <span class="text-gray-900">Total Price:</span>
-                    <span class="gold-gradient">₹${Math.round(product.totalPrice).toLocaleString()}</span>
+                    <span class="gold-gradient">₹${product.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
             `;
             
@@ -1066,13 +1770,13 @@ $conn->close();
             showToast(`Generating catalog for ${product.name}...`, 'info');
 
             const exportImage = document.getElementById('export-card-image');
-            const fallbackImage = 'upload/Jewellery/no_image.php';
+            const fallbackImage = 'uploads/jewelry/no_image.png';
             let imageToUse = product.images && product.images[0] ? product.images[0] : fallbackImage;
             let imageLoaded = false;
 
             // Set up the rest of the export card
             document.getElementById('export-card-product-name').textContent = product.name;
-            document.getElementById('export-card-purity').textContent = `Gold Purity; ${product.purity}`;
+            document.getElementById('export-card-purity').textContent = product.purity;
             let netWeightFormatted = String(product.netWeight); 
             let baseWeight = netWeightFormatted.replace(/g$/i, '');
             let subGram = "00";
@@ -1082,12 +1786,10 @@ $conn->close();
                 subGram = (decimalPart + "00").substring(0, 2);
                 baseWeight = baseWeight.substring(0, dotIndex);
             }
-            document.getElementById('export-card-weight').textContent = `Weight; ${baseWeight}:${subGram}g`;
-            document.getElementById('export-card-stone').textContent = 
-                product.stoneWeight ? `Stone; ${product.stoneWeight}` : 'Stone; N/A';
+            document.getElementById('export-card-weight').textContent = `${baseWeight}.${subGram}g`;
+            document.getElementById('export-card-stone').textContent = product.stoneWeight ? product.stoneWeight : 'N/A';
             const totalPrice = Math.round(product.totalPrice);
-            document.getElementById('export-card-price').innerHTML = 
-                `Price: <strong class="price-value-export">₹${totalPrice.toLocaleString()}</strong>`;
+            document.getElementById('export-card-price').textContent = `₹${totalPrice.toLocaleString()}`;
             document.getElementById('export-card-company-name').textContent = firmDetails.FirmName || 'Your Company Name';
             document.getElementById('export-card-date').textContent = formatDateForCard();
 
@@ -1252,6 +1954,114 @@ $conn->close();
                  backBtn.onclick = () => { window.location.href = 'home.php'; };
                  // backBtn.classList.remove('hidden'); // Button is always visible now
             }
+
+            // --- Category Filter Logic ---
+            const productsArr = Object.values(products);
+            const categorySet = new Set(productsArr.map(p => p.jewelry_type).filter(Boolean));
+            const categories = ['All', ...Array.from(categorySet)];
+            const categoryFilter = document.getElementById('categoryFilter');
+            const productGrid = document.getElementById('productGridMinimal');
+
+            // Render category buttons
+            categoryFilter.innerHTML = '';
+            categories.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = 'category-filter-btn' + (cat === 'All' ? ' active' : '');
+                btn.textContent = cat;
+                btn.onclick = function() {
+                    document.querySelectorAll('.category-filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    filterProductsByCategory(cat);
+                };
+                categoryFilter.appendChild(btn);
+            });
+
+            function filterProductsByCategory(category) {
+                document.querySelectorAll('.product-card-minimal').forEach(card => {
+                    const type = card.getAttribute('data-jewelry-type');
+                    if (category === 'All' || type === category) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+
+            // --- Filter Bar Logic ---
+            const puritySet = new Set(productsArr.map(p => p.purity).filter(Boolean));
+            const filterPurity = document.getElementById('filterPurity');
+            puritySet.forEach(purity => {
+                const opt = document.createElement('option');
+                opt.value = purity;
+                opt.textContent = purity;
+                filterPurity.appendChild(opt);
+            });
+            // Populate Stone dropdown
+            const stoneSet = new Set(productsArr.map(p => p.stone_type ? (p.stone_type.toLowerCase() === 'diamond' ? 'Diamond Jewellery' : p.stone_type) : '').filter(Boolean));
+            const filterStone = document.getElementById('filterStone');
+            stoneSet.forEach(stone => {
+                const opt = document.createElement('option');
+                opt.value = stone;
+                opt.textContent = stone;
+                filterStone.appendChild(opt);
+            });
+            // Price Range
+            const priceMin = Math.min(...productsArr.map(p => p.marketPrice));
+            const priceMax = Math.max(...productsArr.map(p => p.marketPrice));
+            const filterPriceMin = document.getElementById('filterPriceMin');
+            const filterPriceMax = document.getElementById('filterPriceMax');
+            filterPriceMin.min = priceMin;
+            filterPriceMin.max = priceMax;
+            filterPriceMax.min = priceMin;
+            filterPriceMax.max = priceMax;
+            filterPriceMin.value = priceMin;
+            filterPriceMax.value = priceMax;
+            const filterPriceValue = document.getElementById('filterPriceValue');
+            function updatePriceLabel() {
+                filterPriceValue.textContent = `${Number(filterPriceMin.value).toLocaleString()} - ${Number(filterPriceMax.value).toLocaleString()}`;
+            }
+            updatePriceLabel();
+            [filterPurity, filterStone, filterPriceMin, filterPriceMax].forEach(el => {
+                el.addEventListener('change', filterProductsAjax);
+                el.addEventListener('input', filterProductsAjax);
+            });
+            function filterProductsAjax() {
+                const purity = filterPurity.value;
+                const stone = filterStone.value;
+                const minPrice = Number(filterPriceMin.value);
+                const maxPrice = Number(filterPriceMax.value);
+                updatePriceLabel();
+                document.querySelectorAll('.product-card-minimal').forEach(card => {
+                    const cardPurity = card.getAttribute('data-purity');
+                    let cardStone = card.getAttribute('data-stone');
+                    cardStone = cardStone && cardStone.toLowerCase() === 'diamond' ? 'Diamond Jewellery' : cardStone;
+                    const cardPrice = Number(card.getAttribute('data-price'));
+                    let show = true;
+                    if (purity && cardPurity !== purity) show = false;
+                    if (stone && cardStone !== stone) show = false;
+                    if (cardPrice < minPrice || cardPrice > maxPrice) show = false;
+                    card.style.display = show ? '' : 'none';
+                });
+            }
+
+            // --- Filter Modal Logic ---
+            const openFilterModalBtn = document.getElementById('openFilterModalBtn');
+            const filterModal = document.getElementById('filterModal');
+            const filterModalOverlay = document.getElementById('filterModalOverlay');
+            const closeFilterModalBtn = document.getElementById('closeFilterModalBtn');
+            const closeFilterModalBtn2 = document.getElementById('closeFilterModalBtn2');
+            function openFilterModal() {
+                filterModal.classList.remove('hidden');
+                filterModalOverlay.classList.remove('hidden');
+            }
+            function closeFilterModal() {
+                filterModal.classList.add('hidden');
+                filterModalOverlay.classList.add('hidden');
+            }
+            openFilterModalBtn.addEventListener('click', openFilterModal);
+            closeFilterModalBtn.addEventListener('click', closeFilterModal);
+            closeFilterModalBtn2.addEventListener('click', function(e) { e.preventDefault(); closeFilterModal(); });
+            filterModalOverlay.addEventListener('click', closeFilterModal);
         });
 
         // --- Cropper.js Integration for Image Preview ---
@@ -1342,6 +2152,33 @@ $conn->close();
             closeCropModal();
           }
         });
+
+        // Product Action Functions
+        function editProduct(productId) {
+            // Redirect to edit page or open edit modal
+            showToast('Edit functionality coming soon!', 'info');
+            // You can implement this to redirect to an edit page:
+            // window.location.href = `edit_product.php?id=${productId}`;
+        }
+
+        function deleteProduct(productId) {
+            if (confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
+                showToast('Delete functionality coming soon!', 'warning');
+                // You can implement this to make an AJAX call to delete the product:
+                // fetch(`api/delete_product.php?id=${productId}`, {
+                //     method: 'DELETE'
+                // }).then(response => response.json())
+                // .then(data => {
+                //     if (data.success) {
+                //         showToast('Product deleted successfully!', 'success');
+                //         // Remove the product card from DOM
+                //         document.querySelector(`[data-product-id="${productId}"]`).remove();
+                //     } else {
+                //         showToast('Failed to delete product', 'error');
+                //     }
+                // });
+            }
+        }
     </script>
 </body>
 </html>

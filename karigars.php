@@ -1,634 +1,1135 @@
-<?php
-session_start();
-require 'config/config.php';
-date_default_timezone_set('Asia/Kolkata');
-
-// Check if user is logged in
-if (!isset($_SESSION['id']) || !isset($_SESSION['firmID'])) {
-    header("Location: login.php");
-    exit();
-}
-
-$user_id = $_SESSION['id'];
-$firm_id = $_SESSION['firmID'];
-
-// Get user details
-$userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName, f.City
-             FROM Firm_Users u
-             JOIN Firm f ON f.id = u.FirmID
-             WHERE u.id = ?";
-$userStmt = $conn->prepare($userQuery);
-$userStmt->bind_param("i", $user_id);
-$userStmt->execute();
-$userResult = $userStmt->get_result();
-$userInfo = $userResult->fetch_assoc();
-
-// Fetch karigar statistics
-function fetchKarigarStats($conn, $firm_id) {
-    $stats = [];
-    
-    try {
-        // Total Karigars
-        $totalQuery = "SELECT COUNT(*) as total FROM karigars WHERE firm_id = ?";
-        $totalStmt = $conn->prepare($totalQuery);
-        $totalStmt->bind_param("i", $firm_id);
-        $totalStmt->execute();
-        $stats['total'] = $totalStmt->get_result()->fetch_assoc()['total'];
-
-        // Active Karigars
-        $activeQuery = "SELECT COUNT(*) as active FROM karigars WHERE firm_id = ? AND status = 'Active'";
-        $activeStmt = $conn->prepare($activeQuery);
-        $activeStmt->bind_param("i", $firm_id);
-        $activeStmt->execute();
-        $stats['active'] = $activeStmt->get_result()->fetch_assoc()['active'];
-
-        // Active Orders
-        $ordersQuery = "SELECT COUNT(*) as orders FROM jewellery_manufacturing_orders WHERE firm_id = ? AND status IN ('Pending', 'In Progress')";
-        $ordersStmt = $conn->prepare($ordersQuery);
-        $ordersStmt->bind_param("i", $firm_id);
-        $ordersStmt->execute();
-        $stats['orders'] = $ordersStmt->get_result()->fetch_assoc()['orders'];
-
-        // Completed This Month
-        $completedQuery = "SELECT COUNT(*) as completed FROM jewellery_manufacturing_orders WHERE firm_id = ? AND status = 'Delivered' AND MONTH(completed_at) = MONTH(CURDATE())";
-        $completedStmt = $conn->prepare($completedQuery);
-        $completedStmt->bind_param("i", $firm_id);
-        $completedStmt->execute();
-        $stats['completed'] = $completedStmt->get_result()->fetch_assoc()['completed'];
-
-        // Total Revenue This Month
-        $revenueQuery = "SELECT COALESCE(SUM(total_estimated), 0) as revenue FROM jewellery_manufacturing_orders WHERE firm_id = ? AND status = 'Delivered' AND MONTH(completed_at) = MONTH(CURDATE())";
-        $revenueStmt = $conn->prepare($revenueQuery);
-        $revenueStmt->bind_param("i", $firm_id);
-        $revenueStmt->execute();
-        $stats['revenue'] = $revenueStmt->get_result()->fetch_assoc()['revenue'];
-
-        // Pending Payments
-        $pendingQuery = "SELECT COUNT(*) as pending FROM jewellery_manufacturing_orders WHERE firm_id = ? AND status = 'Delivered' AND advance_amount < total_estimated";
-        $pendingStmt = $conn->prepare($pendingQuery);
-        $pendingStmt->bind_param("i", $firm_id);
-        $pendingStmt->execute();
-        $stats['pending'] = $pendingStmt->get_result()->fetch_assoc()['pending'];
-
-    } catch (Exception $e) {
-        error_log("Karigar stats error: " . $e->getMessage());
-        $stats = ['total' => 0, 'active' => 0, 'orders' => 0, 'completed' => 0, 'revenue' => 0, 'pending' => 0];
-    }
-    
-    return $stats;
-}
-
-// Fetch karigars list
-function fetchKarigars($conn, $firm_id) {
-    $karigars = [];
-    
-    try {
-        $query = "SELECT k.*, 
-                  COUNT(DISTINCT jmo.id) as active_orders,
-                  COUNT(DISTINCT CASE WHEN jmo.status = 'Delivered' AND MONTH(jmo.completed_at) = MONTH(CURDATE()) THEN jmo.id END) as completed_orders,
-                  COALESCE(SUM(CASE WHEN jmo.status = 'Delivered' AND MONTH(jmo.completed_at) = MONTH(CURDATE()) THEN jmo.total_estimated END), 0) as monthly_revenue
-                  FROM karigars k
-                  LEFT JOIN jewellery_manufacturing_orders jmo ON k.id = jmo.karigar_id
-                  WHERE k.firm_id = ?
-                  GROUP BY k.id
-                  ORDER BY k.status DESC, k.name ASC";
-        
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("i", $firm_id);
-        $stmt->execute();
-        $karigars = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        
-    } catch (Exception $e) {
-        error_log("Fetch karigars error: " . $e->getMessage());
-    }
-    
-    return $karigars;
-}
-
-// Fetch compact order items for Orders tab (with customer name)
-function fetchOrderItems($conn, $firm_id) {
-    $orders = [];
-    $sql = "SELECT joi.id, joi.karigar_id, k.name as karigar_name, joi.item_name, joi.product_type, joi.metal_type, joi.purity, joi.gross_weight, joi.net_weight, joi.item_status as status, joi.created_at, c.FirstName as customer_first, c.LastName as customer_last
-            FROM jewellery_order_items joi
-            LEFT JOIN karigars k ON joi.karigar_id = k.id
-            LEFT JOIN jewellery_customer_order o ON joi.order_id = o.id
-            LEFT JOIN customer c ON o.customer_id = c.id
-            WHERE joi.firm_id = ?
-            ORDER BY joi.created_at DESC LIMIT 30";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $firm_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-        $row['customer_name'] = trim(($row['customer_first'] ?? '') . ' ' . ($row['customer_last'] ?? ''));
-        $orders[] = $row;
-    }
-    return $orders;
-}
-
-$stats = fetchKarigarStats($conn, $firm_id);
-$karigars = fetchKarigars($conn, $firm_id);
-$orderItems = fetchOrderItems($conn, $firm_id);
-$conn->close();
-?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Karigar Management - <?php echo htmlspecialchars($userInfo['FirmName']); ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/home.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karigar Management System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .tab-button.active { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+    .floating-animation { animation: float 3s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
+    .pulse-ring { animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
+    @keyframes pulse-ring { 0% { transform: scale(0.33); } 80%, 100% { opacity: 0; } }
+    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .card-hover { transition: all 0.3s ease; }
+    .card-hover:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+  </style>
 </head>
-<body class="font-poppins bg-gray-100">
-    <!-- Header -->
-    <header class="header-glass sticky top-0 z-50 shadow-md">
-        <div class="px-3 py-2">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <div class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating">
-                        <?php if (!empty($userInfo['Logo'])): ?>
-                            <img src="<?php echo htmlspecialchars($userInfo['Logo']); ?>" alt="Firm Logo" class="w-full h-full object-cover rounded-xl">
-                        <?php else: ?>
-                            <i class="fas fa-gem text-white text-sm"></i>
-                        <?php endif; ?>
-                    </div>
-                    <div>
-                        <h1 class="text-sm font-bold text-gray-800">Karigar Management</h1>
-                        <p class="text-xs text-gray-600 font-medium"><?php echo strtoupper(htmlspecialchars($userInfo['FirmName'])); ?></p>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <div class="text-right">
-                        <p id="headerUserName" class="text-xs font-bold text-gray-800"><?php echo $userInfo['Name']; ?></p>
-                        <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
-                    </div>
-                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
-                        <?php 
-                        $defaultImage = 'public/uploads/user.png';
-                        if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
-                            <img src="<?php echo htmlspecialchars($userInfo['image_path']); ?>" alt="User Profile" class="w-full h-full object-cover">
-                        <?php elseif (file_exists($defaultImage)): ?>
-                            <img src="<?php echo htmlspecialchars($defaultImage); ?>" alt="Default User" class="w-full h-full object-cover">
-                        <?php else: ?>
-                            <i class="fas fa-user-crown text-white text-sm"></i>
-                        <?php endif; ?>
-                    </a>
-                </div>
-            </div>
-        </div>
-    </header>
+<body class="bg-gradient-to-br from-orange-50 to-yellow-50 min-h-screen">
 
-    <main class="px-2 pt-2 pb-20">
-        <!-- Compact Horizontal Scrollable Stats -->
-        <div class="overflow-x-auto hide-scrollbar mb-3">
-            <div class="flex space-x-2 min-w-max">
-                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
-                    <div class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-1">
-                        <i class="fas fa-users text-blue-600 text-base"></i>
-                    </div>
-                    <div class="font-bold text-base text-gray-800"><?php echo $stats['total']; ?></div>
-                    <div class="text-xs text-gray-500 font-medium">Total</div>
-                </div>
-                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
-                    <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-1">
-                        <i class="fas fa-user-check text-green-600 text-base"></i>
-            </div>
-                    <div class="font-bold text-base text-gray-800"><?php echo $stats['active']; ?></div>
-                    <div class="text-xs text-gray-500 font-medium">Active</div>
-                </div>
-                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
-                    <div class="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-1">
-                        <i class="fas fa-clipboard-list text-purple-600 text-base"></i>
-            </div>
-                    <div class="font-bold text-base text-gray-800"><?php echo $stats['orders']; ?></div>
-                    <div class="text-xs text-gray-500 font-medium">Orders</div>
-                </div>
-                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
-                    <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-1">
-                        <i class="fas fa-check-circle text-green-600 text-base"></i>
-            </div>
-                    <div class="font-bold text-base text-gray-800"><?php echo $stats['completed']; ?></div>
-                    <div class="text-xs text-gray-500 font-medium">Completed</div>
-                </div>
-                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
-                    <div class="w-7 h-7 bg-yellow-100 rounded-lg flex items-center justify-center mx-auto mb-1">
-                        <i class="fas fa-rupee-sign text-yellow-600 text-base"></i>
-            </div>
-                    <div class="font-bold text-base text-gray-800">₹<?php echo number_format($stats['revenue']); ?></div>
-                    <div class="text-xs text-gray-500 font-medium">Revenue</div>
-                </div>
-                <div class="stat-card min-w-[110px] bg-white rounded-xl px-3 py-2 text-center shadow-sm">
-                    <div class="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center mx-auto mb-1">
-                        <i class="fas fa-exclamation-triangle text-red-600 text-base"></i>
-            </div>
-                    <div class="font-bold text-base text-gray-800"><?php echo $stats['pending']; ?></div>
-                    <div class="text-xs text-gray-500 font-medium">Pending</div>
-                </div>
-            </div>
+  <!-- Header -->
+  <header class="gradient-bg text-white p-6 shadow-xl">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+      <div class="flex items-center space-x-4">
+        <div class="w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center floating-animation">
+          <span class="text-2xl">💎</span>
         </div>
+        <div>
+          <h1 class="text-3xl font-bold">Karigar Management System</h1>
+          <p class="text-blue-100">Complete Jewelry Workshop Management</p>
+        </div>
+      </div>
+      <div class="text-right">
+        <p class="text-sm text-blue-100">Today's Date</p>
+        <p class="text-lg font-semibold" id="currentDate"></p>
+      </div>
+    </div>
+  </header>
 
-        <!-- Tab Navigation -->
-        <div class="bg-white rounded-xl p-1 mb-4 flex space-x-1 overflow-x-auto hide-scrollbar">
-            <button class="tab-btn active flex-1 py-2 px-3 rounded-lg text-xs font-medium" data-tab="karigars" onclick="switchKarigarTab('karigars', this)">
-                <i class="fas fa-users mr-1"></i>All Karigars
-            </button>
-            <button class="tab-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium" data-tab="orders" onclick="switchKarigarTab('orders', this)">
-                <i class="fas fa-clipboard-list mr-1"></i>Orders
-            </button>
-            <button class="tab-btn flex-1 py-2 px-3 rounded-lg text-xs font-medium" data-tab="payments" onclick="switchKarigarTab('payments', this)">
-                <i class="fas fa-rupee-sign mr-1"></i>Payments
-            </button>
-        </div>
-        <!-- Tab Contents -->
-        <div id="tab-content-karigars" class="tab-content block">
-        <!-- Karigars List -->
-        <div class="bg-white rounded-xl">
-            <div class="flex items-center justify-between p-4 border-b border-gray-100">
-                <h3 class="text-sm font-semibold text-gray-800 flex items-center">
-                    <i class="fas fa-hammer mr-2 text-orange-500"></i>Karigars
-                </h3>
-                <button onclick="openAddKarigarModal()" class="bg-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
-                    + Add Karigar
-                </button>
-            </div>
-            <div class="divide-y divide-gray-100">
-                <?php foreach ($karigars as $karigar): ?>
-                <div class="p-4 karigar-item" data-status="<?php echo strtolower($karigar['status']); ?>">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                                <span class="text-white font-bold text-sm">
-                                    <?php echo strtoupper(substr($karigar['name'], 0, 2)); ?>
-                                </span>
-                            </div>
-                            <div>
-                                <h4 class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($karigar['name']); ?></h4>
-                                <p class="text-xs text-gray-600"><?php echo htmlspecialchars($karigar['phone_number'] ?? 'No phone'); ?></p>
-                                <div class="flex items-center space-x-2 mt-1">
-                                    <span class="<?php echo $karigar['status'] === 'Active' ? 'status-active' : 'status-inactive'; ?> px-2 py-0.5 rounded-full text-xs font-medium">
-                                        <?php echo $karigar['status']; ?>
-                                    </span>
-                                    <span class="text-xs text-gray-500">
-                                        ₹<?php echo number_format($karigar['default_making_charge']); ?>/<?php echo $karigar['charge_type']; ?>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-sm font-semibold text-gray-800"><?php echo $karigar['active_orders']; ?> orders</p>
-                            <p class="text-xs text-gray-600">₹<?php echo number_format($karigar['monthly_revenue']); ?> revenue</p>
-                            <div class="flex space-x-1 mt-2">
-                                <button onclick="editKarigar(<?php echo $karigar['id']; ?>)" class="btn-secondary px-2 py-1 rounded text-xs">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button onclick="assignWork(<?php echo $karigar['id']; ?>)" class="btn-success px-2 py-1 rounded text-xs">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                                <button onclick="viewDetails(<?php echo $karigar['id']; ?>)" class="btn-primary px-2 py-1 rounded text-xs text-white">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-                <?php if (empty($karigars)): ?>
-                <div class="p-8 text-center">
-                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-users text-gray-400 text-2xl"></i>
-                    </div>
-                    <h3 class="text-sm font-medium text-gray-800 mb-2">No Karigars Found</h3>
-                    <p class="text-xs text-gray-600 mb-4">Start by adding your first karigar to manage work assignments.</p>
-                    <button onclick="openAddKarigarModal()" class="btn-primary text-white px-4 py-2 rounded-lg text-xs font-semibold">
-                        <i class="fas fa-plus mr-2"></i>Add First Karigar
-                    </button>
-                </div>
-                <?php endif; ?>
-                </div>
-            </div>
-        </div>
-        <div id="tab-content-orders" class="tab-content hidden">
-            <div class="bg-white rounded-xl">
-                <div class="flex items-center justify-between p-4 border-b border-gray-100">
-                    <h3 class="text-sm font-semibold text-gray-800 flex items-center">
-                        <i class="fas fa-clipboard-list mr-2 text-purple-500"></i>Orders
-                    </h3>
-                </div>
-                <div class="divide-y divide-gray-100">
-                    <?php foreach ($orderItems as $order): ?>
-                    <div class="p-2 flex items-center justify-between hover:bg-purple-50 transition text-xs">
-                        <div>
-                            <div class="font-semibold text-gray-800"><?php echo htmlspecialchars($order['item_name']); ?> <span class="text-gray-400">(<?php echo htmlspecialchars($order['product_type']); ?>)</span></div>
-                            <div class="text-gray-500">Cust: <span class="font-medium text-gray-700"><?php echo htmlspecialchars($order['customer_name']); ?></span></div>
-                            <div class="text-gray-500">Karigar: <span class="font-medium text-gray-700"><?php echo htmlspecialchars($order['karigar_name'] ?? 'N/A'); ?></span></div>
-                        </div>
-                        <div class="text-right flex flex-col items-end space-y-1">
-                            <span class="font-semibold <?php echo $order['status'] === 'Completed' ? 'text-green-600' : 'text-blue-600'; ?>"><?php echo htmlspecialchars($order['status']); ?></span>
-                            <span class="text-gray-400"><?php echo date('d M', strtotime($order['created_at'])); ?></span>
-                            <span class="text-gray-600"><?php echo number_format($order['net_weight'], 2); ?>g</span>
-                            <div class="flex space-x-1 mt-1">
-                                <button onclick="editOrderItem(<?php echo $order['id']; ?>)" class="p-1 rounded hover:bg-gray-200"><i class="fas fa-edit text-blue-500"></i></button>
-                                <button onclick="openIssueGoldModal(<?php echo $order['id']; ?>)" class="p-1 rounded hover:bg-yellow-100"><i class="fas fa-coins text-yellow-500"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                    <?php if (empty($orderItems)): ?>
-                    <div class="p-8 text-center text-gray-400">
-                        <i class="fas fa-clipboard-list text-2xl mb-2"></i>
-                        <div class="font-semibold mb-1">No Orders</div>
-                        <div class="text-xs">No jewellery orders found for this firm.</div>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-        <div id="tab-content-payments" class="tab-content hidden">
-            <div class="bg-white rounded-xl p-6 text-center text-gray-500">
-                <i class="fas fa-rupee-sign text-2xl mb-2"></i>
-                <div class="font-semibold mb-1">Payments</div>
-                <div class="text-xs">Payment records for karigars will appear here.</div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Enhanced Bottom Navigation -->
-    <nav class="bottom-nav fixed bottom-0 left-0 right-0 shadow-xl z-40">
-        <div class="px-4 py-2">
-            <div class="flex justify-around">
-                <a href="home.php" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-home text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Home</span>
-                </a>
-                <a href="inventory.php" data-nav-id="inventory" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-boxes text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Inventory</span>
-                </a>
-                <a href="alerts.php" data-nav-id="alerts_nav" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-bell text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Alerts</span>
-                </a>
-                <a href="customers.php" data-nav-id="customers" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-users text-gray-400 text-sm"></i>
-                    </div>
-                    <span class="text-xs text-gray-400 font-medium">Customers</span>
-                </a>
-                <a href="karigars.php" data-nav-id="karigars" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
-                    <div class="w-8 h-8 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg flex items-center justify-center shadow-lg">
-                        <i class="fas fa-hammer text-white text-sm"></i>
-                    </div>
-                    <span class="text-xs text-orange-600 font-bold">Karigars</span>
-                </a>
-            </div>
-        </div>
+  <!-- Navigation Tabs -->
+  <div class="max-w-7xl mx-auto px-4 mt-6">
+    <nav class="flex space-x-2 mb-8">
+      <button onclick="showTab('dashboard')" class="tab-button active px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg">
+        📊 Dashboard
+      </button>
+      <button onclick="showTab('orders')" class="tab-button px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg bg-white">
+        📋 Orders
+      </button>
+      <button onclick="showTab('karigars')" class="tab-button px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg bg-white">
+        👥 Karigars
+      </button>
+      <button onclick="showTab('stock')" class="tab-button px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg bg-white">
+        📦 Stock
+      </button>
+      <button onclick="showTab('calculator')" class="tab-button px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg bg-white">
+        🧮 Calculator
+      </button>
+      <button onclick="showTab('returns')" class="tab-button px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg bg-white">
+        📦 Returns
+      </button>
     </nav>
 
-    <!-- Add Karigar Modal -->
-    <div id="addKarigarModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
-        <div class="flex items-center justify-center min-h-screen p-4">
-            <div class="bg-white rounded-xl w-full max-w-md">
-                <div class="p-4 border-b border-gray-200">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-lg font-semibold text-gray-800">Add New Karigar</h3>
-                        <button onclick="closeAddKarigarModal()" class="text-gray-400 hover:text-gray-600">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-                <form id="addKarigarForm" class="p-4 space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                        <input type="text" name="name" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                        <input type="tel" name="phone_number" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input type="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Making Charge</label>
-                            <input type="number" name="default_making_charge" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Charge Type</label>
-                            <select name="charge_type" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                <option value="PerGram">Per Gram</option>
-                                <option value="PerPiece">Per Piece</option>
-                                <option value="Fixed">Fixed</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                        <textarea name="address_line1" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
-                    </div>
-                    <div class="flex space-x-3 pt-4">
-                        <button type="button" onclick="closeAddKarigarModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            Cancel
-                        </button>
-                        <button type="submit" class="flex-1 btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium">
-                            Add Karigar
-                        </button>
-                    </div>
-                </form>
+    <!-- Dashboard Tab -->
+    <div id="dashboard" class="tab-content active">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Stats Cards -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-600">Active Orders</p>
+              <p class="text-3xl font-bold text-blue-600" id="activeOrdersCount">0</p>
             </div>
+            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <span class="text-2xl">📋</span>
+            </div>
+          </div>
         </div>
+
+        <div class="bg-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-600">Total Karigars</p>
+              <p class="text-3xl font-bold text-green-600" id="totalKarigars">0</p>
+            </div>
+            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+              <span class="text-2xl">👥</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-600">Fine Gold Stock</p>
+              <p class="text-3xl font-bold text-yellow-600" id="fineGoldStock">1000g</p>
+            </div>
+            <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+              <span class="text-2xl">🥇</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-600">Pending Tasks</p>
+              <p class="text-3xl font-bold text-red-600" id="pendingTasks">0</p>
+            </div>
+            <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <span class="text-2xl">⏰</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-600">Completed Items</p>
+              <p class="text-3xl font-bold text-purple-600" id="completedItemsCount">0</p>
+            </div>
+            <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+              <span class="text-2xl">✅</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activities -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Recent Activities</h2>
+        <div id="recentActivities" class="space-y-3">
+          <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+            <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+              <span class="text-sm">📋</span>
+            </div>
+            <p class="text-gray-700">System initialized - Welcome to Karigar Management!</p>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Issue Gold Modal -->
-    <div id="issueGoldModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-        <div class="bg-white rounded-xl p-4 w-full max-w-xs mx-2">
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="text-base font-semibold text-gray-800">Issue Gold</h3>
-                <button onclick="closeIssueGoldModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-            </div>
-            <form id="issueGoldForm" class="space-y-2">
-                <input type="hidden" name="order_item_id" id="issueGoldOrderItemId">
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Metal Type</label>
-                    <select name="metal_type" class="w-full px-2 py-1 border border-gray-300 rounded text-xs">
-                        <option value="Gold">Gold</option>
-                        <option value="Silver">Silver</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Purity</label>
-                    <input type="text" name="purity" class="w-full px-2 py-1 border border-gray-300 rounded text-xs" placeholder="e.g. 22K, 24K">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Weight (g)</label>
-                    <input type="number" name="weight" step="0.01" min="0" class="w-full px-2 py-1 border border-gray-300 rounded text-xs" required>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Notes</label>
-                    <input type="text" name="notes" class="w-full px-2 py-1 border border-gray-300 rounded text-xs" placeholder="Optional">
-                </div>
-                <div class="flex justify-end space-x-2 pt-2">
-                    <button type="button" onclick="closeIssueGoldModal()" class="px-3 py-1 text-xs border border-gray-300 rounded text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button type="submit" class="bg-yellow-500 text-white px-3 py-1 text-xs rounded hover:bg-yellow-600">Issue</button>
-                </div>
-            </form>
+    <!-- Orders Tab -->
+    <div id="orders" class="tab-content">
+      <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Create New Order</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Customer Name</label>
+            <input type="text" id="customerName" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Enter customer name">
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Item Type</label>
+            <select id="itemType" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              <option value="">Select Item</option>
+              <option value="Ring">Ring</option>
+              <option value="Necklace">Necklace</option>
+              <option value="Bracelet">Bracelet</option>
+              <option value="Earrings">Earrings</option>
+              <option value="Pendant">Pendant</option>
+              <option value="Chain">Chain</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Weight (grams)</label>
+            <input type="number" id="orderWeight" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Enter weight">
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Purity</label>
+            <select id="orderPurity" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              <option value="">Select Purity</option>
+              <option value="22">22KT</option>
+              <option value="18">18KT</option>
+              <option value="14">14KT</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Delivery Date</label>
+            <input type="date" id="deliveryDate" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Priority</label>
+            <select id="orderPriority" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              <option value="Normal">Normal</option>
+              <option value="High">High</option>
+              <option value="Urgent">Urgent</option>
+            </select>
+          </div>
         </div>
+        <button onclick="createOrder()" class="mt-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all duration-300 shadow-lg">
+          Create Order
+        </button>
+      </div>
+
+      <!-- Orders List -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Active Orders</h2>
+        <div id="ordersList" class="space-y-4">
+          <p class="text-gray-500 text-center py-8">No orders yet. Create your first order above!</p>
+        </div>
+      </div>
     </div>
 
-    <script>
-        // Filter functionality
-        function filterKarigars(type) {
-            // Update active tab
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('bg-blue-500', 'text-white');
-                btn.classList.add('text-gray-600');
-            });
-            event.target.classList.add('bg-blue-500', 'text-white');
-            event.target.classList.remove('text-gray-600');
+    <!-- Karigars Tab -->
+    <div id="karigars" class="tab-content">
+      <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Add New Karigar</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Karigar Name</label>
+            <input type="text" id="karigarName" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500" placeholder="Enter karigar name">
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Specialization</label>
+            <select id="karigarSpecialization" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+              <option value="All">All Types</option>
+              <option value="Rings">Rings</option>
+              <option value="Necklaces">Necklaces</option>
+              <option value="Bracelets">Bracelets</option>
+              <option value="Earrings">Earrings</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Experience (years)</label>
+            <input type="number" id="karigarExperience" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500" placeholder="Years of experience">
+          </div>
+        </div>
+        <button onclick="addKarigar()" class="mt-4 bg-gradient-to-r from-green-500 to-teal-600 text-white px-6 py-3 rounded-xl hover:from-green-600 hover:to-teal-700 transition-all duration-300 shadow-lg">
+          Add Karigar
+        </button>
+      </div>
 
-            // Filter items
-            const items = document.querySelectorAll('.karigar-item');
-            items.forEach(item => {
-                const status = item.dataset.status;
-                const hasOrders = item.querySelector('.font-semibold').textContent.includes('orders');
-                
-                switch(type) {
-                    case 'all':
-                        item.style.display = 'block';
-                        break;
-                    case 'active':
-                        item.style.display = status === 'active' ? 'block' : 'none';
-                        break;
-                    case 'orders':
-                        item.style.display = hasOrders ? 'block' : 'none';
-                        break;
-                    case 'payments':
-                        // Show karigars with pending payments
-                        item.style.display = 'block';
-                        break;
-                }
-            });
-        }
+      <!-- Karigars List -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Karigar Directory</h2>
+        <div id="karigarsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <p class="text-gray-500 text-center py-8 col-span-full">No karigars added yet. Add your first karigar above!</p>
+        </div>
+      </div>
+    </div>
 
-        // Modal functions
-        function openAddKarigarModal() {
-            document.getElementById('addKarigarModal').classList.remove('hidden');
-        }
+    <!-- Stock Tab -->
+    <div id="stock" class="tab-content">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <!-- Stock Cards -->
+        <div class="bg-gradient-to-br from-yellow-400 to-yellow-600 text-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-xl font-bold">Fine Gold (24KT)</h3>
+              <p class="text-3xl font-bold" id="stockFineGold">1000.000g</p>
+            </div>
+            <div class="text-4xl opacity-80">🥇</div>
+          </div>
+          <div class="mt-4 flex space-x-2">
+            <button onclick="showStockModal('fineGold')" class="bg-white bg-opacity-20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-opacity-30 transition-all">
+              Add Stock
+            </button>
+          </div>
+        </div>
 
-        function closeAddKarigarModal() {
-            document.getElementById('addKarigarModal').classList.add('hidden');
-            document.getElementById('addKarigarForm').reset();
-        }
+        <div class="bg-gradient-to-br from-red-400 to-red-600 text-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-xl font-bold">Copper</h3>
+              <p class="text-3xl font-bold" id="stockCopper">500.000g</p>
+            </div>
+            <div class="text-4xl opacity-80">🔴</div>
+          </div>
+          <div class="mt-4 flex space-x-2">
+            <button onclick="showStockModal('copper')" class="bg-white bg-opacity-20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-opacity-30 transition-all">
+              Add Stock
+            </button>
+          </div>
+        </div>
 
-        // Form submission
-        document.getElementById('addKarigarForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            formData.append('action', 'add_karigar');
-            formData.append('firm_id', <?php echo $firm_id; ?>);
+        <div class="bg-gradient-to-br from-gray-400 to-gray-600 text-white rounded-2xl shadow-xl p-6 card-hover">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-xl font-bold">Silver</h3>
+              <p class="text-3xl font-bold" id="stockSilver">400.000g</p>
+            </div>
+            <div class="text-4xl opacity-80">⚪</div>
+          </div>
+          <div class="mt-4 flex space-x-2">
+            <button onclick="showStockModal('silver')" class="bg-white bg-opacity-20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-opacity-30 transition-all">
+              Add Stock
+            </button>
+          </div>
+        </div>
+      </div>
 
-            fetch('ajax/karigar_operations.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    closeAddKarigarModal();
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while adding the karigar.');
-            });
+      <!-- Stock Transactions -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Stock Transaction History</h2>
+        <div id="stockTransactions" class="space-y-3">
+          <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+              <span class="text-sm">📦</span>
+            </div>
+            <p class="text-gray-700">Initial stock loaded - Fine Gold: 1000g, Copper: 500g, Silver: 400g</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calculator Tab -->
+    <div id="calculator" class="tab-content">
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800">Gold Alloy Calculator</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-4">
+            <div>
+              <label class="block mb-2 font-medium text-gray-700">Purity (KT)</label>
+              <select id="purity" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500">
+                <option value="">-- Select --</option>
+                <option value="22">22KT</option>
+                <option value="18">18KT</option>
+                <option value="14">14KT</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block mb-2 font-medium text-gray-700">Color Tone</label>
+              <select id="tone" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500">
+                <option value="">-- Select --</option>
+                <option value="standard">Standard Yellow</option>
+                <option value="light">Light Yellow</option>
+                <option value="rose">Rose Gold</option>
+                <option value="green">Green Gold</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block mb-2 font-medium text-gray-700">Final Weight (g)</label>
+              <input type="number" id="finalWeight" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500" placeholder="e.g., 5">
+            </div>
+
+            <div>
+              <label class="block mb-2 font-medium text-gray-700">Wastage (%)</label>
+              <input type="number" id="wastage" value="6" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500" placeholder="e.g., 6">
+            </div>
+
+            <div>
+              <label class="block mb-2 font-medium text-gray-700">Assign to Karigar</label>
+              <select id="assignKarigar" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500">
+                <option value="">-- Choose Karigar --</option>
+              </select>
+            </div>
+
+            <button onclick="calculateAlloy()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white py-3 px-4 rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 shadow-lg">
+              Calculate Alloy
+            </button>
+          </div>
+
+          <div id="calculatorResults" class="space-y-4 hidden">
+            <h3 class="text-lg font-semibold text-gray-800">Calculation Results</h3>
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Fine Gold (24KT)</label>
+              <input id="fineGold" type="text" readonly class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Total Alloy Required</label>
+              <input id="alloy" type="text" readonly class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Copper</label>
+              <input id="copper" type="text" readonly class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Silver</label>
+              <input id="silver" type="text" readonly class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50">
+            </div>
+            <button onclick="issueToKarigar()" class="w-full bg-gradient-to-r from-green-500 to-teal-500 text-white py-3 px-4 rounded-xl hover:from-green-600 hover:to-teal-600 transition-all duration-300 shadow-lg">
+              Issue Materials to Karigar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Returns Tab -->
+    <div id="returns" class="tab-content">
+      <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Return Completed Item</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Karigar Name</label>
+            <select id="returnKarigar" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              <option value="">Select Karigar</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Order ID</label>
+            <select id="returnOrderId" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              <option value="">Select Order</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Actual Weight (g)</label>
+            <input type="number" id="actualWeight" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="Enter actual weight">
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Wastage (g)</label>
+            <input type="number" id="returnWastage" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="Enter wastage">
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Quality Check</label>
+            <select id="qualityCheck" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              <option value="Pass">Pass</option>
+              <option value="Minor Issues">Minor Issues</option>
+              <option value="Reject">Reject</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-2 font-medium text-gray-700">Notes</label>
+            <input type="text" id="returnNotes" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="Any additional notes">
+          </div>
+        </div>
+        <button onclick="returnCompletedItem()" class="mt-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 shadow-lg">
+          Return Item
+        </button>
+      </div>
+
+      <!-- Completed Items List -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Completed Items</h2>
+        <div id="completedItemsList" class="space-y-4">
+          <p class="text-gray-500 text-center py-8">No completed items yet.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stock Modal -->
+  <div id="stockModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+      <h3 class="text-xl font-bold mb-4">Add Stock</h3>
+      <div class="space-y-4">
+        <div>
+          <label class="block mb-2 font-medium text-gray-700">Material</label>
+          <input type="text" id="modalMaterial" readonly class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50">
+        </div>
+        <div>
+          <label class="block mb-2 font-medium text-gray-700">Quantity (grams)</label>
+          <input type="number" id="modalQuantity" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Enter quantity">
+        </div>
+      </div>
+      <div class="flex space-x-3 mt-6">
+        <button onclick="addStock()" class="flex-1 bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 transition-colors">
+          Add Stock
+        </button>
+        <button onclick="closeStockModal()" class="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize data with localStorage support
+    let stock = JSON.parse(localStorage.getItem('karigarStock')) || {
+      fineGold: 1000,
+      copper: 500,
+      silver: 400
+    };
+
+    let orders = JSON.parse(localStorage.getItem('karigarOrders')) || [];
+    let karigars = JSON.parse(localStorage.getItem('karigarKarigars')) || [];
+    let activities = JSON.parse(localStorage.getItem('karigarActivities')) || [];
+    let stockTransactions = JSON.parse(localStorage.getItem('karigarStockTransactions')) || [];
+    let completedItems = JSON.parse(localStorage.getItem('karigarCompletedItems')) || [];
+
+    // Save data to localStorage
+    function saveData() {
+      localStorage.setItem('karigarStock', JSON.stringify(stock));
+      localStorage.setItem('karigarOrders', JSON.stringify(orders));
+      localStorage.setItem('karigarKarigars', JSON.stringify(karigars));
+      localStorage.setItem('karigarActivities', JSON.stringify(activities));
+      localStorage.setItem('karigarStockTransactions', JSON.stringify(stockTransactions));
+      localStorage.setItem('karigarCompletedItems', JSON.stringify(completedItems));
+    }
+
+    // Initialize the application
+    function init() {
+      document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-IN');
+      updateDashboard();
+      updateKarigarDropdown();
+      updateReturnDropdowns();
+      updateCompletedItemsDisplay();
+      updateStockDisplay();
+      
+      // Add initial activity if none exists
+      if (activities.length === 0) {
+        addActivity({
+          icon: '📋',
+          text: 'System initialized - Welcome to Karigar Management!',
+          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
         });
+      }
+      
+      // Add initial stock transaction if none exists
+      if (stockTransactions.length === 0) {
+        addStockTransaction('Initial stock loaded - Fine Gold: 1000g, Copper: 500g, Silver: 400g', 'IN');
+      }
+    }
 
-        // Action functions
-        function editKarigar(id) {
-            window.location.href = `edit_karigar.php?id=${id}`;
-        }
+    // Tab functionality
+    function showTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      
+      // Remove active class from all buttons
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+        btn.classList.add('bg-white');
+      });
+      
+      // Show selected tab
+      document.getElementById(tabName).classList.add('active');
+      
+      // Add active class to clicked button
+      event.target.classList.add('active');
+      event.target.classList.remove('bg-white');
+    }
 
-        function assignWork(id) {
-            window.location.href = `assign_work.php?karigar_id=${id}`;
-        }
+    // Dashboard functions
+    function updateDashboard() {
+      document.getElementById('activeOrdersCount').textContent = orders.filter(o => o.status !== 'Completed').length;
+      document.getElementById('totalKarigars').textContent = karigars.length;
+      document.getElementById('fineGoldStock').textContent = stock.fineGold.toFixed(3) + 'g';
+      document.getElementById('pendingTasks').textContent = orders.filter(o => o.status === 'Pending').length;
+      document.getElementById('completedItemsCount').textContent = completedItems.length;
+    }
 
-        function viewDetails(id) {
-            window.location.href = `karigar_details.php?id=${id}`;
-        }
+    function addActivity(activity) {
+      activities.unshift(activity);
+      updateActivitiesDisplay();
+      saveData();
+    }
 
-        function exportData() {
-            window.open('export_karigars.php', '_blank');
-        }
+    function updateActivitiesDisplay() {
+      const container = document.getElementById('recentActivities');
+      container.innerHTML = activities.slice(0, 10).map(activity => `
+        <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+          <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <span class="text-sm">${activity.icon}</span>
+          </div>
+          <p class="text-gray-700">${activity.text}</p>
+          <span class="text-xs text-gray-500 ml-auto">${activity.time}</span>
+        </div>
+      `).join('');
+    }
 
-        function refreshData() {
-            location.reload();
-        }
+    // Order functions
+    function createOrder() {
+      const customerName = document.getElementById('customerName').value;
+      const itemType = document.getElementById('itemType').value;
+      const weight = document.getElementById('orderWeight').value;
+      const purity = document.getElementById('orderPurity').value;
+      const deliveryDate = document.getElementById('deliveryDate').value;
+      const priority = document.getElementById('orderPriority').value;
 
-        // Close modal when clicking outside
-        document.getElementById('addKarigarModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeAddKarigarModal();
-            }
+      if (!customerName || !itemType || !weight || !purity || !deliveryDate) {
+        alert('Please fill all required fields');
+        return;
+      }
+
+      const order = {
+        id: Date.now(),
+        customerName,
+        itemType,
+        weight: parseFloat(weight),
+        purity,
+        deliveryDate,
+        priority,
+        status: 'Pending',
+        createdAt: new Date().toLocaleString('en-IN')
+      };
+
+      orders.push(order);
+      updateOrdersDisplay();
+      updateDashboard();
+      saveData();
+      
+      // Clear form
+      document.getElementById('customerName').value = '';
+      document.getElementById('itemType').value = '';
+      document.getElementById('orderWeight').value = '';
+      document.getElementById('orderPurity').value = '';
+      document.getElementById('deliveryDate').value = '';
+      document.getElementById('orderPriority').value = 'Normal';
+
+      addActivity({
+        icon: '📋',
+        text: `New order created for ${customerName} - ${itemType} (${weight}g)`,
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+
+    function updateOrdersDisplay() {
+      const container = document.getElementById('ordersList');
+      if (orders.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center py-8">No orders yet. Create your first order above!</p>';
+        return;
+      }
+
+      container.innerHTML = orders.map(order => `
+        <div class="border border-gray-200 p-4 rounded-lg">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <h3 class="font-semibold text-lg">${order.customerName}</h3>
+              <p class="text-gray-600">${order.itemType} - ${order.weight}g (${order.purity}KT)</p>
+            </div>
+            <div class="text-right">
+              <span class="inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                order.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                order.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                'bg-green-100 text-green-800'
+              }">
+                ${order.status}
+              </span>
+              <p class="text-sm text-gray-500 mt-1">Due: ${order.deliveryDate}</p>
+            </div>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-sm font-medium px-2 py-1 rounded ${
+              order.priority === 'Urgent' ? 'bg-red-100 text-red-800' :
+              order.priority === 'High' ? 'bg-orange-100 text-orange-800' :
+              'bg-gray-100 text-gray-800'
+            }">
+              ${order.priority} Priority
+            </span>
+            <div class="space-x-2">
+              <button onclick="assignOrder(${order.id})" class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600">
+                Assign
+              </button>
+              <button onclick="updateOrderStatus(${order.id})" class="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600">
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function assignOrder(orderId) {
+      if (karigars.length === 0) {
+        alert('Please add karigars first');
+        return;
+      }
+      
+      const karigarOptions = karigars.map(k => k.name).join(', ');
+      const karigarName = prompt(`Assign to which karigar?\nAvailable: ${karigarOptions}`);
+      
+      if (karigarName && karigars.find(k => k.name === karigarName)) {
+        const order = orders.find(o => o.id === orderId);
+        order.assignedTo = karigarName;
+        order.status = 'In Progress';
+        updateOrdersDisplay();
+        updateDashboard();
+        
+        addActivity({
+          icon: '👤',
+          text: `Order #${orderId} assigned to ${karigarName}`,
+          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
         });
+      }
+    }
 
-        function switchKarigarTab(tab, btn) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-blue-500', 'text-white'));
-            btn.classList.add('active', 'bg-blue-500', 'text-white');
-            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
-            document.getElementById('tab-content-' + tab).classList.remove('hidden');
-        }
-
-        function editOrderItem(id) {
-            window.location.href = 'edit_order_item.php?id=' + id;
-        }
-
-        function openIssueGoldModal(orderItemId) {
-            document.getElementById('issueGoldOrderItemId').value = orderItemId;
-            document.getElementById('issueGoldModal').classList.remove('hidden');
-        }
-
-        function closeIssueGoldModal() {
-            document.getElementById('issueGoldModal').classList.add('hidden');
-            document.getElementById('issueGoldForm').reset();
-        }
-
-        document.getElementById('issueGoldForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-            formData.append('action', 'issue_gold');
-            fetch('ajax/karigar_operations.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    closeIssueGoldModal();
-                    alert('Gold issued and ledger updated!');
-                    location.reload();
-                } else {
-                    alert(data.message || 'Error issuing gold');
-                }
-            })
-            .catch(() => alert('Error issuing gold'));
+    function updateOrderStatus(orderId) {
+      const order = orders.find(o => o.id === orderId);
+      const newStatus = prompt(`Current status: ${order.status}\nEnter new status (Pending/In Progress/Completed):`);
+      
+      if (newStatus && ['Pending', 'In Progress', 'Completed'].includes(newStatus)) {
+        order.status = newStatus;
+        updateOrdersDisplay();
+        updateDashboard();
+        
+        addActivity({
+          icon: '📋',
+          text: `Order #${orderId} status updated to ${newStatus}`,
+          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
         });
-    </script>
-    <script type="module" src="js/home.js"></script>
+      }
+    }
+
+    // Karigar functions
+    function addKarigar() {
+      const name = document.getElementById('karigarName').value;
+      const specialization = document.getElementById('karigarSpecialization').value;
+      const experience = document.getElementById('karigarExperience').value;
+
+      if (!name || !specialization || !experience) {
+        alert('Please fill all fields');
+        return;
+      }
+
+      const karigar = {
+        id: Date.now(),
+        name,
+        specialization,
+        experience: parseInt(experience),
+        status: 'Available',
+        tasksCompleted: 0,
+        joinedDate: new Date().toLocaleDateString('en-IN')
+      };
+
+      karigars.push(karigar);
+      updateKarigarsDisplay();
+      updateKarigarDropdown();
+      updateReturnDropdowns();
+      updateDashboard();
+      saveData();
+
+      // Clear form
+      document.getElementById('karigarName').value = '';
+      document.getElementById('karigarSpecialization').value = 'All';
+      document.getElementById('karigarExperience').value = '';
+
+      addActivity({
+        icon: '👥',
+        text: `New karigar added: ${name} (${specialization}, ${experience} years experience)`,
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+
+    function updateKarigarsDisplay() {
+      const container = document.getElementById('karigarsList');
+      if (karigars.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center py-8 col-span-full">No karigars added yet. Add your first karigar above!</p>';
+        return;
+      }
+
+      container.innerHTML = karigars.map(karigar => `
+        <div class="bg-gradient-to-br from-green-50 to-teal-50 border border-green-200 p-6 rounded-xl card-hover">
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-lg text-gray-800">${karigar.name}</h3>
+              <p class="text-gray-600">${karigar.specialization}</p>
+            </div>
+            <span class="px-3 py-1 rounded-full text-sm font-medium ${
+              karigar.status === 'Available' ? 'bg-green-100 text-green-800' :
+              karigar.status === 'Busy' ? 'bg-yellow-100 text-yellow-800' :
+              'bg-red-100 text-red-800'
+            }">
+              ${karigar.status}
+            </span>
+          </div>
+          <div class="space-y-2 text-sm text-gray-600">
+            <p><span class="font-medium">Experience:</span> ${karigar.experience} years</p>
+            <p><span class="font-medium">Tasks Completed:</span> ${karigar.tasksCompleted}</p>
+            <p><span class="font-medium">Joined:</span> ${karigar.joinedDate}</p>
+          </div>
+          <div class="mt-4 flex space-x-2">
+            <button onclick="updateKarigarStatus(${karigar.id})" class="flex-1 bg-blue-500 text-white py-2 px-3 rounded-lg text-sm hover:bg-blue-600 transition-colors">
+              Update Status
+            </button>
+            <button onclick="viewKarigarTasks(${karigar.id})" class="flex-1 bg-gray-500 text-white py-2 px-3 rounded-lg text-sm hover:bg-gray-600 transition-colors">
+              View Tasks
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateKarigarDropdown() {
+      const dropdown = document.getElementById('assignKarigar');
+      dropdown.innerHTML = '<option value="">-- Choose Karigar --</option>' + 
+        karigars.map(k => `<option value="${k.name}">${k.name} (${k.specialization})</option>`).join('');
+    }
+
+    function updateKarigarStatus(karigarId) {
+      const karigar = karigars.find(k => k.id === karigarId);
+      const newStatus = prompt(`Current status: ${karigar.status}\nEnter new status (Available/Busy/On Leave):`);
+      
+      if (newStatus && ['Available', 'Busy', 'On Leave'].includes(newStatus)) {
+        karigar.status = newStatus;
+        updateKarigarsDisplay();
+        
+        addActivity({
+          icon: '👤',
+          text: `${karigar.name} status updated to ${newStatus}`,
+          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        });
+      }
+    }
+
+    function viewKarigarTasks(karigarId) {
+      const karigar = karigars.find(k => k.id === karigarId);
+      const assignedOrders = orders.filter(o => o.assignedTo === karigar.name);
+      
+      if (assignedOrders.length === 0) {
+        alert(`${karigar.name} has no assigned tasks currently.`);
+        return;
+      }
+      
+      const tasksList = assignedOrders.map(o => 
+        `• ${o.customerName} - ${o.itemType} (${o.weight}g) - Status: ${o.status}`
+      ).join('\n');
+      
+      alert(`Tasks assigned to ${karigar.name}:\n\n${tasksList}`);
+    }
+
+    // Stock functions
+    function showStockModal(material) {
+      document.getElementById('stockModal').classList.remove('hidden');
+      document.getElementById('stockModal').classList.add('flex');
+      document.getElementById('modalMaterial').value = material.charAt(0).toUpperCase() + material.slice(1);
+      document.getElementById('modalQuantity').value = '';
+      document.getElementById('modalQuantity').focus();
+    }
+
+    function closeStockModal() {
+      document.getElementById('stockModal').classList.add('hidden');
+      document.getElementById('stockModal').classList.remove('flex');
+    }
+
+    function addStock() {
+      const material = document.getElementById('modalMaterial').value.toLowerCase();
+      const quantity = parseFloat(document.getElementById('modalQuantity').value);
+      
+      if (!quantity || quantity <= 0) {
+        alert('Please enter a valid quantity');
+        return;
+      }
+      
+      if (material === 'finegold') {
+        stock.fineGold += quantity;
+        document.getElementById('stockFineGold').textContent = stock.fineGold.toFixed(3) + 'g';
+        document.getElementById('fineGoldStock').textContent = stock.fineGold.toFixed(3) + 'g';
+      } else if (material === 'copper') {
+        stock.copper += quantity;
+        document.getElementById('stockCopper').textContent = stock.copper.toFixed(3) + 'g';
+      } else if (material === 'silver') {
+        stock.silver += quantity;
+        document.getElementById('stockSilver').textContent = stock.silver.toFixed(3) + 'g';
+      }
+      
+      addStockTransaction(`Added ${quantity}g of ${material}`, 'IN');
+      closeStockModal();
+      saveData();
+      
+      addActivity({
+        icon: '📦',
+        text: `Stock added: ${quantity}g of ${material}`,
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+
+    function addStockTransaction(description, type) {
+      const transaction = {
+        id: Date.now(),
+        description,
+        type,
+        timestamp: new Date().toLocaleString('en-IN')
+      };
+      
+      stockTransactions.unshift(transaction);
+      updateStockTransactionsDisplay();
+      saveData();
+    }
+
+    function updateStockTransactionsDisplay() {
+      const container = document.getElementById('stockTransactions');
+      container.innerHTML = stockTransactions.slice(0, 10).map(transaction => `
+        <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+          <div class="w-8 h-8 ${transaction.type === 'IN' ? 'bg-green-100' : 'bg-red-100'} rounded-full flex items-center justify-center">
+            <span class="text-sm">${transaction.type === 'IN' ? '📦' : '📤'}</span>
+          </div>
+          <p class="text-gray-700 flex-1">${transaction.description}</p>
+          <span class="text-xs text-gray-500">${transaction.timestamp}</span>
+        </div>
+      `).join('');
+    }
+
+    // Calculator functions
+    function calculateAlloy() {
+      const purity = document.getElementById('purity').value;
+      const tone = document.getElementById('tone').value;
+      const finalWeight = parseFloat(document.getElementById('finalWeight').value);
+      const wastagePercent = parseFloat(document.getElementById('wastage').value) || 0;
+
+      if (!purity || !tone || isNaN(finalWeight) || finalWeight <= 0) {
+        alert("Please select purity, tone, and enter valid weight.");
+        return;
+      }
+
+      const purityMap = {
+        '22': 0.916,
+        '18': 0.75,
+        '14': 0.585
+      };
+
+      const toneRatio = {
+        'standard': { copper: 0.75, silver: 0.25 },
+        'light': { copper: 0.60, silver: 0.40 },
+        'rose': { copper: 0.90, silver: 0.10 },
+        'green': { copper: 0.50, silver: 0.50 }
+      };
+
+      const goldPurity = purityMap[purity];
+      const totalWeight = finalWeight * (1 + wastagePercent / 100);
+      const fineGold = (totalWeight * goldPurity).toFixed(3);
+      const alloy = (totalWeight - fineGold).toFixed(3);
+      const copper = (alloy * toneRatio[tone].copper).toFixed(3);
+      const silver = (alloy * toneRatio[tone].silver).toFixed(3);
+
+      document.getElementById('fineGold').value = fineGold + 'g';
+      document.getElementById('alloy').value = alloy + 'g';
+      document.getElementById('copper').value = copper + 'g';
+      document.getElementById('silver').value = silver + 'g';
+
+      document.getElementById('calculatorResults').classList.remove('hidden');
+    }
+
+    function issueToKarigar() {
+      const karigarName = document.getElementById('assignKarigar').value;
+      const wastagePercent = document.getElementById('wastage').value || 0;
+      
+      if (!karigarName) {
+        alert("Please select a karigar.");
+        return;
+      }
+
+      const fineGold = parseFloat(document.getElementById('fineGold').value.replace('g', '')) || 0;
+      const copper = parseFloat(document.getElementById('copper').value.replace('g', '')) || 0;
+      const silver = parseFloat(document.getElementById('silver').value.replace('g', '')) || 0;
+
+      if (stock.fineGold < fineGold || stock.copper < copper || stock.silver < silver) {
+        alert("Insufficient stock. Please check available quantities.");
+        return;
+      }
+
+      // Deduct from stock
+      stock.fineGold -= fineGold;
+      stock.copper -= copper;
+      stock.silver -= silver;
+
+      // Update stock display
+      updateStockDisplay();
+
+      // Update karigar status
+      const karigar = karigars.find(k => k.name === karigarName);
+      if (karigar) {
+        karigar.status = 'Busy';
+        updateKarigarsDisplay();
+      }
+
+      // Add transaction record
+      addStockTransaction(`Issued to ${karigarName}: Fine Gold: ${fineGold}g, Copper: ${copper}g, Silver: ${silver}g (Wastage: ${wastagePercent}%)`, 'OUT');
+
+      addActivity({
+        icon: '📤',
+        text: `Materials issued to ${karigarName}: ${fineGold}g gold, ${copper}g copper, ${silver}g silver`,
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      });
+
+      alert(`Materials successfully issued to ${karigarName}!`);
+      
+      // Clear calculator form
+      document.getElementById('purity').value = '';
+      document.getElementById('tone').value = '';
+      document.getElementById('finalWeight').value = '';
+      document.getElementById('wastage').value = '6';
+      document.getElementById('assignKarigar').value = '';
+      document.getElementById('calculatorResults').classList.add('hidden');
+      
+      saveData();
+    }
+
+    // Return functionality
+    function updateReturnDropdowns() {
+      const karigarDropdown = document.getElementById('returnKarigar');
+      const orderDropdown = document.getElementById('returnOrderId');
+      
+      // Update karigar dropdown
+      karigarDropdown.innerHTML = '<option value="">Select Karigar</option>' + 
+        karigars.map(k => `<option value="${k.name}">${k.name}</option>`).join('');
+      
+      // Update order dropdown based on selected karigar
+      karigarDropdown.onchange = function() {
+        const selectedKarigar = this.value;
+        const assignedOrders = orders.filter(o => o.assignedTo === selectedKarigar && o.status === 'In Progress');
+        
+        orderDropdown.innerHTML = '<option value="">Select Order</option>' + 
+          assignedOrders.map(o => `<option value="${o.id}">${o.customerName} - ${o.itemType} (${o.weight}g)</option>`).join('');
+      };
+    }
+
+    function returnCompletedItem() {
+      const karigarName = document.getElementById('returnKarigar').value;
+      const orderId = parseInt(document.getElementById('returnOrderId').value);
+      const actualWeight = parseFloat(document.getElementById('actualWeight').value);
+      const wastage = parseFloat(document.getElementById('returnWastage').value);
+      const qualityCheck = document.getElementById('qualityCheck').value;
+      const notes = document.getElementById('returnNotes').value;
+
+      if (!karigarName || !orderId || isNaN(actualWeight) || isNaN(wastage)) {
+        alert('Please fill all required fields');
+        return;
+      }
+
+      const order = orders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found');
+        return;
+      }
+
+      // Calculate returned materials
+      const totalReturned = actualWeight + wastage;
+      const returnedFineGold = (totalReturned * (parseInt(order.purity) / 24)).toFixed(3);
+      const returnedAlloy = (totalReturned - returnedFineGold).toFixed(3);
+
+      // Add returned materials to stock
+      stock.fineGold += parseFloat(returnedFineGold);
+      stock.copper += parseFloat(returnedAlloy) * 0.75; // Assuming standard ratio
+      stock.silver += parseFloat(returnedAlloy) * 0.25;
+
+      // Create completed item record
+      const completedItem = {
+        id: Date.now(),
+        orderId: orderId,
+        karigarName: karigarName,
+        customerName: order.customerName,
+        itemType: order.itemType,
+        originalWeight: order.weight,
+        actualWeight: actualWeight,
+        wastage: wastage,
+        qualityCheck: qualityCheck,
+        notes: notes,
+        returnedFineGold: returnedFineGold,
+        returnedAlloy: returnedAlloy,
+        completedDate: new Date().toLocaleString('en-IN')
+      };
+
+      completedItems.push(completedItem);
+
+      // Update order status
+      order.status = 'Completed';
+      order.completedDate = new Date().toLocaleString('en-IN');
+
+      // Update karigar status and tasks completed
+      const karigar = karigars.find(k => k.name === karigarName);
+      if (karigar) {
+        karigar.status = 'Available';
+        karigar.tasksCompleted += 1;
+      }
+
+      // Update displays
+      updateDashboard();
+      updateOrdersDisplay();
+      updateKarigarsDisplay();
+      updateCompletedItemsDisplay();
+      updateStockDisplay();
+      updateReturnDropdowns();
+
+      // Add activities
+      addActivity({
+        icon: '✅',
+        text: `${karigarName} completed item for ${order.customerName} - ${order.itemType}`,
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      });
+
+      addStockTransaction(`Returned from ${karigarName}: Fine Gold: ${returnedFineGold}g, Alloy: ${returnedAlloy}g`, 'IN');
+
+      // Clear form
+      document.getElementById('returnKarigar').value = '';
+      document.getElementById('returnOrderId').innerHTML = '<option value="">Select Order</option>';
+      document.getElementById('actualWeight').value = '';
+      document.getElementById('returnWastage').value = '';
+      document.getElementById('qualityCheck').value = 'Pass';
+      document.getElementById('returnNotes').value = '';
+
+      alert('Item returned successfully!');
+      saveData();
+    }
+
+    function updateCompletedItemsDisplay() {
+      const container = document.getElementById('completedItemsList');
+      if (completedItems.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center py-8">No completed items yet.</p>';
+        return;
+      }
+
+      container.innerHTML = completedItems.map(item => `
+        <div class="border border-gray-200 p-4 rounded-lg">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <h3 class="font-semibold text-lg">${item.customerName}</h3>
+              <p class="text-gray-600">${item.itemType} - Original: ${item.originalWeight}g, Actual: ${item.actualWeight}g</p>
+              <p class="text-sm text-gray-500">Karigar: ${item.karigarName}</p>
+            </div>
+            <div class="text-right">
+              <span class="inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                item.qualityCheck === 'Pass' ? 'bg-green-100 text-green-800' :
+                item.qualityCheck === 'Minor Issues' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-red-100 text-red-800'
+              }">
+                ${item.qualityCheck}
+              </span>
+              <p class="text-sm text-gray-500 mt-1">${item.completedDate}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p><span class="font-medium">Wastage:</span> ${item.wastage}g</p>
+              <p><span class="font-medium">Returned Gold:</span> ${item.returnedFineGold}g</p>
+            </div>
+            <div>
+              <p><span class="font-medium">Returned Alloy:</span> ${item.returnedAlloy}g</p>
+              ${item.notes ? `<p><span class="font-medium">Notes:</span> ${item.notes}</p>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Update stock display function
+    function updateStockDisplay() {
+      document.getElementById('stockFineGold').textContent = stock.fineGold.toFixed(3) + 'g';
+      document.getElementById('stockCopper').textContent = stock.copper.toFixed(3) + 'g';
+      document.getElementById('stockSilver').textContent = stock.silver.toFixed(3) + 'g';
+      document.getElementById('fineGoldStock').textContent = stock.fineGold.toFixed(3) + 'g';
+    }
+
+    // Initialize the application when page loads
+    window.onload = init;
+  </script>
+
 </body>
 </html>
-

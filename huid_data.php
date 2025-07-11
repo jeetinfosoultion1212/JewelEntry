@@ -577,6 +577,65 @@ sort($unique_item_names);
 // Check if user is logged in
 $is_logged_in = isset($_SESSION['firm_user_id']);
 $user_name = $_SESSION['user_name'] ?? 'Guest';
+
+// Check login status at the top
+if (!isset($_SESSION['firm_user_id'])) {
+    // Show landing page and exit
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>JewelEntry - Your Jewelry Business ERP</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    </head>
+    <body class="bg-gradient-to-br from-blue-100 to-purple-100 min-h-screen flex flex-col">
+        <header class="bg-white shadow p-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-gem text-yellow-400 text-2xl"></i>
+                <span class="text-xl font-bold text-primary">JewelEntry</span>
+            </div>
+            <a href="register.php" class="bg-gradient-to-r from-orange-400 to-red-400 text-white px-4 py-2 rounded-lg font-semibold shadow hover:from-orange-500 hover:to-red-500 transition">Start Free Trial</a>
+        </header>
+        <main class="flex-1 flex flex-col items-center justify-center text-center px-4">
+            <h1 class="text-3xl md:text-5xl font-extrabold mb-4 text-gray-800">Your Jewelry Business ERP</h1>
+            <p class="text-lg md:text-2xl text-gray-600 mb-8">Smart Inventory, Digital Certificates, Advanced Analytics, CRM, Financial Suite & more</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-8">
+                <div class="bg-white rounded-xl shadow p-6 flex flex-col items-center">
+                    <i class="fas fa-qrcode text-3xl text-blue-500 mb-2"></i>
+                    <h3 class="font-bold text-lg mb-1">Digital Certificates</h3>
+                    <p class="text-gray-500 text-sm">Secure QR codes for authenticity</p>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6 flex flex-col items-center">
+                    <i class="fas fa-boxes text-3xl text-green-500 mb-2"></i>
+                    <h3 class="font-bold text-lg mb-1">Smart Inventory</h3>
+                    <p class="text-gray-500 text-sm">Real-time stock tracking & alerts</p>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6 flex flex-col items-center">
+                    <i class="fas fa-chart-line text-3xl text-purple-500 mb-2"></i>
+                    <h3 class="font-bold text-lg mb-1">Advanced Analytics</h3>
+                    <p class="text-gray-500 text-sm">Business insights & reports</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap justify-center gap-4 mb-8">
+                <div class="bg-blue-50 rounded-lg px-4 py-2 text-blue-700 font-semibold">192 Products</div>
+                <div class="bg-green-50 rounded-lg px-4 py-2 text-green-700 font-semibold">₹1,407,920 Revenue</div>
+                <div class="bg-purple-50 rounded-lg px-4 py-2 text-purple-700 font-semibold">500+ Firms</div>
+                <div class="bg-yellow-50 rounded-lg px-4 py-2 text-yellow-700 font-semibold">25,000+ Orders</div>
+            </div>
+            <a href="register.php" class="bg-gradient-to-r from-orange-400 to-red-400 text-white px-8 py-3 rounded-xl font-bold text-lg shadow-lg hover:from-orange-500 hover:to-red-500 transition">Start Your Free Trial</a>
+            <p class="mt-6 text-gray-500">Already have an account? <a href="login.php" class="text-primary font-semibold underline">Log in</a></p>
+        </main>
+        <footer class="bg-white text-gray-500 text-center p-4 mt-8 shadow-inner">
+            Develop and maintain by Prosenjit Tech Hub
+        </footer>
+    </body>
+    </html>
+    <?php
+    exit;
+}
 ?>
 
 <!DOCTYPE html>

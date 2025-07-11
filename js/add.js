@@ -239,28 +239,28 @@ document.addEventListener("DOMContentLoaded", () => {
     let weightLabel = "Weight Left:"
 
     if (type === "Manufacturing Order") {
-      // Use net_weight or gross_weight as appropriate
-      let weight = (typeof data.net_weight !== 'undefined') ? data.net_weight : data.gross_weight;
+      // Use remaining_weight if available, else fallback to expected_weight
+      remaining = (typeof data.remaining_weight !== 'undefined') ? data.remaining_weight : data.expected_weight
       // Update hidden fields
       if (sourceNameField) sourceNameField.value = data.karigar_name
       if (sourceLocationField) sourceLocationField.value = "Manufacturing"
-      if (sourceMaterialTypeField) sourceMaterialTypeField.value = data.metal_type || "Gold" // Use actual metal_type if available
-      if (sourcePurityField) sourcePurityField.value = data.purity
-      if (sourceWeightField) sourceWeightField.value = weight
+      if (sourceMaterialTypeField) sourceMaterialTypeField.value = "Gold" // Assuming gold, adjust if needed
+      if (sourcePurityField) sourcePurityField.value = data.purity_out
+      if (sourceWeightField) sourceWeightField.value = remaining
 
       // Update display
       if (sourceNameDisplay) sourceNameDisplay.textContent = data.karigar_name
       if (sourceTypeDisplay) sourceTypeDisplay.textContent = "Karigar"
-      if (sourceMaterialDisplay) sourceMaterialDisplay.textContent = data.metal_type || "Gold"
-      if (sourcePurityDisplay) sourcePurityDisplay.textContent = (data.purity !== undefined ? data.purity + "%" : "-")
-      if (sourceWeightDisplay) sourceWeightDisplay.textContent = (weight !== undefined ? weight + "g" : "-")
-      if (sourceStatusDisplay) sourceStatusDisplay.textContent = data.status || data.item_status || "-"
+      if (sourceMaterialDisplay) sourceMaterialDisplay.textContent = "Gold"
+      if (sourcePurityDisplay) sourcePurityDisplay.textContent = data.purity_out + "%"
+      if (sourceWeightDisplay) sourceWeightDisplay.textContent = remaining + "g"
+      if (sourceStatusDisplay) sourceStatusDisplay.textContent = data.status
 
       // Auto-fill material and purity fields
       const materialType = document.getElementById("materialType")
       const purity = document.getElementById("purity")
-      if (materialType && data.metal_type) materialType.value = data.metal_type
-      if (purity && data.purity !== undefined) purity.value = data.purity
+      if (materialType) materialType.value = "Gold"
+      if (purity) purity.value = data.purity_out
       
       // Set flags to keep these selections
       keepSourceSelection = true
@@ -2295,90 +2295,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Load items on page load
   loadItems()
-
-  let cropper = null;
-  let currentCropImg = null;
-  const cropperModal = document.getElementById('cropperModal');
-  const cropperImage = document.getElementById('cropperImage');
-  const cropperCropBtn = document.getElementById('cropperCropBtn');
-  const cropperRotateBtn = document.getElementById('cropperRotateBtn');
-  const cropperFlipBtn = document.getElementById('cropperFlipBtn');
-  const cropperCancelBtn = document.getElementById('cropperCancelBtn');
-  let cropperFlipped = false;
-
-  // Image Preview Crop Handler
-  if (imagePreview) {
-    imagePreview.addEventListener('click', function(e) {
-      if (e.target.tagName === 'IMG') {
-        // Open cropper modal with clicked image
-        currentCropImg = e.target;
-        cropperImage.src = currentCropImg.src;
-        cropperModal.classList.remove('hidden');
-        // Destroy previous cropper if any
-        if (cropper) { cropper.destroy(); cropper = null; }
-        cropperFlipped = false;
-        // Wait for image to load before initializing cropper
-        cropperImage.onload = function() {
-          cropper = new Cropper(cropperImage, {
-            viewMode: 1,
-            autoCropArea: 1,
-            movable: true,
-            zoomable: true,
-            scalable: true,
-            rotatable: true,
-            responsive: true,
-            background: false,
-            modal: true,
-            guides: true,
-            highlight: true,
-            cropBoxMovable: true,
-            cropBoxResizable: true,
-            dragMode: 'crop',
-            aspectRatio: NaN // Free crop
-          });
-        };
-      }
-    });
-  }
-
-  // Cropper Modal Controls
-  if (cropperCropBtn) {
-    cropperCropBtn.addEventListener('click', function() {
-      if (cropper && currentCropImg) {
-        const canvas = cropper.getCroppedCanvas();
-        if (canvas) {
-          currentCropImg.src = canvas.toDataURL('image/jpeg');
-        }
-        cropperModal.classList.add('hidden');
-        cropper.destroy();
-        cropper = null;
-        currentCropImg = null;
-      }
-    });
-  }
-  if (cropperRotateBtn) {
-    cropperRotateBtn.addEventListener('click', function() {
-      if (cropper) {
-        cropper.rotate(90);
-      }
-    });
-  }
-  if (cropperFlipBtn) {
-    cropperFlipBtn.addEventListener('click', function() {
-      if (cropper) {
-        cropperFlipped = !cropperFlipped;
-        cropper.scaleX(cropperFlipped ? -1 : 1);
-      }
-    });
-  }
-  if (cropperCancelBtn) {
-    cropperCancelBtn.addEventListener('click', function() {
-      cropperModal.classList.add('hidden');
-      if (cropper) {
-        cropper.destroy();
-        cropper = null;
-      }
-      currentCropImg = null;
-    });
-  }
 })
