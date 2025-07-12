@@ -15,15 +15,15 @@ $email = trim($data['email'] ?? '');
 $address = trim($data['address'] ?? '');
 $state = trim($data['state'] ?? '');
 $phone = trim($data['phone'] ?? '');
-$gst = trim($data['gst'] ?? '');
+$gstin = trim($data['gst'] ?? '');
 $payment_terms = trim($data['payment_terms'] ?? '');
 $notes = trim($data['notes'] ?? '');
 if ($name === '') {
     echo json_encode(['success' => false, 'message' => 'Supplier name is required.']);
     exit();
 }
-$stmt = $conn->prepare("INSERT INTO suppliers (firm_id, name, contact_info, email, address, state, phone, gst, payment_terms, notes, date_added, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
-$stmt->bind_param('isssssssss', $firm_id, $name, $contact_info, $email, $address, $state, $phone, $gst, $payment_terms, $notes);
+$stmt = $conn->prepare("INSERT INTO suppliers (firm_id, name, contact_info, email, address, state, phone, gstin, payment_terms, notes, date_added, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
+$stmt->bind_param('isssssssss', $firm_id, $name, $contact_info, $email, $address, $state, $phone, $gstin, $payment_terms, $notes);
 if ($stmt->execute()) {
     $id = $conn->insert_id;
     echo json_encode([
@@ -33,7 +33,7 @@ if ($stmt->execute()) {
             'name' => $name,
             'address' => $address,
             'phone' => $phone,
-            'gst' => $gst
+            'gst' => $gstin
         ]
     ]);
 } else {

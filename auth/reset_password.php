@@ -9,7 +9,7 @@ if(!isset($_SESSION['reset_user_id'])) {
 }
 
 // Include database connection
-require_once "config/config.php";
+require __DIR__ . '/../config/db_connect.php';
 
 // Define variables and initialize with empty values
 $new_password = $confirm_password = "";
@@ -86,7 +86,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #fef7cd;
+            background-color: #FFF9F3;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -133,32 +133,8 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             left: 1rem;
             top: 50%;
             transform: translateY(-50%);
-            color: #9ca3af;
+            color: #ea580c;
             font-size: 1rem;
-        }
-
-        .reset-btn {
-            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%);
-            color: white;
-            padding: 0.875rem 1.5rem;
-            border-radius: 0.75rem;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3);
-            border: none;
-            cursor: pointer;
-            width: 100%;
-        }
-        
-        .reset-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(255, 165, 0, 0.4);
-        }
-
-        .reset-btn:active {
-            transform: translateY(0);
-            box-shadow: 0 3px 10px rgba(255, 165, 0, 0.2);
         }
 
         .password-toggle {
@@ -187,10 +163,10 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         <div class="reset-card">
             <!-- Header -->
             <div class="text-center mb-6 mt-4">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-3">
-                    <i class="fas fa-key text-yellow-600 text-2xl"></i>
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-orange-100 mb-3">
+                    <i class="fas fa-key text-orange-500 text-2xl"></i>
                 </div>
-                <h1 class="text-3xl font-bold text-yellow-600 mb-2">Reset Password</h1>
+                <h1 class="text-3xl font-bold text-orange-600 mb-2">Reset Password</h1>
                 <p class="text-gray-500 text-sm">Enter your new password below</p>
             </div>
             
@@ -237,8 +213,9 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 </div>
                 
                 <!-- Reset Button -->
-                <button type="submit" class="reset-btn mb-5">
-                    Reset Password
+                <button type="submit" class="w-full py-2 mb-5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold rounded-lg shadow-lg text-base focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 transition duration-150 ease-in-out transform hover:scale-105 flex items-center justify-center gap-2">
+                    <span>Reset Password</span>
+                    <i class="fas fa-key text-orange-100 bg-orange-500 rounded-full p-1"></i>
                 </button>
             </form>
             
@@ -246,7 +223,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <div class="text-center">
                 <p class="text-sm text-gray-600">
                     Remember your password? 
-                    <a href="login.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Back to Login</a>
+                    <a href="login.php" class="text-orange-500 hover:text-orange-700 font-semibold hover:underline">Back to Login</a>
                 </p>
             </div>
         </div>

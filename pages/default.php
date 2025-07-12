@@ -1,12 +1,7 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-echo "Reached start of default.php<br>";
 
-echo "Config loaded<br>";
-
-
-echo "Hallmark config loaded<br>";
 
 // Initialize variables with dummy values, which will be overwritten by real data if available
 $totalProducts = "15,000+"; // Dummy data

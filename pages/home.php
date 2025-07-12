@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 
 // Start session and include database config
 session_start();
-require 'config/config.php';
+require '../config/config.php';
 date_default_timezone_set('Asia/Kolkata');
 
 // --- Permission check for rate management ---
@@ -91,7 +91,7 @@ function formatIndianAmount($num) {
 
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
-    header("Location: login.php");
+    header("Location: /JewelEntry/auth/login");
     exit();
 }
 
@@ -141,7 +141,7 @@ if ($subscription) {
 }
 
 // Feature access control
-$hasFeatureAccess = ($isPremiumUser && !$isExpired) || ($isTrialUser && !$isExpired);
+$hasFeatureAccess = true; // Allow all features for both trial and premium users
 
 // Fetch user and firm details
 $userQuery = "SELECT u.Name, u.Role, u.image_path, f.FirmName, f.City, f.Logo FROM Firm_Users u
@@ -410,7 +410,7 @@ if (empty(trim($marqueeText))) {
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/home.css">
+    <link rel="stylesheet" href="../css/home.css">
 </head>
 <body class="font-poppins bg-gray-100">
     <!-- Notifications -->
@@ -448,7 +448,7 @@ if (empty(trim($marqueeText))) {
                         <p id="headerUserRole" class="text-xs text-purple-600 font-medium"><?php echo $userInfo['Role']; ?></p>
                     </div>
                     <?php if ($hasFeatureAccess): ?>
-                    <a href="profile.php" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
+                    <a href="profile" class="w-9 h-9 gradient-purple rounded-xl flex items-center justify-center shadow-lg overflow-hidden cursor-pointer relative transition-transform duration-200">
                         <?php 
                         $defaultImage = 'public/uploads/user.png';
                         if (!empty($userInfo['image_path']) && file_exists($userInfo['image_path'])): ?>
@@ -625,7 +625,7 @@ if (empty(trim($marqueeText))) {
                         </span>
                     </div>
                     <p class="text-sm font-bold text-gray-800 mt-1"><?php echo $hasFeatureAccess ? $totalOrders : '**'; ?></p>
-                    <p class="text-[11px] text-gray-700 font-medium">Orders</p>
+                    <p class="text-[11px] text-gray-700 font-medium">Sales</p>
                 </div>
 
                 <!-- Inventory Stats -->
@@ -703,7 +703,7 @@ if (empty(trim($marqueeText))) {
                     }
                 ?>
                 <!-- Lucky Draw Scheme Card -->
-                <a href="schemes.php" class="min-w-[200px] rounded-xl p-2 shadow-md flex flex-col justify-between scheme-gradient-lottery text-yellow-800 <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
+                <a href="schemes" class="min-w-[200px] rounded-xl p-2 shadow-md flex flex-col justify-between scheme-gradient-lottery text-yellow-800 <?php echo !$hasFeatureAccess ? 'opacity-50' : ''; ?>" <?php echo !$hasFeatureAccess ? 'onclick="showFeatureLockedModal()"' : ''; ?>>
                     <div class="flex items-center space-x-2 mb-1">
                         <div class="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0">
                             <i class="<?php echo $iconClass; ?> text-base text-<?php echo $statusColor; ?>-500"></i>
@@ -783,7 +783,7 @@ if (empty(trim($marqueeText))) {
             <div class="grid grid-cols-3 gap-3">
                 <!-- Inventory Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="add.php" class="menu-card menu-gradient-blue rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="add" class="menu-card menu-gradient-blue rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -831,7 +831,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Sales Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="sale-entry.php" class="menu-card menu-gradient-green rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="sale-entry" class="menu-card menu-gradient-green rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -859,7 +859,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Customers Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="customers.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="customers" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -887,7 +887,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Catalog Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="catalog.php" class="menu-card menu-gradient-amber rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="catalog" class="menu-card menu-gradient-amber rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -952,7 +952,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Bookings Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="order.php" class="menu-card menu-gradient-indigo rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="order" class="menu-card menu-gradient-indigo rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -980,7 +980,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Daily Book Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="reports.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="reports" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1046,7 +1046,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Settings Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="settings.php" class="menu-card menu-gradient-gray rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="settings" class="menu-card menu-gradient-gray rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1073,8 +1073,7 @@ if (empty(trim($marqueeText))) {
                 <?php endif; ?>
 
                 <!-- Karigars Module -->
-                <a href="karigars.php" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
-                   <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php endif; ?>>
+                <a href="karigars" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1086,7 +1085,7 @@ if (empty(trim($marqueeText))) {
                 </a>
 
                 <!-- Tray Manage Module -->
-                <a href="tray_manage.php" class="menu-card menu-gradient-blue rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
+                <a href="tray_manage" class="menu-card menu-gradient-blue rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
                    <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php endif; ?>>
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
@@ -1099,7 +1098,7 @@ if (empty(trim($marqueeText))) {
                 </a>
 
                 <!-- GST Report Module -->
-                <a href="gst_report.php" class="menu-card menu-gradient-green rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
+                <a href="gst_report" class="menu-card menu-gradient-green rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative"
                    <?php if ($isTrialUser): ?>onclick="showTrialUserRestrictionAlert(); return false;"<?php endif; ?>>
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
@@ -1112,7 +1111,7 @@ if (empty(trim($marqueeText))) {
                 </a>
 
                 <!-- Hallmark Module -->
-                <a href="hallmark_requests.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="hallmark_requests" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1124,7 +1123,7 @@ if (empty(trim($marqueeText))) {
                 </a>
 
                 <!-- Stock Report Module -->
-                <a href="stock_report.php" class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="stock_report" class="menu-card menu-gradient-cyan rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1150,7 +1149,7 @@ if (empty(trim($marqueeText))) {
             <div class="grid grid-cols-3 gap-3">
                 <!-- Schemes Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="lucky_draw.php" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="lucky_draw" class="menu-card menu-gradient-yellow rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1178,7 +1177,7 @@ if (empty(trim($marqueeText))) {
 
                 <!-- Lucky Draw Module -->
                 <?php if ($hasFeatureAccess): ?>
-                <a href="schemes.php" class="menu-card menu-gradient-red rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="schemes" class="menu-card menu-gradient-red rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1190,7 +1189,7 @@ if (empty(trim($marqueeText))) {
                 </a>
 
                 <!-- Expense Module -->
-                <a href="expenses.php" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
+                <a href="expenses" class="menu-card menu-gradient-purple rounded-2xl p-2 shadow-lg flex flex-col items-center text-center relative">
                     <button aria-label="Toggle favorite" aria-pressed="false" class="favorite-btn absolute top-1.5 right-1.5 p-1 text-gray-400 hover:text-yellow-500 focus:outline-none z-20">
                         <i class="far fa-star text-base"></i>
                     </button>
@@ -1718,32 +1717,32 @@ if (empty(trim($marqueeText))) {
     <nav class="bottom-nav fixed bottom-0 left-0 right-0 shadow-xl">
         <div class="px-4 py-2">
             <div class="flex justify-around">
-                <a href="home.php" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                <a href="/JewelEntry/pages/home" data-nav-id="home" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-home text-gray-400 text-sm"></i>
                     </div>
                     <span class="text-xs text-gray-400 font-medium">Home</span>
                 </a>
                 <?php if ($hasFeatureAccess): ?>
-                <button data-nav-id="search" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300" onclick="window.location.href='sale-entry.php'">
+                <button data-nav-id="search" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300" onclick="window.location.href='/JewelEntry/pages/sale-entry'">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-cash-register text-green-500 text-sm"></i>
                     </div>
                     <span class="text-xs text-gray-700 font-medium">Sales</span>
                 </button>
-                <button data-nav-id="add" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                <a href="/JewelEntry/pages/add" data-nav-id="add" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-plus-circle text-gray-400 text-sm"></i>
                     </div>
                     <span class="text-xs text-gray-400 font-medium">Add</span>
-                </button>
+                </a>
                 <button data-nav-id="alerts_nav" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-bell text-gray-400 text-sm"></i>
                     </div>
                     <span class="text-xs text-gray-400 font-medium">Alerts</span>
                 </button>
-                <a href="profile.php" data-nav-id="profile" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
+                <a href="profile" data-nav-id="profile" class="nav-btn flex flex-col items-center space-y-1 py-2 px-3 rounded-xl transition-all duration-300">
                     <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
                         <i class="fas fa-user-circle text-gray-400 text-sm"></i>
                     </div>
@@ -1785,7 +1784,7 @@ if (empty(trim($marqueeText))) {
     <!-- Education/Help Modal -->
     <!-- REMOVE THIS MODAL -->
 
-    <script type="module" src="js/home.js"></script>
+    <script type="module" src="../js/home.js"></script>
     <script>
         window.canEditRates = <?php echo $canEditRates ? 'true' : 'false'; ?>;
         window.hasFeatureAccess = <?php echo $hasFeatureAccess ? 'true' : 'false'; ?>;
@@ -1908,7 +1907,7 @@ if (empty(trim($marqueeText))) {
                     mcxLiveRateDisplay.textContent = ''; // Clear previous MCX rate
                     mcxLiveRateDisplay.classList.add('hidden');
                     try {
-                        const response = await fetch('fetch_mcx_rate.php');
+                        const response = await fetch('fetch_mcx_rate');
                         const result = await response.json();
                         if (result.success && result.rate > 0) {
                             currentRateSourceIndicator.textContent = 'MCX Live';

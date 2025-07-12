@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 
 // Start session and include database config
 session_start();
-require 'config/config.php';
+require __DIR__ . '/../config/db_connect.php';
 
 // Function to generate a secure remember me token
 function generateRememberMeToken() {
@@ -14,7 +14,7 @@ function generateRememberMeToken() {
 
 // Check if the user is already logged in, if yes then redirect to home page
 if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
-    header("location: home.php");
+    header("location: /JewelEntry/pages/home");
     exit;
 }
 
@@ -106,9 +106,9 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
 
                             // Redirect user to appropriate dashboard based on role and view
                             if ($app_view === 'pc-view') {
-                                header("location: PC/dashborad.php");
+                                header("location: /JewelEntry/PC/dashborad");
                             } else {
-                                header("location: home.php");
+                                header("location: /JewelEntry/pages/home");
                             }
                             exit;
                         } else{
@@ -159,46 +159,42 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             padding: 0;
         }
 
+        /* Toggle Switch Styles */
         .view-selector {
+            background-color: #f3f4f6;
+            border-radius: 15px;
             position: absolute;
             top: 15px;
             right: 15px;
             display: flex;
             width: 90px;
             height: 30px;
-            background-color: #f3f4f6;
-            border-radius: 15px;
             padding: 2px;
             align-items: center;
             justify-content: space-between;
             cursor: pointer;
-            position: absolute;
             overflow: hidden;
             z-index: 20;
             box-sizing: border-box;
         }
-
         .view-selector::before {
             content: '';
             position: absolute;
             width: calc(50% - 2px);
             height: calc(100% - 4px);
-            background-color: #fbbf24;
+            background: linear-gradient(90deg, #f59e42 0%, #ea580c 100%); /* orange-500 to orange-600 */
             border-radius: 13px;
             transition: transform 0.3s ease-in-out;
             z-index: 1;
             top: 2px;
             left: 2px;
         }
-
         .view-selector.mobile-active::before {
             transform: translateX(0);
         }
-
         .view-selector.pc-active::before {
             transform: translateX(100%);
         }
-
         .view-selector button {
             padding: 0;
             border-radius: 13px;
@@ -217,13 +213,9 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             justify-content: center;
             height: 100%;
         }
-
-        .view-selector button i {
-            font-size: 1rem;
-        }
-
         .view-selector button.active {
-            color: white;
+            color: #fff;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.10);
         }
 
         .login-card {
@@ -299,31 +291,32 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             font-size: 1rem;
         }
 
+        /* Remove the old .login-btn CSS block below to avoid conflicts */
+        /*
         .login-btn {
-            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%); /* Orange gradient */
+            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%); 
             color: white;
-            padding: 0.875rem 1.5rem; /* Slightly more padding */
-            border-radius: 0.75rem; /* Rounded button */
+            padding: 0.875rem 1.5rem; 
+            border-radius: 0.75rem; 
             font-size: 1rem;
             font-weight: 600;
             transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3); /* Orange shadow */
+            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3); 
             border: none;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
         }
-        
         .login-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(255, 165, 0, 0.4);
         }
-
         .login-btn:active {
             transform: translateY(0);
             box-shadow: 0 3px 10px rgba(255, 165, 0, 0.2);
         }
+        */
 
         .social-btn {
             background-color: white;
@@ -428,7 +421,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             </div>
             <!-- Header -->
             <div class="text-center mb-6 mt-4">
-                <img src="uploads/logo.png" alt="Jewel Entry Logo" class="mx-auto h-20 w-auto mb-3">
+                <img src="../uploads/logo.png" alt="Jewel Entry Logo" class="mx-auto h-20 w-auto mb-3">
                 <h1 class="text-3xl font-bold text-yellow-600 mb-2">Welcome Back</h1>
                 <p class="text-gray-500 text-sm">We're happy to see you again. To use your account, you should log in first.</p>
             </div>
@@ -466,10 +459,10 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                             class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded">
                         <label for="remember_me" class="ml-2 block text-sm text-gray-900">Remember me</label>
                     </div>
-                    <a href="forgot_password.php" class="font-medium text-sm text-yellow-600 hover:text-yellow-700">Forgot password?</a>
+                    <a href="/JewelEntry/auth/forgot_password" class="font-medium text-sm text-orange-500 hover:text-orange-700 hover:underline">Forgot password?</a>
                 </div>
                 
-                <button type="submit" class="login-btn w-full py-3 mb-5">
+                <button type="submit" class="login-btn w-auto px-8 py-2 mb-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold rounded-lg shadow-lg text-base focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 transition duration-150 ease-in-out transform hover:scale-105 flex items-center justify-center mx-auto">
                     <span>Login</span>
                     <i class="fas fa-sign-in-alt ml-2"></i>
                 </button>
@@ -485,7 +478,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 <div class="text-center mt-2">
                     <p class="text-sm text-gray-600">
                         Don't have an account? 
-                        <a href="register.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Register here</a>
+                        <a href="/JewelEntry/auth/register" class="text-orange-500 hover:text-orange-700 font-semibold hover:underline">Register here</a>
                     </p>
                 </div>
             </form>

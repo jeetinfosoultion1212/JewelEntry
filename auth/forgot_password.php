@@ -6,14 +6,14 @@ session_start();
 date_default_timezone_set('Asia/Kolkata');
  
 // Include database connection
-require_once "config/config.php";
+require __DIR__ . '/../config/db_connect.php';
 
 // Include PHPMailer
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
-require 'vendor/autoload.php';
+require __DIR__ . '/../vendor/autoload.php';
 
 // Define variables and initialize with empty values
 $email = "";
@@ -82,25 +82,25 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                                     
                                     $mail->Subject = 'Password Reset OTP';
                                     $mail->Body = "
-                                        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
-                                            <h2 style='color: #4F46E5;'>Password Reset OTP</h2>
-                                            <p>Hello {$username},</p>
-                                            <p>Your OTP for password reset is:</p>
-                                            <div style='text-align: center; margin: 30px 0;'>
-                                                <div style='background-color: #f3f4f6; padding: 20px; border-radius: 5px; 
-                                                     display: inline-block; font-size: 24px; letter-spacing: 5px; 
-                                                     font-weight: bold; color: #4F46E5;'>
-                                                    {$otp}
-                                                </div>
-                                            </div>
-                                            <p>This OTP will expire in 15 minutes.</p>
-                                            <p>If you did not request this password reset, please ignore this email.</p>
-                                            <hr style='border: 1px solid #eee; margin: 20px 0;'>
-                                            <p style='color: #666; font-size: 12px;'>
-                                                Best regards,<br>
-                                                Jewel Entry Team
-                                            </p>
-                                        </div>";
+    <div style='font-family: Poppins, Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #FFF9F3; border-radius: 18px; box-shadow: 0 4px 24px rgba(251,191,36,0.08); padding: 32px 24px;'>
+        <div style='text-align:center; margin-bottom: 24px;'>
+            <span style='display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; background:#fde68a; border-radius:50%; margin-bottom:18px;'>
+                <svg xmlns='http://www.w3.org/2000/svg' width='36' height='36' fill='none' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='#fde68a'/><path d='M6 8.5l6 4 6-4' stroke='#ea580c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/><rect x='6' y='8.5' width='12' height='7' rx='2' stroke='#ea580c' stroke-width='1.5'/></svg>
+            </span>
+            <h2 style='color: #ea580c; font-size: 2rem; font-weight: 700; margin: 0 0 8px;'>Password Reset OTP</h2>
+            <p style='color: #374151; font-size: 1rem; margin: 0;'>Hello <b>{$username}</b>,</p>
+        </div>
+        <div style='background: #fff; border-radius: 12px; padding: 24px 0; margin: 24px 0; text-align: center; box-shadow: 0 2px 8px rgba(251,191,36,0.08);'>
+            <span style='display:inline-block; font-size: 2.2rem; font-weight: 700; letter-spacing: 8px; color: #ea580c; background: #fff7ed; padding: 12px 32px; border-radius: 10px;'>"
+            . $otp .
+        "</span>
+        </div>
+        <p style='color: #6b7280; font-size: 1rem; margin-bottom: 18px;'>This OTP will expire in <b>15 minutes</b>.<br>If you did not request this password reset, please ignore this email.</p>
+        <hr style='border: none; border-top: 1px solid #fbbf24; margin: 32px 0 16px;'>
+        <div style='text-align:center; color:#ea580c; font-size:1.1rem; font-weight:600; margin-bottom: 4px;'>Jewel Entry</div>
+        <div style='text-align:center; color:#374151; font-size:0.95rem;'>Help Line: <a href='https://wa.me/919810359334' style='color:#22c55e; text-decoration:none; font-weight:600;'>9810359334 (WhatsApp)</a></div>
+        <div style='text-align:center; color:#9ca3af; font-size:0.85rem; margin-top: 8px;'>© " . date('Y') . " Jewel Entry. All rights reserved.</div>
+    </div>";
 
                                     $mail->send();
                                     // Store email in session for OTP verification
@@ -143,7 +143,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #fef7cd;
+            background-color: #FFF9F3;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -194,39 +194,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             font-size: 1rem;
         }
 
-        .submit-btn {
-            background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%);
-            color: white;
-            padding: 0.875rem 1.5rem;
-            border-radius: 0.75rem;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(255, 165, 0, 0.3);
-            border: none;
-            cursor: pointer;
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-        }
-        
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(255, 165, 0, 0.4);
-        }
-
-        .submit-btn:active {
-            transform: translateY(0);
-            box-shadow: 0 3px 10px rgba(255, 165, 0, 0.2);
-        }
-
-        @media (max-width: 640px) {
-            .forgot-card {
-                padding: 1.5rem;
-            }
-        }
+        /* Remove old .submit-btn styles, use Tailwind classes below */
     </style>
 </head>
 <body>
@@ -234,10 +202,10 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         <div class="forgot-card">
             <!-- Header -->
             <div class="text-center mb-6 mt-4">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-3">
-                    <i class="fas fa-envelope text-yellow-600 text-2xl"></i>
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-orange-100 mb-3">
+                    <i class="fas fa-envelope text-orange-500 text-2xl"></i>
                 </div>
-                <h1 class="text-3xl font-bold text-yellow-600 mb-2">Forgot Password</h1>
+                <h1 class="text-3xl font-bold text-orange-600 mb-2">Forgot Password</h1>
                 <p class="text-gray-500 text-sm">Enter your email to reset your password</p>
             </div>
             
@@ -264,16 +232,16 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <!-- Forgot Password Form -->
             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                 <div class="input-group">
-                    <i class="fas fa-envelope input-icon"></i>
+                    <i class="fas fa-envelope input-icon text-orange-400"></i>
                     <input type="email" name="email" value="<?php echo $email; ?>"
                         class="input-field"
                         placeholder="Enter your email address"
                         required>
                 </div>
                 
-                <button type="submit" class="submit-btn mb-5">
+                <button type="submit" class="w-full py-2 mb-5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold rounded-lg shadow-lg text-base focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 transition duration-150 ease-in-out transform hover:scale-105 flex items-center justify-center gap-2">
                     <span>Send Reset Link</span>
-                    <i class="fas fa-paper-plane"></i>
+                    <i class="fas fa-paper-plane text-orange-100 bg-orange-500 rounded-full p-1"></i>
                 </button>
             </form>
             
@@ -281,7 +249,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
             <div class="text-center">
                 <p class="text-sm text-gray-600">
                     Remember your password? 
-                    <a href="login.php" class="text-yellow-600 hover:text-yellow-700 font-semibold">Back to Login</a>
+                    <a href="login.php" class="text-orange-500 hover:text-orange-700 font-semibold hover:underline">Back to Login</a>
                 </p>
             </div>
         </div>

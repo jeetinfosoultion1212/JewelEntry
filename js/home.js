@@ -490,13 +490,16 @@ function initializeNavigation() {
   })
 
   // Set active navigation based on current page
-  const currentPath = window.location.pathname.split("/").pop()
-  if (currentPath === "home.php" || currentPath === "" || currentPath === "index.html") {
-    const homeButton = document.querySelector('.nav-btn[data-nav-id="home"]')
-    if (homeButton) setActiveNavButton(homeButton)
-  } else if (currentPath === "profile.php") {
-    const profileButton = document.querySelector('.nav-btn[data-nav-id="profile"]')
-    if (profileButton) setActiveNavButton(profileButton)
+  const currentPath = window.location.pathname.toLowerCase();
+  if (currentPath.endsWith('/home') || currentPath.endsWith('/home.php')) {
+    const homeButton = document.querySelector('.nav-btn[data-nav-id="home"]');
+    if (homeButton) setActiveNavButton(homeButton);
+  } else if (currentPath.endsWith('/sale-entry') || currentPath.endsWith('/sale-entry.php')) {
+    const salesButton = document.querySelector('.nav-btn[data-nav-id="search"]');
+    if (salesButton) setActiveNavButton(salesButton);
+  } else if (currentPath.endsWith('/profile') || currentPath.endsWith('/profile.php')) {
+    const profileButton = document.querySelector('.nav-btn[data-nav-id="profile"]');
+    if (profileButton) setActiveNavButton(profileButton);
   }
 }
 

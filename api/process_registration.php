@@ -8,7 +8,10 @@ ini_set('error_log', __DIR__ . '/php_error.log'); // Set a specific error log fi
 // Set JSON response header
 header('Content-Type: application/json');
 
-require 'config/config.php';
+require '../config/config.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
 
 // Function to send JSON response
 function sendJsonResponse($success, $message, $redirect = null) {
@@ -234,6 +237,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $smsSent = sendWelcomeSMS($mobile, $mobile, $userPassword);
             if (!$smsSent) {
                 error_log("Failed to send welcome SMS to: " . $mobile);
+            }
+
+            // --- PHPMailer: Send Welcome Email to Customer and Notification to Admin ---
+            
+            // 1. Welcome Email to Customer
+            if (!empty($email)) {
+                $mail = new PHPMailer(true);
+                try {
+                    $mail->isSMTP();
+                    $mail->Host = 'smtp.gmail.com';
+                    $mail->SMTPAuth = true;
+                    $mail->Username = 'jeettechnoguide@gmail.com'; // Change to your sender email
+                    $mail->Password = 'nhsi kbyn vlxq fylj'; // Change to your app password
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                    $mail->Port = 587;
+
+                    $mail->setFrom('jeettechnoguide@gmail.com', 'Jewel Entry');
+                    $mail->addAddress($email, $fullName);
+                    $mail->isHTML(true);
+                    $mail->Subject = 'Welcome to Jewel Entry!';
+                    $mail->Body = "
+                        <div style='font-family: Poppins, Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #FFF9F3; border-radius: 18px; box-shadow: 0 4px 24px rgba(251,191,36,0.08); padding: 32px 24px;'>
+                            <div style='text-align:center; margin-bottom: 24px;'>
+                                <span style='display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; background:#fde68a; border-radius:50%; margin-bottom:18px;'>
+                                    <svg xmlns='http://www.w3.org/2000/svg' width='36' height='36' fill='none' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='#fde68a'/><path d='M6 8.5l6 4 6-4' stroke='#ea580c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/><rect x='6' y='8.5' width='12' height='7' rx='2' stroke='#ea580c' stroke-width='1.5'/></svg>
+                                </span>
+                                <h2 style='color: #ea580c; font-size: 2rem; font-weight: 700; margin: 0 0 8px;'>Welcome to Jewel Entry!</h2>
+                                <p style='color: #374151; font-size: 1rem; margin: 0;'>Dear <b>{$fullName}</b>,</p>
+                            </div>
+                            <div style='background: #fff; border-radius: 12px; padding: 24px 0; margin: 24px 0; text-align: center; box-shadow: 0 2px 8px rgba(251,191,36,0.08);'>
+                                <span style='display:inline-block; font-size: 1.2rem; font-weight: 600; color: #ea580c;'>Your account has been created successfully!</span>
+                            </div>
+                            <p style='color: #6b7280; font-size: 1rem; margin-bottom: 18px;'>We're thrilled to have you on board. Here are your login details:</p>
+                            <div style='background: #fff7ed; border-radius: 10px; padding: 16px 24px; margin-bottom: 18px; text-align:left;'>
+                                <div style='color:#ea580c; font-weight:600;'>Login Username (Mobile): <span style='color:#374151;'>{$mobile}</span></div>
+                                <div style='color:#ea580c; font-weight:600;'>Password: <span style='color:#374151;'>{$userPassword}</span></div>
+                            </div>
+                            <p style='color: #374151; font-size: 1rem;'>You can now log in and start exploring all the features we offer. If you have any questions or need help, our support team is just a message away!</p>
+                            <hr style='border: none; border-top: 1px solid #fbbf24; margin: 32px 0 16px;'>
+                            <div style='text-align:center; color:#ea580c; font-size:1.1rem; font-weight:600; margin-bottom: 4px;'>Jewel Entry</div>
+                            <div style='text-align:center; color:#374151; font-size:0.95rem;'>Help Line: <a href='https://wa.me/919810359334' style='color:#22c55e; text-decoration:none; font-weight:600;'>9810359334 (WhatsApp)</a></div>
+                            <div style='text-align:center; color:#9ca3af; font-size:0.85rem; margin-top: 8px;'>© " . date('Y') . " Jewel Entry. All rights reserved.</div>
+                        </div>";
+                    $mail->send();
+                } catch (Exception $e) {
+                    error_log("Customer welcome email failed: " . $mail->ErrorInfo);
+                }
+            }
+
+            // 2. Admin Notification Email
+            try {
+                $adminMail = new PHPMailer(true);
+                $adminMail->isSMTP();
+                $adminMail->Host = 'smtp.gmail.com';
+                $adminMail->SMTPAuth = true;
+                $adminMail->Username = 'jeettechnoguide@gmail.com'; // Change to your sender email
+                $adminMail->Password = 'nhsi kbyn vlxq fylj'; // Change to your app password
+                $adminMail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                $adminMail->Port = 587;
+
+                $adminMail->setFrom('jeettechnoguide@gmail.com', 'Jewel Entry');
+                $adminMail->addAddress('prosenjittechhub@gmail.com', 'Jewel Entry Admin');
+                $adminMail->isHTML(true);
+                $adminMail->Subject = 'New Customer Registration - Jewel Entry';
+                $adminMail->Body = "
+                    <div style='font-family: Poppins, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #FFF9F3; border-radius: 18px; box-shadow: 0 4px 24px rgba(251,191,36,0.08); padding: 32px 24px;'>
+                        <h2 style='color: #ea580c; font-size: 1.5rem; font-weight: 700; margin-bottom: 18px;'>New Customer Registered</h2>
+                        <div style='background: #fff7ed; border-radius: 10px; padding: 16px 24px; margin-bottom: 18px;'>
+                            <div><b>Name:</b> {$fullName}</div>
+                            <div><b>Mobile:</b> {$mobile}</div>
+                            <div><b>Email:</b> {$email}</div>
+                            <div><b>Firm Name:</b> {$firmName}</div>
+                            <div><b>Registration Time:</b> " . date('Y-m-d H:i:s') . "</div>
+                        </div>
+                        <p style='color: #374151; font-size: 1rem;'>A new customer has joined Jewel Entry. Please review their details and ensure their onboarding experience is smooth.</p>
+                        <hr style='border: none; border-top: 1px solid #fbbf24; margin: 32px 0 16px;'>
+                        <div style='text-align:center; color:#ea580c; font-size:1.1rem; font-weight:600; margin-bottom: 4px;'>Jewel Entry Admin Notification</div>
+                        <div style='text-align:center; color:#9ca3af; font-size:0.85rem; margin-top: 8px;'>© " . date('Y') . " Jewel Entry. All rights reserved.</div>
+                    </div>";
+                $adminMail->send();
+            } catch (Exception $e) {
+                error_log("Admin notification email failed: " . $adminMail->ErrorInfo);
             }
 
             session_start();
