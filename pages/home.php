@@ -283,7 +283,7 @@ if ($hasFeatureAccess) {
     $totalLoansResult = $totalLoansStmt->get_result()->fetch_assoc();
     $totalLoanSchemes = $totalLoansResult['total_loans'] ?? 0;
 
-    $totalBookingsQuery = "SELECT COUNT(*) as total_bookings FROM jewellery_customer_order WHERE FirmID = ?";
+    $totalBookingsQuery = "SELECT COUNT(*) as total_bookings FROM jewellery_customer_order WHERE firm_id  = ?";
     $totalBookingsStmt = $conn->prepare($totalBookingsQuery);
     $totalBookingsStmt->bind_param("i", $firm_id);
     $totalBookingsStmt->execute();
@@ -400,6 +400,17 @@ if (empty(trim($marqueeText))) {
     $marqueeText = "👋 Welcome to JewelEntry! Your all-in-one jewelry store management app.";
 }
 
+// Fetch current branch name
+$branchName = '';
+if (isset($_SESSION['branchID'])) {
+    $stmt = $conn->prepare("SELECT branch_name FROM branches WHERE id = ?");
+    $stmt->bind_param("i", $_SESSION['branchID']);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($row = $result->fetch_assoc()) {
+        $branchName = $row['branch_name'];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -432,14 +443,27 @@ if (empty(trim($marqueeText))) {
                 <div class="flex items-center space-x-2">
                     <div class="w-9 h-9 gradient-gold rounded-xl flex items-center justify-center shadow-lg floating">
                         <?php if (!empty($userInfo['Logo'])): ?>
-                            <img src="<?php echo htmlspecialchars($userInfo['Logo']); ?>" alt="Firm Logo" class="w-full h-full object-cover rounded-xl">
+                            <img src="<?php 
+                                $logoPath = $userInfo['Logo'];
+                                if ($logoPath[0] !== '/') {
+                                    $logoPath = '/JewelEntry/' . ltrim($logoPath, '/');
+                                }
+                                echo htmlspecialchars($logoPath) . '?v=' . time();
+                            ?>" alt="Firm Logo" class="w-full h-full object-cover rounded-xl">
                         <?php else: ?>
                             <i class="fas fa-gem text-white text-sm"></i>
                         <?php endif; ?>
                     </div>
-                    <div>
-                        <h1 class="text-sm font-bold text-gray-800"><?php echo $userInfo['FirmName']; ?></h1>
-                        <p class="text-xs text-gray-600 font-medium">Powered by JewelEntry</p>
+                    <div class="flex items-center gap-2">
+                        <div>
+                            <h1 class="text-base font-bold text-gray-800"><?php echo htmlspecialchars($userInfo['FirmName']); ?></h1>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="font-semibold text-xs text-blue-700"><?php echo htmlspecialchars($branchName); ?></span>
+                                <button id="switchBranchBtn" class="ml-1 p-1 rounded hover:bg-blue-100" title="Switch Branch">
+                                    <i class="fas fa-exchange-alt text-blue-600"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
@@ -1479,170 +1503,180 @@ if (empty(trim($marqueeText))) {
         </div>
     </div>
 
-    <!-- Upgrade Modal -->
-    <div id="upgradeModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] hidden">
-        <div class="bg-white rounded-xl p-6 shadow-2xl w-full max-w-6xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-6">
-                <div>
-                    <h3 class="text-2xl font-bold text-gray-800">Choose Your Perfect Plan</h3>
-                    <p class="text-gray-600 mt-1">Select the plan that best fits your business needs</p>
-                </div>
-                <button onclick="closeUpgradeModal()" class="text-gray-500 hover:text-gray-700">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-            
-            <?php if ($isTrialUser): ?>
-                <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-                    <div class="flex items-center">
-                        <i class="fas fa-clock text-amber-500 mr-3"></i>
+    <!-- Compact Upgrade Modal -->
+    <div id="upgradeModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] hidden p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-auto max-h-[95vh] overflow-y-auto">
+            <!-- Header -->
+            <div class="sticky top-0 bg-white rounded-t-2xl p-4 border-b border-gray-100">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-crown text-white text-lg"></i>
+                        </div>
                         <div>
-                            <h4 class="font-semibold text-amber-800">Trial Status</h4>
-                            <p class="text-sm text-amber-700">
-                                <?php echo $isExpired ? 'Your trial has expired.' : "Your trial expires in {$daysRemaining} days."; ?>
-                            </p>
+                            <h3 class="text-lg font-bold text-gray-800">Upgrade to Premium</h3>
+                            <p class="text-xs text-gray-600">Unlock all features & grow your business</p>
                         </div>
                     </div>
+                    <button onclick="closeUpgradeModal()" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
+                        <i class="fas fa-times text-gray-600"></i>
+                    </button>
                 </div>
+            </div>
+
+            <!-- Trial Status Alert -->
+            <?php if ($isTrialUser): ?>
+            <div class="mx-4 mt-4 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-clock text-amber-600 text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-semibold text-amber-800">
+                            <?php echo $isExpired ? 'Trial Expired' : "Trial ends in {$daysRemaining} days"; ?>
+                        </p>
+                        <p class="text-xs text-amber-700">Upgrade now to continue using all features</p>
+                    </div>
+                </div>
+            </div>
             <?php endif; ?>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <?php
-                $plansQuery = "SELECT * FROM subscription_plans WHERE is_active = 1 AND name != 'Trial' ORDER BY price ASC";
-                $plansResult = $conn->query($plansQuery);
-                while ($plan = $plansResult->fetch_assoc()):
-                    $duration = (int)$plan['duration_in_days'];
-                    $durationText = $duration == 30 ? '1 Month' : ($duration == 365 ? '1 Year' : $duration . ' Days');
-                    
-                    // Determine plan color and features
-                    $color = 'blue';
-                    $isPopular = false;
-                    if (stripos($plan['name'], 'Standard') !== false) {
-                        $color = 'purple';
-                        $isPopular = true;
-                    } elseif (stripos($plan['name'], 'Premium') !== false) {
-                        $color = 'green';
-                    }
-                    
-                    // Split features into core and additional
-                    $allFeatures = explode(',', $plan['features']);
-                    $coreFeatures = array_slice($allFeatures, 0, 5);
-                    $additionalFeatures = array_slice($allFeatures, 5);
-                ?>
-                <div class="relative">
-                    <?php if ($isPopular): ?>
-                    <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                        <span class="bg-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-                            Most Popular
-                        </span>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="border border-gray-200 rounded-xl p-6 h-full flex flex-col <?php echo $isPopular ? 'border-purple-300 shadow-lg' : ''; ?>">
-                        <div class="mb-6">
-                            <div class="flex items-center space-x-2 mb-2">
-                                <i class="fas fa-gem text-<?php echo $color; ?>-500 text-xl"></i>
-                                <h4 class="text-xl font-bold text-<?php echo $color; ?>-700"><?php echo htmlspecialchars($plan['name']); ?></h4>
-                            </div>
-                            <div class="flex items-baseline mb-2">
-                                <span class="text-3xl font-bold text-gray-900">₹<?php echo number_format($plan['price']); ?></span>
-                                <span class="text-gray-500 ml-2">
-                                    <?php
-                                    if ($duration == 30) {
-                                        echo '/month';
-                                    } elseif ($duration == 365) {
-                                        echo '/year';
-                                    } elseif ($duration > 365 && $duration % 365 == 0) {
-                                        echo '/' . ($duration / 365) . ' years';
+            <!-- Plans Grid -->
+            <div class="p-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <?php
+                    $plansQuery = "SELECT * FROM subscription_plans WHERE is_active = 1 AND name != 'Trial' ORDER BY price ASC";
+                    $plansResult = $conn->query($plansQuery);
+                    while ($plan = $plansResult->fetch_assoc()):
+                        $duration = (int)$plan['duration_in_days'];
+                        $durationText = $duration == 30 ? '1 Month' : ($duration == 365 ? '1 Year' : $duration . ' Days');
+                        
+                        // Determine plan styling
+                        $isPopular = stripos($plan['name'], 'Basic Yearly') !== false;
+                        $planColor = 'blue';
+                        if (stripos($plan['name'], 'Basic Monthly') !== false) $planColor = 'purple';
+                        if (stripos($plan['name'], 'Premium One Time') !== false) $planColor = 'green';
+                        
+                        // Get key features (first 3)
+                        $allFeatures = explode(',', $plan['features']);
+                        $keyFeatures = array_slice($allFeatures, 0, 3);
+                        $totalFeatures = count($allFeatures);
+                    ?>
+                    <div class="relative">
+                        <?php if ($isPopular): ?>
+                        <div class="absolute -top-2 left-1/2 transform -translate-x-1/2 z-10">
+                            <span class="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                                <i class="fas fa-star mr-1"></i>Most Popular
+                            </span>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <div class="relative bg-white border-2 rounded-xl p-4 h-full transition-all duration-300 hover:shadow-lg <?php echo $isPopular ? 'border-purple-300 shadow-lg scale-105' : 'border-gray-200 hover:border-gray-300'; ?>">
+                            <!-- Plan Header -->
+                            <div class="text-center mb-4">
+                                <div class="w-12 h-12 bg-gradient-to-r from-<?php echo $planColor; ?>-500 to-<?php echo $planColor; ?>-600 rounded-xl flex items-center justify-center mx-auto mb-3">
+                                    <i class="fas fa-gem text-white text-lg"></i>
+                                </div>
+                                <h4 class="text-lg font-bold text-gray-800 mb-1"><?php echo htmlspecialchars($plan['name']); ?></h4>
+                                <div class="flex items-baseline justify-center mb-2">
+                                    <span class="text-2xl font-bold text-gray-900">₹<?php echo number_format($plan['price']); ?></span>
+                                    <span class="text-xs text-gray-500 ml-1">
+                                        <?php
+                                        if ($duration == 30) echo '/mo';
+                                        elseif ($duration == 365) echo '/yr';
+                                        elseif ($duration > 1095) echo ' (Lifetime)';
+                                        else echo '/' . $duration . 'd';
+                                        ?>
+                                    </span>
+                                </div>
+                                <p class="text-xs text-gray-600">
+                                    <?php 
+                                    if ($duration > 1095) {
+                                        echo 'Lifetime Access';
                                     } else {
-                                        echo '/' . $duration . ' days'; // Fallback for other durations
+                                        echo $durationText . ' plan';
                                     }
                                     ?>
-                                </span>
+                                </p>
+                                <?php if ($duration > 365): ?>
+                                <p class="text-xs text-amber-600 font-medium mt-1">
+                                    <i class="fas fa-info-circle mr-1"></i>AMU extra charges apply
+                                </p>
+                                <?php endif; ?>
                             </div>
-                            <p class="text-sm text-gray-600"><?php echo $durationText; ?> subscription</p>
-                        </div>
 
-                        <div class="flex-grow">
-                            <h5 class="font-semibold text-gray-800 mb-3">Core Features</h5>
-                            <ul class="space-y-2 mb-4">
-                                <?php foreach ($coreFeatures as $feature): ?>
-                                <li class="flex items-start">
-                                    <i class="fas fa-check text-green-500 mt-1 mr-2"></i>
-                                    <span class="text-sm text-gray-700"><?php echo htmlspecialchars(trim($feature)); ?></span>
-                                </li>
-                                <?php endforeach; ?>
-                            </ul>
-
-                            <?php if (!empty($additionalFeatures)): ?>
-                            <div class="border-t border-gray-200 pt-4">
-                                <h5 class="font-semibold text-gray-800 mb-3">Additional Features</h5>
-                                <ul class="space-y-2">
-                                    <?php foreach ($additionalFeatures as $feature): ?>
+                            <!-- Key Features -->
+                            <div class="mb-4">
+                                <ul class="space-y-2" id="features-<?php echo $plan['id']; ?>">
+                                    <?php foreach ($keyFeatures as $feature): ?>
                                     <li class="flex items-start">
-                                        <i class="fas fa-check text-green-500 mt-1 mr-2"></i>
-                                        <span class="text-sm text-gray-700"><?php echo htmlspecialchars(trim($feature)); ?></span>
+                                        <i class="fas fa-check text-green-500 mt-0.5 mr-2 text-xs"></i>
+                                        <span class="text-xs text-gray-700 leading-relaxed"><?php echo htmlspecialchars(trim($feature)); ?></span>
                                     </li>
                                     <?php endforeach; ?>
                                 </ul>
+                                <?php if ($totalFeatures > 3): ?>
+                                <div class="mt-2 text-center">
+                                    <button onclick="toggleFeatures(<?php echo $plan['id']; ?>, <?php echo $totalFeatures; ?>)" 
+                                            class="text-xs text-purple-600 hover:text-purple-800 font-medium transition-colors" 
+                                            id="toggle-btn-<?php echo $plan['id']; ?>">
+                                        <i class="fas fa-chevron-down mr-1"></i>Show <?php echo $totalFeatures - 3; ?> more features
+                                    </button>
+                                </div>
+                                <?php endif; ?>
                             </div>
-                            <?php endif; ?>
-                        </div>
 
-                        <div class="mt-6 space-y-3">
-                            <button onclick="selectPlan(<?php echo $plan['id']; ?>)" 
-                                    class="w-full bg-<?php echo $color; ?>-600 hover:bg-<?php echo $color; ?>-700 text-white py-3 px-4 rounded-lg text-sm font-semibold transition-colors shadow-md">
-                                Choose <?php echo htmlspecialchars($plan['name']); ?>
-                            </button>
-                            <a href="https://wa.me/919810359334?text=I'm interested in the <?php echo urlencode($plan['name']); ?> plan" 
-                               target="_blank" 
-                               class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg text-sm font-semibold transition-colors shadow-md flex items-center justify-center">
-                                <i class="fab fa-whatsapp mr-2"></i> Chat with Sales
-                            </a>
+                            <!-- Action Buttons -->
+                            <div class="space-y-2">
+                                <button onclick="selectPlanWithWhatsApp(<?php echo $plan['id']; ?>, '<?php echo htmlspecialchars($plan['name']); ?>', '<?php echo htmlspecialchars($userInfo['Name']); ?>', '<?php echo htmlspecialchars($userInfo['FirmName']); ?>')" 
+                                        class="w-full bg-gradient-to-r from-<?php echo $planColor; ?>-500 to-<?php echo $planColor; ?>-600 hover:from-<?php echo $planColor; ?>-600 hover:to-<?php echo $planColor; ?>-700 text-white py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105">
+                                    <i class="fas fa-rocket mr-1"></i>Choose Plan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endwhile; ?>
+                </div>
+
+                <!-- Benefits Section -->
+                <div class="mt-6 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-4">
+                    <h4 class="text-sm font-bold text-gray-800 mb-3 text-center">Why Choose JewelEntry Premium?</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-shield-alt text-blue-600 text-xs"></i>
+                            </div>
+                            <span class="text-xs text-gray-700 font-medium">Secure & Reliable</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-headset text-green-600 text-xs"></i>
+                            </div>
+                            <span class="text-xs text-gray-700 font-medium">24/7 Support</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-mobile-alt text-purple-600 text-xs"></i>
+                            </div>
+                            <span class="text-xs text-gray-700 font-medium">Mobile-First</span>
                         </div>
                     </div>
                 </div>
-                <?php endwhile; ?>
-            </div>
 
-            <div class="mt-8 bg-gray-50 rounded-xl p-6">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="flex items-start space-x-3">
-                        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-shield-alt text-blue-600"></i>
-                        </div>
-                        <div>
-                            <h4 class="font-semibold text-gray-800">Secure Payment</h4>
-                            <p class="text-sm text-gray-600 mt-1">All transactions are secure and encrypted</p>
-                        </div>
-                    </div>
-                    <div class="flex items-start space-x-3">
-                        <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-headset text-green-600"></i>
-                        </div>
-                        <div>
-                            <h4 class="font-semibold text-gray-800">24/7 Support</h4>
-                            <p class="text-sm text-gray-600 mt-1">Get help whenever you need it</p>
-                        </div>
-                    </div>
-                    <div class="flex items-start space-x-3">
-                        <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-sync text-purple-600"></i>
-                        </div>
-                        <div>
-                            <h4 class="font-semibold text-gray-800">Easy Upgrade</h4>
-                            <p class="text-sm text-gray-600 mt-1">Upgrade or downgrade anytime</p>
-                        </div>
+                <!-- Contact Section -->
+                <div class="mt-4 text-center">
+                    <p class="text-xs text-gray-600 mb-3">Need help choosing? Our team is here to help!</p>
+                    <div class="flex flex-col sm:flex-row gap-2 justify-center">
+                        <a href="https://wa.me/919810359334" target="_blank" 
+                           class="inline-flex items-center bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors">
+                            <i class="fab fa-whatsapp mr-2"></i>WhatsApp Support
+                        </a>
+                        <a href="tel:+919810359334" 
+                           class="inline-flex items-center bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors">
+                            <i class="fas fa-phone mr-2"></i>Call Now
+                        </a>
                     </div>
                 </div>
-            </div>
-
-            <div class="mt-6 text-center">
-                <p class="text-sm text-gray-600 mb-3">Need help choosing? Contact our sales team</p>
-                <a href="https://wa.me/919810359334" target="_blank" 
-                   class="inline-flex items-center bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-medium transition-colors">
-                    <i class="fab fa-whatsapp mr-2"></i>Chat with Sales Team
-                </a>
             </div>
         </div>
     </div>
@@ -1664,11 +1698,10 @@ if (empty(trim($marqueeText))) {
                     <label class="block text-sm font-medium text-gray-700">Current Rate Source: 
                         <span id="currentRateSourceIndicator" class="font-semibold text-purple-600">Not Set</span>
                     </label>
-                    <p id="mcxLiveRateDisplay" class="text-xs text-gray-500 mt-1 hidden"></p>
-                    <div id="mcxQuickLinkContainer" class="mt-2 hidden">
-                        <a href="https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-1.5 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-semibold rounded shadow transition-colors text-xs">
-                            <i class="fas fa-bolt mr-2 text-yellow-500"></i>View Live MCX Gold Rate
-                            <span class="ml-2" title="Click to view the latest gold price on MCX"><i class="fas fa-info-circle text-gray-400"></i></span>
+                    <div id="mcxQuickLinkContainer" class="mt-2">
+                        <a id="mcxRateLink" href="https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-1.5 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-semibold rounded shadow transition-colors text-xs">
+                            <i class="fas fa-bolt mr-2 text-yellow-500"></i>View Live MCX <span id="mcxMetalType">Gold</span> Rate
+                            <span class="ml-2" title="Click to view the latest price on MCX"><i class="fas fa-info-circle text-gray-400"></i></span>
                         </a>
                     </div>
                 </div>
@@ -1817,6 +1850,115 @@ if (empty(trim($marqueeText))) {
             window.location.href = `subscription.php?plan=${planId}`;
         }
 
+        function selectPlanWithWhatsApp(planId, planName, customerName, firmName) {
+            // Create enhanced WhatsApp message with customer details
+            const message = `Hello! 👋
+
+I'm interested in upgrading to the *${planName}* plan.
+
+*Customer Details:*
+• Name: ${customerName}
+• Firm: ${firmName}
+• Current Plan: Trial User
+
+*Plan Details:*
+• Plan: ${planName}
+• Plan ID: ${planId}
+
+Could you please help me with:
+1. How to upgrade to this plan?
+2. Payment options available
+3. Any setup assistance needed
+
+Thank you! 🙏`;
+
+            // Encode the message for WhatsApp URL
+            const encodedMessage = encodeURIComponent(message);
+            
+            // Redirect to WhatsApp with enhanced message
+            window.open(`https://wa.me/919810359334?text=${encodedMessage}`, '_blank');
+            
+            // Close the modal after redirecting
+            closeUpgradeModal();
+        }
+
+        function toggleFeatures(planId, totalFeatures) {
+            const featuresList = document.getElementById(`features-${planId}`);
+            const toggleBtn = document.getElementById(`toggle-btn-${planId}`);
+            const isExpanded = featuresList.classList.contains('expanded');
+            
+            if (!isExpanded) {
+                // Show all features
+                const allFeatures = [
+                    'Inventory Management',
+                    'Sales Tracking', 
+                    'Customer Management',
+                    'Basic Reports',
+                    'Mobile App Access',
+                    'QR Code Generation',
+                    'Basic Support',
+                    'Catalog Management',
+                    'Daily Book Reports',
+                    'Hallmark Management',
+                    'Stock Reports',
+                    'Karigars Management',
+                    'Gold Loan Management',
+                    'Billing & Invoicing',
+                    'Advanced Reports',
+                    'Priority Support',
+                    'Data Backup',
+                    'Multi-staff Access',
+                    'Expense Tracking',
+                    'Lucky Draw Schemes',
+                    'Customer Orders',
+                    'GST Reports',
+                    'Tray Management',
+                    'Suppliers Management',
+                    'Staff Management',
+                    'Settings Management',
+                    'Unlimited Inventory',
+                    'Advanced Analytics',
+                    'Custom Branding',
+                    'API Access',
+                    'Priority 24/7 Support',
+                    'Data Migration',
+                    'Staff Training',
+                    'Custom Integrations',
+                    'Advanced Security',
+                    'Multi-location Support',
+                    'Advanced Reporting',
+                    'Customer Loyalty Programs',
+                    'Automated Backups',
+                    'White-label Options',
+                    'Repairs Management',
+                    'Advanced Billing Features'
+                ];
+                
+                // Add remaining features
+                for (let i = 3; i < Math.min(totalFeatures, allFeatures.length); i++) {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-start';
+                    li.innerHTML = `
+                        <i class="fas fa-check text-green-500 mt-0.5 mr-2 text-xs"></i>
+                        <span class="text-xs text-gray-700 leading-relaxed">${allFeatures[i]}</span>
+                    `;
+                    featuresList.appendChild(li);
+                }
+                
+                featuresList.classList.add('expanded');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-up mr-1"></i>Show less features';
+            } else {
+                // Hide extra features (keep only first 3)
+                const features = featuresList.querySelectorAll('li');
+                for (let i = 3; i < features.length; i++) {
+                    features[i].remove();
+                }
+                
+                featuresList.classList.remove('expanded');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-down mr-1"></i>Show ' + (totalFeatures - 3) + ' more features';
+            }
+        }
+
         function togglePlans() {
             const plansSection = document.getElementById('pricingPlansSection');
             if (plansSection) {
@@ -1859,7 +2001,7 @@ if (empty(trim($marqueeText))) {
             const clearManualRateBtn = document.getElementById('clearManualRateBtn');
             const calculatedRateTola = document.getElementById('calculatedRateTolaValue'); // Updated ID
             const calculatedRateVori = document.getElementById('calculatedRateVoriValue'); // Updated ID
-            const mcxLiveRateDisplay = document.getElementById('mcxLiveRateDisplay'); // New element
+
 
             const CONVERSION_RATES = {
                 'per_gram': 1,
@@ -1884,48 +2026,41 @@ if (empty(trim($marqueeText))) {
                 customRateModalTitle.textContent = `Set ${metalType} ${purity} Rate`;
                 customRateModalMetalNamePlaceholder.textContent = `${metalType} ${purity}`;
 
-                // Always set input to currentRate (which is in per gram) and convert to per 10 gram for initial display.
-                // If currentRate is 0, leave blank.
+                // Set default unit based on metal type
+                let defaultUnit = 'per_10_gram';
+                if (metalType === 'Silver') {
+                    defaultUnit = 'per_kg';
+                }
+
+                // Set input and unit select
                 if (currentRate > 0) {
-                    customRateInput.value = (currentRate * CONVERSION_RATES['per_10_gram']).toFixed(2);
-                    customRateInputUnitSelect.value = 'per_10_gram'; // Set unit to per 10 gram if current rate exists
+                    customRateInput.value = (currentRate * CONVERSION_RATES[defaultUnit]).toFixed(2);
+                    customRateInputUnitSelect.value = defaultUnit;
                 } else {
-                    customRateInput.value = ''; // Clear input if no rate is set
-                    customRateInputUnitSelect.value = 'per_10_gram'; // Default to per 10 gram
+                    customRateInput.value = '';
+                    customRateInputUnitSelect.value = defaultUnit;
                 }
+
+                // Set rate source indicator
+                currentRateSourceIndicator.textContent = currentRate > 0 ? 'Manual' : 'Not Set';
                 
-                // MCX Quick Link logic
-                const mcxQuickLink = document.getElementById('mcxQuickLinkContainer');
-                if (metalType === 'Gold' && purity === '99.99') {
-                    mcxQuickLink.classList.remove('hidden');
+                // Update MCX link based on metal type
+                const mcxRateLink = document.getElementById('mcxRateLink');
+                const mcxMetalType = document.getElementById('mcxMetalType');
+                
+                if (metalType === 'Gold') {
+                    mcxRateLink.href = 'https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/';
+                    mcxMetalType.textContent = 'Gold';
+                } else if (metalType === 'Silver') {
+                    mcxRateLink.href = 'https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/SILVER/';
+                    mcxMetalType.textContent = 'Silver';
+                } else if (metalType === 'Platinum') {
+                    mcxRateLink.href = 'https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/PLATINUM/';
+                    mcxMetalType.textContent = 'Platinum';
                 } else {
-                    mcxQuickLink.classList.add('hidden');
-                }
-                // Attempt to fetch MCX rate for Gold 99.99
-                if (metalType === 'Gold' && purity === '99.99') {
-                    currentRateSourceIndicator.textContent = 'Fetching MCX...';
-                    mcxLiveRateDisplay.textContent = ''; // Clear previous MCX rate
-                    mcxLiveRateDisplay.classList.add('hidden');
-                    try {
-                        const response = await fetch('fetch_mcx_rate');
-                        const result = await response.json();
-                        if (result.success && result.rate > 0) {
-                            currentRateSourceIndicator.textContent = 'MCX Live';
-                            mcxLiveRateDisplay.innerHTML = `MCX Live: ${result.rate.toFixed(2)} per 10 Grams (<a href=\"https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/\" target=\"_blank\" class=\"text-blue-500 hover:underline\">View Source</a>)`;
-                            mcxLiveRateDisplay.classList.remove('hidden');
-                        } else {
-                            currentRateSourceIndicator.textContent = 'Not Set';
-                            mcxLiveRateDisplay.classList.add('hidden');
-                        }
-                    } catch (error) {
-                        console.error('Error fetching MCX rate:', error);
-                        currentRateSourceIndicator.textContent = 'Not Set';
-                        mcxLiveRateDisplay.classList.add('hidden');
-                    }
-                } else {
-                    // For other metals or if MCX fetch is not applicable
-                    currentRateSourceIndicator.textContent = currentRate > 0 ? 'Manual' : 'Not Set';
-                    mcxLiveRateDisplay.classList.add('hidden'); // Hide MCX rate for other metals
+                    // Default to Gold for other metals
+                    mcxRateLink.href = 'https://www.mcxindia.com/en/market-data/get-quote/FUTCOM/GOLD/';
+                    mcxMetalType.textContent = 'Gold';
                 }
                 
                 // Update calculated rate display
