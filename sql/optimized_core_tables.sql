@@ -1,0 +1,136 @@
+-- JewelEntryApp: Optimized Core Tables
+-- This file contains optimized CREATE TABLE statements for core business tables with indexes and foreign keys
+
+CREATE TABLE `firm` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `FirmName` VARCHAR(150) NOT NULL,
+  `OwnerName` VARCHAR(100),
+  `Email` VARCHAR(255),
+  `PhoneNumber` VARCHAR(20),
+  `Address` VARCHAR(255),
+  `City` VARCHAR(100),
+  `State` VARCHAR(100),
+  `PostalCode` VARCHAR(20),
+  `Country` VARCHAR(100) DEFAULT 'India',
+  `PANNumber` VARCHAR(10),
+  `GSTNumber` VARCHAR(15),
+  `IsGSTRegistered` TINYINT(1) DEFAULT 0,
+  `BISRegistrationNumber` VARCHAR(50),
+  `BankAccountNumber` VARCHAR(20),
+  `BankName` VARCHAR(100),
+  `BankBranch` VARCHAR(100),
+  `IFSCCode` VARCHAR(11),
+  `AccountType` ENUM('Savings','Current') DEFAULT 'Current',
+  `Logo` LONGBLOB,
+  `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+  `Tagline` TEXT,
+  `CreatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `UpdatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `current_subscription_id` INT,
+  UNIQUE KEY `unique_email` (`Email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `customer` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `firm_id` INT NOT NULL,
+  `FirstName` VARCHAR(100) NOT NULL,
+  `LastName` VARCHAR(100) NOT NULL,
+  `Email` VARCHAR(50),
+  `PhoneNumber` VARCHAR(20) NOT NULL,
+  `Address` VARCHAR(255),
+  `City` VARCHAR(100),
+  `State` VARCHAR(100),
+  `PostalCode` VARCHAR(20),
+  `Country` VARCHAR(100) DEFAULT 'India',
+  `DateOfBirth` DATE,
+  `SpecialDay` DATE,
+  `Gender` ENUM('Male','Female','Other'),
+  `CustomerType` ENUM('Lead','Prospect','Customer','VIP') DEFAULT 'Lead',
+  `PANNumber` VARCHAR(10),
+  `AadhaarNumber` VARCHAR(12),
+  `IsGSTRegistered` TINYINT(1) DEFAULT 0,
+  `GSTNumber` VARCHAR(15),
+  `CustomerImage` LONGBLOB,
+  `CreatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `UpdatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `unique_email` (`Email`),
+  INDEX `idx_firm_id` (`firm_id`),
+  FOREIGN KEY (`firm_id`) REFERENCES `firm`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `suppliers` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `firm_id` INT NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `contact_info` VARCHAR(255),
+  `email` VARCHAR(255),
+  `address` TEXT,
+  `state` VARCHAR(50),
+  `phone` VARCHAR(50),
+  `gst` VARCHAR(100),
+  `payment_terms` VARCHAR(255),
+  `notes` TEXT,
+  `date_added` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `last_updated` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_firm_id` (`firm_id`),
+  FOREIGN KEY (`firm_id`) REFERENCES `firm`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `firm_users` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `Name` VARCHAR(50) NOT NULL,
+  `Username` VARCHAR(100) NOT NULL,
+  `Password` VARCHAR(255) NOT NULL,
+  `FirmID` INT NOT NULL,
+  `Email` VARCHAR(255),
+  `PhoneNumber` VARCHAR(15),
+  `Role` VARCHAR(50) DEFAULT 'Admin',
+  `Status` VARCHAR(20) DEFAULT 'Active',
+  `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `UpdatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `image_path` VARCHAR(255),
+  `reset_token` VARCHAR(64),
+  `token_expiry` DATETIME,
+  `remember_token` VARCHAR(64),
+  `token_expiration` DATETIME,
+  UNIQUE KEY `unique_username` (`Username`),
+  INDEX `idx_firm_id` (`FirmID`),
+  FOREIGN KEY (`FirmID`) REFERENCES `firm`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `firm_configurations` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `firm_id` INT NOT NULL,
+  `non_gst_bill_page_url` VARCHAR(255) DEFAULT 'thermal_invoice.php',
+  `gst_bill_page_url` VARCHAR(255) DEFAULT 'thermal_invoice.php',
+  `coupon_code_apply_enabled` TINYINT(1) DEFAULT 1,
+  `schemes_enabled` TINYINT(1) DEFAULT 1,
+  `gst_rate` DECIMAL(5,4) DEFAULT 0.0300,
+  `loyalty_discount_percentage` DECIMAL(5,4) DEFAULT 0.0200,
+  `welcome_coupon_enabled` TINYINT(1) DEFAULT 1,
+  `welcome_coupon_code` VARCHAR(50) DEFAULT 'WELCOME10',
+  `post_purchase_coupon_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+  `auto_scheme_entry` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `unique_firm_id` (`firm_id`),
+  FOREIGN KEY (`firm_id`) REFERENCES `firm`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `firm_subscriptions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `firm_id` INT NOT NULL,
+  `plan_id` INT NOT NULL,
+  `start_date` DATETIME NOT NULL,
+  `end_date` DATETIME NOT NULL,
+  `trial_end_date` DATETIME,
+  `is_trial` TINYINT(1) DEFAULT 0,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `auto_renew` TINYINT(1) DEFAULT 1,
+  `payment_method` VARCHAR(50),
+  `last_payment_date` DATETIME,
+  `next_billing_date` DATETIME,
+  `notes` TEXT,
+  INDEX `idx_firm_id` (`firm_id`),
+  FOREIGN KEY (`firm_id`) REFERENCES `firm`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci; 

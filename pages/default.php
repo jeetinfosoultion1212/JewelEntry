@@ -1,12 +1,12 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+echo "Reached start of default.php<br>";
 
-include_once 'config/config.php';
+echo "Config loaded<br>";
 
-// Database connection details - using variables from config.php
-$servername = $servername; // Already defined in config.php
-$username = $username; // Already defined in config.php
-$password = $password; // Already defined in config.php
-$dbname = $dbname; // Already defined in config.php
+
+echo "Hallmark config loaded<br>";
 
 // Initialize variables with dummy values, which will be overwritten by real data if available
 $totalProducts = "15,000+"; // Dummy data
@@ -20,6 +20,61 @@ $debugRawRevenue = 'N/A';
 $debugRawFirms = 'N/A';
 $debugRawOrders = 'N/A';
 
+// --- PAGE VIEW TRACKER (backend only, not shown on frontend) ---
+// (Keep this for now, but if it hangs, we can comment it out too)
+try {
+    $conn2 = $hallmarkpro_conn; // For compatibility with huid_data.php logic
+    // Check if table exists, create if not
+    $table_check = $conn2->query("SHOW TABLES LIKE 'page_views'");
+    if ($table_check && $table_check->num_rows === 0) {
+        $create_table = "CREATE TABLE IF NOT EXISTS page_views (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            page_name VARCHAR(255) NOT NULL,
+            view_count INT DEFAULT 1,
+            first_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_viewed TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_page (page_name)
+        )";
+        $conn2->query($create_table);
+    }
+    $page_name = 'default_page';
+    // Check if record exists
+    $check_stmt = $conn2->prepare("SELECT id, view_count FROM page_views WHERE page_name = ?");
+    if ($check_stmt) {
+        $check_stmt->bind_param('s', $page_name);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        $view_record = $result->fetch_assoc();
+        $check_stmt->close();
+        if ($view_record) {
+            // Update existing record
+            $new_count = $view_record['view_count'] + 1;
+            $update_stmt = $conn2->prepare("UPDATE page_views SET view_count = ?, last_viewed = NOW() WHERE page_name = ?");
+            if ($update_stmt) {
+                $update_stmt->bind_param('is', $new_count, $page_name);
+                $update_stmt->execute();
+                $update_stmt->close();
+            }
+        } else {
+            // Insert new record
+            $insert_stmt = $conn2->prepare("INSERT INTO page_views (page_name, view_count, first_viewed, last_viewed) VALUES (?, 1, NOW(), NOW())");
+            if ($insert_stmt) {
+                $insert_stmt->bind_param('s', $page_name);
+                $insert_stmt->execute();
+                $insert_stmt->close();
+            }
+        }
+    }
+    echo "Page view tracker completed<br>";
+} catch(Exception $e) {
+    // Silently fail, do not show error on frontend
+    error_log("Page view tracker error: " . $e->getMessage());
+    echo "Page view tracker error<br>";
+}
+// --- END PAGE VIEW TRACKER ---
+
+// --- DATABASE BLOCK TEMPORARILY COMMENTED OUT FOR DEBUGGING ---
+/*
 try {
     // Use mysqli connection like other files in the project
     $conn = new mysqli($servername, $username, $password, $dbname);
@@ -76,9 +131,10 @@ try {
     // echo "<p style=\"color:red;\">Database Error: " . $e->getMessage() . "</p>";
 }
 $conn = null;
+*/
+echo "Database block skipped<br>";
 
-// Temporary debugging output - REMOVE THIS AFTER DEBUGGING
-// echo "<!--\nDebug Info:\nTotal Products (Raw): " . $debugRawProducts . "\nTotal Revenue (Raw): " . $debugRawRevenue . "\nActive Firms (Raw): " . $debugRawFirms . "\nTotal Orders (Raw): " . $debugRawOrders . "\n-->";
+// The rest of your HTML and PHP code continues here...
 ?>
 <!DOCTYPE html>
 <html lang="en">
