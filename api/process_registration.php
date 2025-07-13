@@ -81,15 +81,79 @@ function createFirm($conn, $firmName, $ownerName, $phoneNumber, $email) {
     return $firmId;
 }
 
+// Function to create main branch for a firm
+function createMainBranch($conn, $firmId, $firmName) {
+    // First check if branches table exists
+    $checkTableSql = "SHOW TABLES LIKE 'branches'";
+    $checkResult = $conn->query($checkTableSql);
+    if ($checkResult->num_rows === 0) {
+        error_log("Branches table does not exist. Creating it...");
+        $createTableSql = "CREATE TABLE branches (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            firm_id INT NOT NULL,
+            branch_name VARCHAR(100) NOT NULL,
+            address VARCHAR(255),
+            city VARCHAR(100),
+            state VARCHAR(100),
+            pincode VARCHAR(20),
+            phone VARCHAR(20),
+            email VARCHAR(100),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (firm_id) REFERENCES Firm(id) ON DELETE CASCADE
+        )";
+        if (!$conn->query($createTableSql)) {
+            error_log("Failed to create branches table: " . $conn->error);
+            return null;
+        }
+    }
+    
+    $branchName = $firmName . " - Main Branch";
+    $stmt = $conn->prepare("INSERT INTO branches (firm_id, branch_name, created_at) VALUES (?, ?, NOW())");
+    if (!$stmt) {
+        error_log("createMainBranch prepare failed: " . $conn->error);
+        return null;
+    }
+    $stmt->bind_param("is", $firmId, $branchName);
+    $success = $stmt->execute();
+    $branchId = $success ? $conn->insert_id : null;
+    $stmt->close();
+    
+    if ($branchId) {
+        error_log("Successfully created main branch with ID: $branchId for firm: $firmId");
+    } else {
+        error_log("Failed to create main branch for firm: $firmId");
+    }
+    
+    return $branchId;
+}
+
+// Function to ensure firm_users table has branch_id column
+function ensureBranchIdColumn($conn) {
+    // Check if branch_id column exists in firm_users table
+    $checkColumnSql = "SHOW COLUMNS FROM firm_users LIKE 'branch_id'";
+    $checkResult = $conn->query($checkColumnSql);
+    if ($checkResult->num_rows === 0) {
+        error_log("branch_id column does not exist in firm_users table. Adding it...");
+        $addColumnSql = "ALTER TABLE firm_users ADD COLUMN branch_id INT NULL";
+        if (!$conn->query($addColumnSql)) {
+            error_log("Failed to add branch_id column to firm_users table: " . $conn->error);
+            return false;
+        }
+        error_log("Successfully added branch_id column to firm_users table");
+    }
+    return true;
+}
+
 // Fixed Function to create a new user
-function createUser($conn, $name, $username, $password, $firmId, $email, $phoneNumber) {
+function createUser($conn, $name, $username, $password, $firmId, $email, $phoneNumber, $branchId) {
     $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-    $stmt = $conn->prepare("INSERT INTO firm_users (Name, Username, Password, FirmID, Email, PhoneNumber, Role, Status, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, 'Super Admin', 'Active', NOW())");
+    $stmt = $conn->prepare("INSERT INTO firm_users (Name, Username, Password, FirmID, Email, PhoneNumber, Role, Status, branch_id, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, 'Super Admin', 'Active', ?, NOW())");
     if (!$stmt) {
         error_log("createUser prepare failed: " . $conn->error);
         return null;
     }
-    $stmt->bind_param("sssiss", $name, $username, $hashedPassword, $firmId, $email, $phoneNumber);
+    $stmt->bind_param("sssissi", $name, $username, $hashedPassword, $firmId, $email, $phoneNumber, $branchId);
     $success = $stmt->execute();
     $userId = $success ? $conn->insert_id : null;
     $stmt->close();
@@ -214,10 +278,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $firmId = createFirm($conn, $firmName, $fullName, $mobile, $email);
             if (!$firmId) throw new Exception('Failed to create firm');
 
+            $branchId = createMainBranch($conn, $firmId, $firmName);
+            if (!$branchId) throw new Exception('Failed to create main branch');
+
+            // Ensure firm_users table has branch_id column
+            if (!ensureBranchIdColumn($conn)) {
+                throw new Exception('Failed to ensure branch_id column exists');
+            }
+
             $subscriptionId = createTrialSubscription($conn, $firmId);
             if (!$subscriptionId) throw new Exception('Failed to create trial subscription');
 
-            $userId = createUser($conn, $fullName, $mobile, $userPassword, $firmId, $email, $mobile);
+            $userId = createUser($conn, $fullName, $mobile, $userPassword, $firmId, $email, $mobile, $branchId);
             if (!$userId) throw new Exception('Failed to create user');
 
             $configStmt = $conn->prepare("INSERT INTO firm_configurations (firm_id) VALUES (?)");
@@ -324,6 +396,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_start();
             $_SESSION['id'] = $userId;
             $_SESSION['firmID'] = $firmId;
+            $_SESSION['branchID'] = $branchId; // Store branch ID in session
             $_SESSION['username'] = $mobile;
             $_SESSION['role'] = 'Super Admin';
 

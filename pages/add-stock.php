@@ -5,12 +5,12 @@ error_reporting(E_ALL);
 
 // Start session and include database config
 session_start();
-require 'config/config.php';
+require '../config/config.php';
 date_default_timezone_set('Asia/Kolkata');
 
 // Check if user is logged in
 if (!isset($_SESSION['id'])) {
-   header("Location: login.php");
+   header("Location: ../auth/login.php");
    exit();
 }
 
@@ -1010,10 +1010,10 @@ $userInfo = $userResult->fetch_assoc();
     <span id="toastMessage">Supplier added successfully!</span>
   </div>
 
-  <script src="js/add-stock.js"></script>
+  <script src="../js/add-stock.js"></script>
   <!-- Add these before closing body tag -->
-<script src="assets/js/stock-stats.js"></script>
-<script src="assets/js/tab.js"></script>
+<script src="../assets/js/stock-stats.js"></script>
+<script src="../assets/js/tab.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize tabs

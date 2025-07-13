@@ -442,7 +442,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                 <div class="input-group">
                     <i class="fas fa-user input-icon"></i>
                     <input type="text" name="login_identifier" class="input-field"
-                        value="<?php echo $login_identifier; ?>" placeholder="Enter username, email or phone number" required>
+                        value="<?php echo $login_identifier; ?>" placeholder="Enter phone number" required>
                 </div>
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>

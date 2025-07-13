@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 
 // Start session and include database config
 session_start();
-require 'config/config.php';
+require '../config/config.php';
 date_default_timezone_set('Asia/Kolkata');
 
 // Check if user is logged in
@@ -418,6 +418,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   $costPerGram = $costResult->fetch_assoc()['cost_price_per_gram'];
               }
           }
+          // If Others, fetch gold rate for 99.99 purity and convert for entered purity
+          if ($sourceType === 'Others') {
+              $rateSql = "SELECT rate FROM jewellery_price_config WHERE material_type = 'Gold' AND purity = 99.99 AND firm_id = ? ORDER BY created_at DESC LIMIT 1";
+              $rateStmt = $conn->prepare($rateSql);
+              $rateStmt->bind_param("i", $firm_id);
+              $rateStmt->execute();
+              $rateResult = $rateStmt->get_result();
+              if ($rateResult->num_rows > 0) {
+                  $rate99_99 = $rateResult->fetch_assoc()['rate'];
+                  if (is_numeric($purity) && $purity > 0) {
+                      $costPerGram = $rate99_99 * ((float)$purity / 99.99);
+                  } else {
+                      $costPerGram = $rate99_99;
+                  }
+              }
+          }
           
           // Begin transaction
           $conn->begin_transaction();
@@ -441,7 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
               
               // Set supplier_id or karigar_id based on source type
               $supplierId = null;
-              $karigarId = 0; // Set default value to 0
+              $karigarId = null;
               $purchaseIdForSource = null;
               $manufacturingOrderIdForSource = null;
               $sourceIdForInsert = null; // Added this line
@@ -457,8 +473,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   $supplierResult = $supplierStmt->get_result();
                   if ($supplierResult->num_rows > 0) {
                       $supplierId = $supplierResult->fetch_assoc()['source_id'];
+                  } else {
+                      $supplierId = null;
                   }
-                  $karigarId = 0;
+                  $karigarId = null;
               } elseif ($sourceType === 'Manufacturing Order') {
                   $manufacturingOrderIdForSource = $sourceId;
                   $sourceIdForInsert = $sourceId;
@@ -470,12 +488,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   $karigarResult = $karigarStmt->get_result();
                   if ($karigarResult->num_rows > 0) {
                       $karigarId = $karigarResult->fetch_assoc()['karigar_id'];
+                  } else {
+                      $karigarId = null;
                   }
-                  $supplierId = 0;
+                  $supplierId = null;
               } else {
                   // Others / Manual Entry
-                  $supplierId = 0;
-                  $karigarId = 0;
+                  $supplierId = null;
+                  $karigarId = null;
                   $sourceIdForInsert = $sourceId; // Use the entered value for Others
               }
               
@@ -1090,7 +1110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                       END as source_type,
                       s.name as supplier_name,
                       k.name as karigar_name,
-                      (SELECT image_url FROM jewellery_product_image WHERE product_id = ji.id AND is_primary = 1 LIMIT 1) as image_url
+                      (SELECT image_path FROM jewellery_product_image WHERE product_id = ji.id AND is_primary = 1 LIMIT 1) as image_url
                       FROM jewellery_items ji
                       LEFT JOIN suppliers s ON ji.supplier_id = s.id
                       LEFT JOIN karigars k ON ji.karigar_id = k.id
@@ -1308,7 +1328,7 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
-<link rel="stylesheet" href="css/add.css">
+<link rel="stylesheet" href="../css/add.css">
 <style>
 #openAddGuideModalBtn {
   transition: opacity 0.4s;
@@ -1331,7 +1351,7 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
         <div class="font-medium text-xs"><?php echo htmlspecialchars($userInfo['Name']); ?></div>
         <div class="text-xs opacity-80"><?php echo htmlspecialchars($userInfo['Role']); ?></div>
       </div>
-      <img src="<?php echo !empty($userInfo['image_path']) ? htmlspecialchars($userInfo['image_path']) : 'assets/default-avatar.png'; ?>" 
+      <img src="<?php echo !empty($userInfo['image_path']) ? '../' . htmlspecialchars($userInfo['image_path']) : '../assets/default-avatar.png'; ?>" 
            alt="User" class="user-avatar">
     </div>
   </div>
@@ -1881,11 +1901,11 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
  
 <a href="add.php" class="nav-item active">
    <i class="nav-icon fa-solid fa-gem"></i>
-   <span class="nav-text">Add</span>
+   <span class="nav-text">Add Item</span>
  </a>
   <a href="add-stock.php" class="nav-item ">
    <i class="nav-icon fa-solid fa-store"></i>
-   <span class="nav-text">Stock</span>
+   <span class="nav-text">Bulk Stock</span>
  </a>
 
 
@@ -2131,7 +2151,11 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
     </div>
   </div>
 </div>
-
+<footer class="w-full flex justify-center py-4 bg-white border-t border-gray-200">
+  <button id="openAddGuideModalBtn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors shadow">
+    <i class="fas fa-compass mr-1"></i> Guide Me
+  </button>
+</footer>
 <!-- Delete Confirmation Modal -->
 <div id="deleteModalOverlay" class="alert-overlay hidden"></div>
 <div id="deleteModal" class="alert-modal hidden">
@@ -2158,7 +2182,7 @@ $inventoryStats = getInventoryStats($conn, $firm_id);
 
 
 
-<script src="js/add.js"></script>
+<script src="../js/add.js"></script>
 <script>
 // Add this function to your existing JavaScript
 function updateJewelryName(jewelryType) {
@@ -2261,10 +2285,7 @@ document.head.appendChild(style);
   </div>
 </div>
 
-<!-- Guide Me Button -->
-<button id="openAddGuideModalBtn" class="fixed bottom-24 right-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors shadow z-[101]">
-  <i class="fas fa-compass mr-1"></i> Guide Me
-</button>
+
 
 <script>
 const addGuideContent = {
@@ -2365,8 +2386,8 @@ const addGuideContent = {
         <li><b>సోర్స్ సవరణ:</b> వస్తువును సవరించేటప్పుడు, సోర్స్ ఐడీని కూడా మార్చవచ్చు.</li>
         <li><b>ట్రాకింగ్:</b> అన్ని చర్యలు ఆడిట్ మరియు ఇన్వెంటరీ ట్రాకింగ్ కోసం లాగ్ అవుతాయి.</li>
       </ul>
-      <p class="text-xs text-gray-600 mb-2">సహాయం కావాలా? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">సపోర్ట్‌ను సంప్రదించండి</a> లేదా <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>।</p>`,
-    resources: `<p class="text-xs text-gray-700">పైన ఉన్న వీడియోను చూడండి లేదా <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ఇన్వెంటరీ హెల్ప్ డాక్స్</a> చదవండి।</p>`
+      <p class="text-xs text-gray-600 mb-2">సహాయం కావాలా? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">సపోర్ట్‌ను సంప్రదించండి</a> లేదా <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>.</p>`,
+    resources: `<p class="text-xs text-gray-700">పైన ఉన్న వీడియోను చూడండి లేదా <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ఇన్వెంటరీ హెల్ప్ డాక్స్</a> చదవండి.</p>`
   },
   kn: {
     intro: `
@@ -2378,20 +2399,20 @@ const addGuideContent = {
       </ul>
       <p class="text-xs text-gray-700 font-semibold mb-2">ವಸ్ತುಗಳನ್ನು ಹೇಗೆ ನಿರ್ವಹಿಸಬೇಕು</p>
       <ul class="text-xs text-gray-700 space-y-2 mb-4">
-        <li><b>ನೋಡಿ:</b> ವಸ్ತುವನ್ನು ಕ್ಲಿಕ್ ಮಾಡಿ ಮತ್ತು ಸಂಪೂರ್ಣ ವಿವరಗಳು ಮತ್ತು ಚಿತ್ರಗಳನ್ನು ನೋಡಿ.</li>
+        <li><b>ನೋಡಿ:</b> ವಸ್ತುವನ್ನು ಕ್ಲಿಕ್ ಮಾಡಿ ಮತ್ತು ಸಂಪೂರ್ಣ ವಿವరಗಳು ಮತ್ತು ಚಿత್రಗಳನ್ನು ನೋಡಿ.</li>
         <li><b>ಸಂಪಾದಿಸಿ:</b> <i class="fas fa-edit text-blue-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, ವಿವరಗಳು ಅಥವಾ ಸೋರ್ಸ್ ಐಡీ ಬದಲಾಯಿಸಿ.</li>
-        <li><b>ಅಳಿಸಿ:</b> <i class="fas fa-trash text-red-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, ವಸ్ತುವನ್ನು ಅಳಿಸಿ (ದೃಢೀಕರಣ ಅಗತ್ಯವಿದೆ).</li>
+        <li><b>ಅಳಿಸಿ:</b> <i class="fas fa-trash text-red-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, ವಸ್ತುವನ್ನು ಅಳಿಸಿ (ದೃಢೀಕರಣ ಅಗತ್ಯವಿದೆ).</li>
         <li><b>ಮುದ್ರಣ ಟ್ಯಾಗ್:</b> <i class="fas fa-print text-green-500"></i> ಕ್ಲಿಕ್ ಮಾಡಿ, QR/ಬಾರ್ಕೋಡ್ ಟ್ಯಾಗ್ ಮುದ್ರಿಸಿ.</li>
-        <li><b>ಬಲ್ಕ్ ಅಪ್ಲೋಡ್:</b> ಒಂದೇ ಸಮಯದಲ್ಲಿ ಅನೇಕ ವಸ్ತುಗಳನ್ನು ಸೇರಿಸಲು ಬಲ್ಕ್ ಅಪ್ಲೋಡ್ ಬಳಸಿ (ಫಾರ್ಮ್ಯಾಟ್‌ಗೆ ಸಹಾಯ ಡಾಕ್ಸ್ ನೋಡಿ).</li>
+        <li><b>ಬಲ్ಕ్ ಅಪ್ಲೋಡ್:</b> ಒಂದೇ ಸಮಯದಲ್ಲಿ ಅನೇಕ ವಸ್ತುಗಳನ್ನು ಸೇರಿಸಲು ಬಲ್ಕ್ ಅಪ್ಲೋಡ್ ಬಳಸಿ (ಫಾರ್ಮ್ಯಾಟ್‌ಗೆ ಸಹಾಯ ಡಾಕ్ಸ್ ನೋಡಿ).</li>
       </ul>
       <p class="text-xs text-gray-700 font-semibold mb-2">ಟಿಪ್ಸ್</p>
       <ul class="text-xs text-gray-700 space-y-2 mb-4">
-        <li><b>ಸ್ಟಾಕ್ ಹಂಚಿಕೆ:</b> ಖರೀದಿ ಸೋರ್ಸ್‌ಗೆ, ನೀವು ಆಯ್ಕೆಮಾಡಿದ ಸ್ಟಾಕ್ ಲಾಟ್‌ನಲ್ಲಿ ಉಳಿದ ತೂಕದವರೆಗೆ ಮಾತ್ರ ಹಂಚಿಕೆ ಮಾಡಬಹುದು. ಸಿಸ್టಮ్ ಓವರ್-ಅಲೊಕೇಶನ್ ಅನ್ನು ಅನುమತಿಸುವುದಿಲ್ಲ.</li>
-        <li><b>ಸೋರ్ಸ్ ಸಂಪಾದನೆ:</b> ವಸ్ತುವನ್ನು ಸಂಪಾದಿಸುವಾಗ, ನೀವು ಸೋರ್ಸ್ ಐಡಿಯನ್ನು ಕೂಡ ಬದಲಾಯಿಸಬಹುದು.</li>
-        <li><b>ಟ್ರ್ಯಾಕಿಂಗ್:</b> ಎಲ್ಲಾ ಕ್ರಿಯೆಗಳು ಆಡಿట್ ಮತ್ತು ಇನ్ವೆಂటರీ ಟ್ರ್ಯಾಕಿಂಗ್‌ಗೆ ಲಾಗ್ ಆಗುತ್ತವೆ.</li>
+        <li><b>ಸ್ಟಾಕ್ ಹಂಚಿಕೆ:</b> ಖರೀದಿ ಸೋರ್ಸ್‌ಗೆ, ನೀವು ಆಯ್ಕೆಮಾಡಿದ ಸ್ಟಾಕ್ ಲಾಟ್‌ನಲ್ಲಿ ಉಳಿದ ತೂಕದವರೆಗೆ ಮಾತ್ರ ಹಂಚಿಕೆ ಮಾಡಬಹುದು. ಸಿಸ್టಮ್ ಓವರ್-ಅಲೊಕೇಶನ್ ಅನ್ನು ಅನುమతిಸುವುದಿಲ್ಲ.</li>
+        <li><b>ಸೋರ్ಸ్ ಸಂಪಾದನೆ:</b> ವಸ್ತುವನ್ನು ಸಂಪಾದಿಸುವಾಗ, ನೀವು ಸೋರ್ಸ್ ಐಡಿಯನ್ನು ಕೂಡ ಬದಲಾಯಿಸಬಹುದು.</li>
+        <li><b>ಟ್ರ್ಯಾಕಿಂಗ್:</b> ಎಲ್ಲಾ ಕ್ರಿಯೆಗಳು ಆಡಿట్ ಮತ್ತು ಇನ్ವೆಂటರీ ಟ್ರ್ಯಾಕಿಂಗ್‌ಗೆ ಲಾಗ್ ಆಗುತ್ತವೆ.</li>
       </ul>
-      <p class="text-xs text-gray-600 mb-2">ಸಹಾಯ ಬೇಕಾ? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">ಸಪೋರ్ಟ್ ಅನ್ನು ಸಂಪರ್ಕಿಸಿ</a> ಅಥವಾ <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>।</p>`,
-    resources: `<p class="text-xs text-gray-700">ಮೇಲಿನ ವಿಡಿಯೋವನ್ನು ನೋಡಿ ಅಥವಾ <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ಇನ್ವೆಂಟರಿ ಸಹಾಯ ಡಾಕ್ಸ್</a> ಓದಿ।</p>`
+      <p class="text-xs text-gray-600 mb-2">ಸಹಾಯ ಬೇಕಾ? <a href="mailto:support@jewelentry.com" class="text-blue-600 underline">ಸಪೋರ್ಟ್ ಅನ್ನು ಸಂಪರ್ಕಿಸಿ</a> ಅಥವಾ <a href="https://wa.me/919810359334" class="text-green-600 underline">WhatsApp</a>.</p>`,
+    resources: `<p class="text-xs text-gray-700">ಮೇಲಿನ ವಿಡಿಯೋವನ್ನು ನೋಡಿ ಅಥವಾ <a href="https://docs.jewelentry.com/inventory" target="_blank" class="text-purple-600 underline">ಇನ್ವೆಂಟರಿ ಸಹಾಯ ಡಾಕ్ಸ್</a> ಓದಿ.</p>`
   },
 };
 
@@ -2465,7 +2486,7 @@ document.addEventListener('DOMContentLoaded', function() {
       hideTimeout = setTimeout(() => {
         guideBtn.style.opacity = '0';
         guideBtn.style.pointerEvents = 'none';
-      }, 5000); // 5 seconds
+      }, 2000); // 5 seconds
     }
   }
 

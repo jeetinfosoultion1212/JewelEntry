@@ -7,7 +7,7 @@ session_start();
 require_once __DIR__ . '/../config/db_connect.php';
 
 if (!isset($_SESSION['id'])) {
-   header("Location: login.php");
+   header("Location: ../auth/login.php");
    exit();
 }
 
@@ -1064,7 +1064,7 @@ while ($row = $inventoryResult->fetch_assoc()) {
             supplierDropdownVisible = false;
             return;
           }
-          fetch('API/search_suppliers.php?q=' + encodeURIComponent(q))
+          fetch('../api/search_suppliers.php?q=' + encodeURIComponent(q))
             .then(res => res.json())
             .then(data => {
               supplierResults = data;
@@ -1076,7 +1076,7 @@ while ($row = $inventoryResult->fetch_assoc()) {
         supplierInput.addEventListener('keydown', function(e) {
           if (e.key === ' ' && supplierInput.value.trim() === '') {
             e.preventDefault();
-            fetch('API/search_suppliers.php?q=')
+            fetch('../api/search_suppliers.php?q=')
               .then(res => res.json())
               .then(data => {
                 supplierResults = data;
@@ -1127,7 +1127,7 @@ while ($row = $inventoryResult->fetch_assoc()) {
           e.preventDefault();
           addSupplierError.textContent = '';
           const formData = new FormData(addSupplierForm);
-          fetch('API/add_supplier.php', {
+          fetch('../api/add_supplier.php', {
             method: 'POST',
             body: formData
           })
